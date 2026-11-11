@@ -98,7 +98,7 @@ no parentheses.
 | `node NAME [flags] [@key:value ...]` | A stage. Flags are `loop`, `end`, and any the schema allows. |
 | `edge FROM -> TO when COND` | A **gate**: taken when the host sets `COND` true. |
 | `edge FROM -> TO` | A **sequence edge**: taken after the host calls `finish()` for the stage. |
-| `edge A -> B -> C when COND else T` | A chain: one edge per hop, each a gate on `COND`. `else T` adds a sequence edge from each hop's source to `T`, the fallback. |
+| `edge A -> B -> C ...` | Optional chain: one edge per hop, sharing the line's `when`, `else`, and annotations. See [Chains](#chains-optional). |
 | `choose NAME` | A set of `when COND -> TAG` arms, optionally ending in `else -> TAG`. |
 
 Rules to know when writing graphs:
@@ -135,6 +135,29 @@ graph walk
 ```
 
 See [`examples/walk.dsl`](examples/walk.dsl).
+
+### Chains (optional)
+
+An `edge` line may list several hops with `->`. Each hop is an edge of its own, so a
+chain is shorthand for writing the edges out. The one-hop forms above work everywhere,
+and you never need a chain. The rest of the line applies to every hop:
+
+- `when COND` makes each hop a gate on `COND`.
+- Without `when`, each hop is a sequence edge.
+- `else T` adds, for each hop, a sequence edge from that hop's source to `T`. Use it
+  for the failure path of a stage. The chain's last node gets no fallback, so give it
+  its own line.
+
+Annotations on the line apply to every edge it creates. These lines are equivalent:
+
+```text
+edge setup -> baseline when pass
+edge setup -> report
+edge baseline -> plan when pass
+edge baseline -> report
+
+edge setup -> baseline -> plan when pass else report
+```
 
 ## Running a graph
 
