@@ -1,4 +1,5 @@
 # Graphite
+!! WARNING: Graphite as it is today an early-development **proof of concept** for educational and experimental purposes only, not something you should be using for critical production-level tasks. It is **NOT** production ready. Use at your own risk.
 
 Graphite is a graph compiler and step executor for **state graphs**: stages that
 advance when a host sets conditions or reports that a stage has finished. You write
