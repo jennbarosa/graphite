@@ -2,8 +2,7 @@
 
 Graphite compiles **state graphs** and runs them one step at a time. You describe the
 stages and the rules that move between them in a small indentation-based language. Graphite
-checks the graph when you build it, and generates TypeScript whose names are typed, so a
-misspelled stage or condition fails at compile time instead of at runtime.
+checks the graph when you build it, and can generate compiled graphs in any supported language.
 
 It is written for animation states, NPC behavior, and multi-step jobs. The core knows nothing
 about games or workflows; your own names and annotations give a graph its meaning.
