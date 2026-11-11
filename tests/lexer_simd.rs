@@ -1,5 +1,18 @@
 #![cfg(target_arch = "x86_64")]
 
+/// `simd.rs` reads the lexer's break table as `super::WORD_BREAK`, which is this crate root
+/// here. This is the same table as `src/lexer.rs`.
+const WORD_BREAK: [bool; 256] = {
+    let mut table = [false; 256];
+    let breaks = b" \t\n\r@:";
+    let mut index = 0;
+    while index < breaks.len() {
+        table[breaks[index] as usize] = true;
+        index += 1;
+    }
+    table
+};
+
 #[path = "../src/lexer/simd.rs"]
 mod simd;
 
