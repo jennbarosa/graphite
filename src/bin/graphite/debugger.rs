@@ -5,7 +5,7 @@ use std::path::Path;
 
 use crate::js;
 
-pub fn launch(script: &str, module: &Path, commands: &[String]) -> Result<(), String> {
+pub fn launch(script: &Path, module: &Path, commands: &[String]) -> Result<(), String> {
     let mut args = vec![module.as_os_str().to_owned()];
     args.extend(commands.iter().map(OsString::from));
     let status = js::launch(script, &args)?;

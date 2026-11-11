@@ -7,10 +7,7 @@ use graphite::frontend::{Frontend, Module};
 use graphite::graph::CompiledGraph;
 use graphite::pipeline::write_modules;
 
-use crate::{js, load, scratch};
-
-/// The durable host's command-line entry. Its path is fixed at build time, as the debugger's is.
-const HOST: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/host/cli.ts");
+use crate::{host_assets, js, load, scratch};
 
 /// Only `--runner` names the runner: a file in the working directory never chooses code to run.
 pub fn run(
@@ -39,7 +36,17 @@ pub fn run(
     }
     // The generated modules are only needed while the run is active. The state is kept apart.
     let directory = scratch::create("graphite-run")?;
-    let result = run_in(frontend, &graphs, entry, &directory, &state, runner);
+    let bundle = host_assets::materialize()?;
+    let result = run_in(
+        frontend,
+        &graphs,
+        entry,
+        &directory,
+        &state,
+        runner,
+        &bundle.join(host_assets::HOST_ENTRY),
+    );
+    host_assets::discard(&bundle);
     let _ = std::fs::remove_dir_all(&directory);
     result
 }
@@ -51,6 +58,7 @@ fn run_in(
     directory: &Path,
     state: &Path,
     runner: Option<&Path>,
+    host: &Path,
 ) -> Result<(), String> {
     write_modules(frontend, graphs, directory).map_err(|error| error.to_string())?;
     let module = directory.join(frontend.file_name(entry, Module::Index));
@@ -58,7 +66,7 @@ fn run_in(
     if let Some(runner) = runner {
         args.push(runner.as_os_str().to_owned());
     }
-    let status = js::launch(HOST, &args)?;
+    let status = js::launch(host, &args)?;
     if status.success() {
         Ok(())
     } else {

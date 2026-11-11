@@ -93,10 +93,24 @@ fn runs_a_graph_without_tasks_or_outcome_conditions() {
     );
 }
 
+/// `run` is durable on its own; the flag is accepted and changes nothing.
 #[test]
-fn refuses_run_without_durable() {
+fn runs_durably_without_the_durable_flag() {
     let fixtures = manifest().join("tests/fixtures/runtime");
-    let output = graphite(["run".as_ref(), fixtures.join("workflow.dsl").as_os_str()]);
-    assert!(!output.status.success());
-    assert!(stderr(&output).contains("run needs --durable"));
+    let state = scratch("cli-run-without-flag").join("state.json");
+    let output = graphite([
+        "run".as_ref(),
+        fixtures.join("workflow.dsl").as_os_str(),
+        "--allow".as_ref(),
+        fixtures.join("workflow.toml").as_os_str(),
+        "--state".as_ref(),
+        state.as_os_str(),
+        "--runner".as_ref(),
+        fixtures.join("pass_runner.ts").as_os_str(),
+    ]);
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert_eq!(
+        stdout(&output).trim(),
+        r#"{"status":"ended","transitions":2}"#
+    );
 }
