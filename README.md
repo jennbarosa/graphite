@@ -98,6 +98,7 @@ no parentheses.
 | `node NAME [flags] [@key:value ...]` | A stage. Flags are `loop`, `end`, and any the schema allows. |
 | `edge FROM -> TO when COND` | A **gate**: taken when the host sets `COND` true. |
 | `edge FROM -> TO` | A **sequence edge**: taken after the host calls `finish()` for the stage. |
+| `edge A -> B -> C when COND else T` | A chain: one edge per hop, each a gate on `COND`. `else T` adds a sequence edge from each hop's source to `T`, the fallback. |
 | `choose NAME` | A set of `when COND -> TAG` arms, optionally ending in `else -> TAG`. |
 
 Rules to know when writing graphs:

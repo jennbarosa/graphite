@@ -292,3 +292,81 @@ fn cached_reference_lookup_preserves_utf8_names_and_opaque_values() {
         Some("🦀")
     );
 }
+
+const LINE: &str = "graph line
+  node a
+  node b
+  node c end
+
+  edge a -> b -> c when go else c @sfx:step
+";
+
+#[test]
+fn a_chain_expands_to_hops_then_fallbacks_with_shared_condition_and_annotations() {
+    let graphs = parse(LINE, &Schema::default()).unwrap();
+    let graph = &graphs[0];
+    let edges: Vec<(u32, u32, Option<u32>)> = graph
+        .edges
+        .iter()
+        .map(|edge| (edge.source, edge.target, edge.condition))
+        .collect();
+    let go = Some(0);
+    // Hops first, in chain order; then one fallback per hop source, to `c`.
+    assert_eq!(edges, [(0, 1, go), (1, 2, go), (0, 2, None), (1, 2, None)]);
+    for edge in &graph.edges {
+        assert_eq!(
+            graph
+                .strings
+                .resolve(graph.annotations[edge.annotations.start as usize].key),
+            Some("sfx")
+        );
+    }
+    assert_eq!(graph.nodes[0].sequence, Some(2));
+    assert_eq!(graph.nodes[1].sequence, Some(3));
+    assert_eq!(graph.nodes[0].outgoing, 0..2);
+    assert_eq!(graph.nodes[1].outgoing, 2..4);
+}
+
+#[test]
+fn a_chain_without_else_is_a_sequence_per_hop() {
+    let graphs = parse(
+        "graph line\n  node a\n  node b\n  node c end\n  edge a -> b -> c\n",
+        &Schema::default(),
+    )
+    .unwrap();
+    let graph = &graphs[0];
+    assert_eq!(graph.nodes[0].sequence, Some(0));
+    assert_eq!(graph.nodes[1].sequence, Some(1));
+    assert!(graph.edges.iter().all(|edge| edge.condition.is_none()));
+}
+
+#[test]
+fn a_chain_with_else_conflicts_with_a_sequence_hop_at_the_line() {
+    let source = "graph line\n  node a\n  node b\n  node c end\n  edge a -> b -> c else c\n";
+    let error = parse(source, &Schema::default()).err().unwrap();
+    assert_eq!(
+        error.message,
+        "a node may have one unconditional edge; give the others `when` conditions"
+    );
+    assert_eq!(error.offset, source.find("a -> ").unwrap());
+}
+
+#[test]
+fn a_chain_cannot_leave_an_end_node_even_through_else() {
+    let source =
+        "graph line\n  node a\n  node c end\n  node b end\n  edge a -> c -> b when go else b\n";
+    let error = parse(source, &Schema::default()).err().unwrap();
+    assert_eq!(error.message, "an `end` node cannot have outgoing edges");
+    assert_eq!(error.offset, source.find("a -> ").unwrap());
+}
+
+#[test]
+fn a_chain_must_name_declared_nodes_at_every_hop() {
+    let source = "graph line\n  node a\n  node b end\n  edge a -> b -> nowhere when go\n";
+    let error = parse(source, &Schema::default()).err().unwrap();
+    assert_eq!(
+        error.message,
+        "unknown node; declare it with `node` before linking to it"
+    );
+    assert_eq!(error.offset, source.find("nowhere").unwrap());
+}

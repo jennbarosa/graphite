@@ -189,35 +189,82 @@ impl<'a, 't, 's> Builder<'a, 't, 's> {
         Ok((looping, end, start..self.graph.flags.len() as u32))
     }
 
+    /// Reads `edge A -> B [-> C ...] [when COND] [else T] [@key:value ...]`.
+    /// Each hop becomes one edge carrying the line's condition and annotations.
+    /// `else T` also adds an unconditional edge from each hop's source to `T`.
     fn edge(&mut self) -> Result<(), ParseError> {
         let offset = self.tokens.offset();
-        let source = self.node_reference()?;
-        self.tokens.expect(TokenKind::Arrow)?;
-        let target = self.node_reference()?;
+        let start = self.graph.edges.len();
+        let mut source = self.node_reference()?;
+        loop {
+            self.tokens.expect(TokenKind::Arrow)?;
+            let target = self.node_reference()?;
+            push(
+                &mut self.graph.edges,
+                Edge {
+                    source,
+                    target,
+                    condition: None,
+                    annotations: 0..0,
+                },
+                offset,
+            )?;
+            source = target;
+            if !self.tokens.at(TokenKind::Arrow)? {
+                break;
+            }
+        }
+        let end = self.graph.edges.len();
         let condition = if self.tokens.at(TokenKind::Word("when"))? {
             self.tokens.expect(TokenKind::Word("when"))?;
             Some(self.condition()?)
         } else {
             None
         };
+        let fallback = if self.tokens.at(TokenKind::Word("else"))? {
+            self.tokens.expect(TokenKind::Word("else"))?;
+            Some(self.node_reference()?)
+        } else {
+            None
+        };
         let annotations = narrow(self.annotations()?);
-        self.link(source, condition.is_none(), offset)?;
-        push(
-            &mut self.graph.edges,
-            Edge {
-                source,
-                target,
-                condition,
-                annotations,
-            },
-            offset,
-        )?;
+        for index in start..end {
+            let edge = &mut self.graph.edges[index];
+            edge.condition = condition;
+            edge.annotations = annotations.clone();
+            let source = edge.source;
+            self.link(source, index as u32, condition.is_none(), offset)?;
+        }
+        if let Some(target) = fallback {
+            for index in start..end {
+                let source = self.graph.edges[index].source;
+                let id = self.graph.edges.len() as u32;
+                self.link(source, id, true, offset)?;
+                push(
+                    &mut self.graph.edges,
+                    Edge {
+                        source,
+                        target,
+                        condition: None,
+                        annotations: annotations.clone(),
+                    },
+                    offset,
+                )?;
+            }
+        }
         Ok(())
     }
 
     /// Checks that `source` may take one more edge, and records it in the node's count.
-    /// `sequence` marks an unconditional edge, which is the node's single sequence edge.
-    fn link(&mut self, source: u32, sequence: bool, offset: usize) -> Result<(), ParseError> {
+    /// `sequence` marks an unconditional edge, which is the node's single sequence edge,
+    /// stored as `edge`, the edge's index.
+    fn link(
+        &mut self,
+        source: u32,
+        edge: u32,
+        sequence: bool,
+        offset: usize,
+    ) -> Result<(), ParseError> {
         let node = &mut self.graph.nodes[source as usize];
         if node.end {
             return Err(ParseError::new(
@@ -232,7 +279,7 @@ impl<'a, 't, 's> Builder<'a, 't, 's> {
                     offset,
                 ));
             }
-            node.sequence = Some(self.graph.edges.len() as u32);
+            node.sequence = Some(edge);
         }
         node.outgoing.end += 1;
         Ok(())

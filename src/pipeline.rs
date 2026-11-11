@@ -17,28 +17,31 @@ use crate::parser::{Capacity, GRAPH_KEYWORD, ParseError, Schema, parse};
 /// Storage bounds for each graph block in `source`, in source order.
 ///
 /// A block starts at a `graph` line and runs to the next one. Every declaration in a block
-/// occupies at least one line of that block, so its line count bounds the node, edge, choice,
-/// arm and condition counts. Annotations, flags and strings are bounded by the block's bytes.
+/// occupies at least one line of that block, so its line count bounds the node, choice,
+/// arm and condition counts. An edge line may chain several hops, so each `->` bounds one hop,
+/// and an `else` adds at most one edge per hop: twice the arrow count bounds the edges.
+/// Annotations, flags and strings are bounded by the block's bytes.
 /// Text before the first graph gets no bounds, so `parse` rejects it.
 pub fn block_capacities(source: &str, schema: &Schema<'_>) -> Vec<Capacity> {
-    let mut blocks: Vec<(usize, usize)> = Vec::new();
-    let mut current: Option<(usize, usize)> = None;
+    let mut blocks: Vec<(usize, usize, usize)> = Vec::new();
+    let mut current: Option<(usize, usize, usize)> = None;
     for line in source.split_inclusive('\n') {
         if opens_graph(line) {
             blocks.extend(current.take());
-            current = Some((0, 0));
+            current = Some((0, 0, 0));
         }
-        if let Some((lines, bytes)) = current.as_mut() {
+        if let Some((lines, bytes, arrows)) = current.as_mut() {
             *lines += 1;
             *bytes += line.len();
+            *arrows += line.matches("->").count();
         }
     }
     blocks.extend(current);
     blocks
         .into_iter()
-        .map(|(lines, bytes)| Capacity {
+        .map(|(lines, bytes, arrows)| Capacity {
             nodes: lines,
-            edges: lines,
+            edges: 2 * arrows,
             conditions: lines,
             choices: lines,
             arms: lines,

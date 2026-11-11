@@ -1,0 +1,4 @@
+node_flags = ["retry"]
+
+[annotations]
+task = ["setup", "test", "plan", "gather", "validate", "canopy", "save_cache", "write", "verify", "commit_content", "push", "report"]
