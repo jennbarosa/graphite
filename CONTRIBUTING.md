@@ -63,8 +63,9 @@ is a clear reason, and say that reason in a comment.
 - Branch from `main`, and keep each pull request to one logical change.
 - Describe what changed and why. Link the issue if there is one.
 - Make sure the checks above pass before requesting review.
-- Commit messages should be short and describe the change in the imperative, such as
-  `Reject duplicate edge flags`.
+- Commit messages use the form `type: what changed`, such as
+  `fix: reject duplicate edge flags`. Keep the subject short, and don't add `Co-Authored-By`
+  or other attribution trailers.
 
 ## Licensing
 
