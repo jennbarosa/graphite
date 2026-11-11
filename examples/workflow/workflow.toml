@@ -1,0 +1,4 @@
+node_flags = ["retry"]
+
+[annotations]
+task = ["write", "lint", "fix", "deploy"]

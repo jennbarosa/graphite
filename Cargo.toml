@@ -1,0 +1,41 @@
+[package]
+name = "graphite"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+description = "A domain-agnostic graph compiler and step executor for state graphs."
+license = "AGPL-3.0-only"
+readme = "README.md"
+
+[workspace]
+
+[features]
+default = ["lexer-simd"]
+lexer-simd = []
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+foldhash = { version = "0.2.0", default-features = false }
+hashbrown = { version = "0.17.1", default-features = false, features = ["inline-more"] }
+toml = "1.1"
+
+[dev-dependencies]
+criterion = { version = "0.8.2", default-features = false, features = ["cargo_bench_support"] }
+
+[[bench]]
+name = "frontend"
+harness = false
+
+[[bench]]
+name = "compiler_storage"
+harness = false
+
+[[bench]]
+name = "lexer"
+harness = false
+
+[[bench]]
+name = "parser"
+harness = false

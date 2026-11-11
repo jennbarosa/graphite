@@ -1,0 +1,734 @@
+// Durable host for a compiled graph. It runs each stage's task through a runner, saves state
+// after every checkpoint, and resumes after a crash with the same path through the graph.
+//
+// Guarantees, for trusted DSL and internal use:
+// - The graph is deterministic: given the same task outcomes, a run always takes the same path.
+// - A task whose result was recorded is never run again. A task in flight when the process died is
+//   run again on resume, with the same `key` as before. So a task may run more than once, and
+//   any side effect it has must dedupe on `key` in the external system.
+// - A task that throws is retried only on nodes flagged with the retry flag. A task that still
+//   fails is recorded as `error` and stops the run; the recorded error is not retried.
+// - A task that outlives `taskTimeoutMs` counts as a failed attempt. The runner gets an
+//   AbortSignal, but a runner that ignores it keeps running in the background.
+// - State lives in a `StateStore`. The run's position is a small snapshot. Each task result is
+//   appended once. A run holds in memory only the results of the stage it is on, so memory does
+//   not grow with the length of the run. Any other store must provide an atomic snapshot save, an
+//   append that is durable when it returns, and an exclusive lock.
+// - A recorded error stops the run until `retryFailedTask` clears it.
+import {
+	closeSync,
+	existsSync,
+	fstatSync,
+	fsyncSync,
+	ftruncateSync,
+	openSync,
+	readFileSync,
+	readSync,
+	renameSync,
+	unlinkSync,
+	writeFileSync,
+	writeSync,
+} from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+
+const DEFAULT_MAX_TRANSITIONS = 10_000_000;
+const DEFAULT_MAX_ATTEMPTS = 3;
+const DEFAULT_TASK_TIMEOUT_MS = 60_000;
+const READ_CHUNK_BYTES = 64 * 1024;
+
+const OUTCOMES = ['pass', 'fail', 'none'] as const;
+export type Outcome = (typeof OUTCOMES)[number];
+/** A finished task's recorded result: its outcome, or `error` when every attempt threw. */
+export type StoredOutcome = Outcome | 'error';
+const STORED_OUTCOMES: readonly string[] = [...OUTCOMES, 'error'];
+
+export interface TaskContext {
+	/** Stable for a stage visit, including across a crash. External systems dedupe on it. */
+	readonly key: string;
+	readonly attempt: number;
+	readonly signal: AbortSignal;
+}
+
+export type Runner = (task: string, context: TaskContext) => Promise<Outcome>;
+
+/** Points where a test can stop the process. Each label names the write it follows. */
+export type Checkpoint =
+	| 'task-done' // the task ran; its result is not recorded yet
+	| 'result-saved' // the result is recorded; the step has not run
+	| 'step-saved'; // the step ran and the snapshot is saved
+
+/** What the host did. Each event names only the graph's own node names and the caller's keys. */
+export type HostEvent =
+	| {
+			readonly type: 'stage-entered';
+			readonly node: string;
+			readonly key: string;
+	  }
+	| {
+			readonly type: 'attempt-failed';
+			readonly task: string;
+			readonly key: string;
+			readonly attempt: number;
+			readonly error: string;
+	  }
+	| {
+			readonly type: 'task-settled';
+			readonly task: string;
+			readonly key: string;
+			readonly outcome: StoredOutcome;
+			/** `stored`: a result from an earlier run. `verified`: found by `verify`. `ran`: this run. */
+			readonly source: 'stored' | 'verified' | 'ran';
+	  }
+	| {
+			readonly type: 'step-taken';
+			readonly taken: number;
+			readonly node: string;
+	  }
+	| {
+			readonly type: 'run-started';
+			/** True when the run continues from saved state, such as after a crash. */
+			readonly resumed: boolean;
+			/** Results loaded for the stage the run resumes at. */
+			readonly storedResults: number;
+	  }
+	| { readonly type: 'run-stopped'; readonly result: Result };
+
+export interface DurableOptions {
+	/** Path to the compiled graph module (`<dir>/<graph>.ts`). */
+	readonly modulePath: string;
+	/** Used with the file store when `store` is not given. */
+	readonly stateFile: string;
+	readonly store?: StateStore;
+	readonly runner: Runner;
+	/**
+	 * Asks the outside world whether a task's effect already happened for `key`. Called before a
+	 * task runs that has no recorded result. Return its outcome if it did, or undefined to run it.
+	 */
+	readonly verify?: (
+		task: string,
+		key: string
+	) => Promise<Outcome | undefined>;
+	/** Per attempt. Default 60 seconds. */
+	readonly taskTimeoutMs?: number;
+	/** Attempts for a node flagged with the retry flag. Default 3. Other nodes get one. */
+	readonly maxAttempts?: number;
+	/** Transitions allowed per run, so a loop cannot run forever. Default 10 million. */
+	readonly maxTransitions?: number;
+	readonly onCheckpoint?: (label: Checkpoint, key: string) => void;
+	/**
+	 * Told what the host does, as it happens. Use it for logs, metrics or traces. The handler must
+	 * not throw: an exception stops the run.
+	 */
+	readonly onEvent?: (event: HostEvent) => void;
+	/** Annotation whose value names a stage's task. */
+	readonly taskAnnotation: string;
+	/** Node flag that allows retries. */
+	readonly retryFlag: string;
+	/**
+	 * Conditions the host sets from a task's outcome. Required when the graph has tasks; the graph
+	 * must declare both. A graph without tasks may leave this out.
+	 */
+	readonly outcomeConditions?: {
+		readonly pass: string;
+		readonly fail: string;
+	};
+}
+
+export type Result =
+	| { status: 'ended'; transitions: number }
+	| { status: 'stalled'; transitions: number; node: string }
+	| { status: 'error'; transitions: number; key: string; error: string };
+
+/** A task that failed, after all its attempts. The run stops; host errors are not wrapped in this. */
+class TaskFailure extends Error {}
+
+/**
+ * Where a run's state lives. `saveSnapshot` must be atomic: a reader sees the old snapshot or the
+ * new one. `recordResult` must be durable when it returns. `loadRecords` returns the last outcome
+ * recorded for each key at `since` or later, and leaves out keys whose last record cleared them.
+ * `recordResult` with `undefined` clears a result. `withLock` must exclude other holders of the
+ * same state while `body` runs.
+ */
+export interface StateStore {
+	loadSnapshot(): unknown;
+	loadRecords(since: number): Map<string, StoredOutcome>;
+	saveSnapshot(snapshot: unknown): void;
+	recordResult(
+		key: string,
+		sequence: number,
+		outcome: StoredOutcome | undefined
+	): void;
+	withLock<T>(body: () => T | Promise<T>): Promise<T>;
+}
+
+/**
+ * The state store backed by local files. `<file>` holds the snapshot, rewritten atomically at
+ * each step. `<file>.results` holds one JSON line per recorded result, appended and fsynced as it
+ * is recorded. `<file>.lock` lets one process at a time use the state.
+ */
+export function fileStore(stateFile: string): StateStore {
+	const resultsFile = `${stateFile}.results`;
+	return {
+		loadSnapshot: () =>
+			existsSync(stateFile) ? readSnapshot(stateFile) : undefined,
+		loadRecords: (since) => readRecords(resultsFile, since),
+		saveSnapshot: (snapshot) =>
+			writeAtomic(stateFile, JSON.stringify({ snapshot })),
+		recordResult: (key, sequence, outcome) =>
+			appendLine(
+				resultsFile,
+				JSON.stringify({
+					key,
+					sequence,
+					outcome: outcome ?? null,
+				})
+			),
+		withLock: (body) => withLock(stateFile, body),
+	};
+}
+
+/** Clears a recorded error, so the next run runs that task again. */
+export async function retryFailedTask(
+	store: StateStore,
+	key: string
+): Promise<void> {
+	const sequence = sequenceOf(key);
+	await store.withLock(() => {
+		if (store.loadRecords(sequence).get(key) !== 'error') {
+			throw new Error(`task "${key}" has no stored error`);
+		}
+		store.recordResult(key, sequence, undefined);
+	});
+}
+
+/** The parts of the generated graph module this host uses. */
+interface GraphLike {
+	readonly data: { readonly nodeCount: number };
+	nodeName(id: number): string;
+	nodeAnnotations(node: string): readonly { key: string; value?: string }[];
+	nodeFlags(node: string): readonly string[];
+	conditionId(name: string): number;
+}
+
+/** The parts of the generated run this host uses. */
+interface RunLike {
+	readonly node: string;
+	readonly status: 'running' | 'ended' | 'error';
+	readonly error: string | null;
+	readonly transitions: number;
+	set(condition: string, value: boolean): void;
+	finish(): void;
+	advance(): number;
+	snapshot(): unknown;
+}
+
+interface Session {
+	readonly graph: GraphLike;
+	readonly run: RunLike;
+	readonly store: StateStore;
+	readonly options: DurableOptions;
+	/** Results for the current stage only. Cleared when the stage is done. */
+	readonly results: Map<string, StoredOutcome>;
+}
+
+/** Runs the graph from its saved state, or from the entry if there is none. */
+export async function runDurable(options: DurableOptions): Promise<Result> {
+	const maxAttempts = options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
+	if (!Number.isInteger(maxAttempts) || maxAttempts < 1) {
+		throw new RangeError(
+			`maxAttempts must be a positive integer, got ${maxAttempts}`
+		);
+	}
+	const file = resolve(options.modulePath);
+	const { graph } = await import(file);
+	const { start, restore } = await import(
+		join(dirname(file), 'graphite.ts')
+	);
+	if (options.outcomeConditions === undefined) {
+		for (let id = 0; id < graph.data.nodeCount; id++) {
+			const node = graph.nodeName(id);
+			if (
+				taskOf(graph, node, options.taskAnnotation) !==
+				undefined
+			) {
+				throw new RangeError(
+					`the graph has tasks (node "${node}" among them), so it needs outcomeConditions naming its pass and fail conditions`
+				);
+			}
+		}
+	} else {
+		for (const name of [
+			options.outcomeConditions.pass,
+			options.outcomeConditions.fail,
+		]) {
+			try {
+				graph.conditionId(name);
+			} catch {
+				throw new RangeError(
+					`the graph has no condition "${name}", which outcomeConditions names`
+				);
+			}
+		}
+	}
+	const limits = {
+		maxTransitions: options.maxTransitions ?? DEFAULT_MAX_TRANSITIONS,
+	};
+	const store = options.store ?? fileStore(options.stateFile);
+	return store.withLock(async () => {
+		const saved = store.loadSnapshot();
+		const resumed = saved !== undefined;
+		const run: RunLike = resumed
+			? restore(graph, saved, limits)
+			: start(graph, limits);
+		const results = store.loadRecords(run.transitions);
+		const session: Session = {
+			graph,
+			run,
+			store,
+			options,
+			results,
+		};
+		options.onEvent?.({
+			type: 'run-started',
+			resumed,
+			storedResults: results.size,
+		});
+		for (;;) {
+			const stop = await runStage(session);
+			if (stop !== undefined) {
+				options.onEvent?.({
+					type: 'run-stopped',
+					result: stop,
+				});
+				return stop;
+			}
+		}
+	});
+}
+
+/** Runs the current stage. Returns the result once the run stops, or undefined to go on. */
+async function runStage(session: Session): Promise<Result | undefined> {
+	const { graph, run } = session;
+	const node = run.node;
+	const key = `${run.transitions}:${node}`;
+	session.options.onEvent?.({ type: 'stage-entered', node, key });
+	if (run.status === 'error') return errorResult(session, key);
+
+	// The task of the node a run reaches is always settled, including an end node's: the run
+	// ends after that task, not on arrival.
+	const task = taskOf(graph, node, session.options.taskAnnotation);
+	let outcome: Outcome = 'none';
+	if (task !== undefined) {
+		try {
+			outcome = await settleTask(session, node, task, key);
+		} catch (error) {
+			if (!(error instanceof TaskFailure)) throw error;
+			return {
+				status: 'error',
+				transitions: run.transitions,
+				key,
+				error: error.message,
+			};
+		}
+	}
+
+	const conditions = session.options.outcomeConditions;
+	if (conditions !== undefined) {
+		run.set(conditions.pass, outcome === 'pass');
+		run.set(conditions.fail, outcome === 'fail');
+	}
+	if (run.status === 'ended') {
+		saveSnapshot(session, 'step-saved', key);
+		return { status: 'ended', transitions: run.transitions };
+	}
+	run.finish();
+	// One transition per stage: the next node's gates must not read this stage's outcome.
+	const taken = run.advance() < 0 ? 0 : 1;
+	session.options.onEvent?.({ type: 'step-taken', taken, node: run.node });
+	saveSnapshot(session, 'step-saved', key);
+	// The next stage has a later sequence, so nothing recorded for this one is needed again.
+	session.results.clear();
+	if (statusOf(run) === 'error') return errorResult(session, key);
+	if (taken === 0) {
+		return {
+			status: 'stalled',
+			transitions: run.transitions,
+			node: run.node,
+		};
+	}
+	return undefined;
+}
+
+/**
+ * The task's outcome. A recorded result is returned without running the task again. Throws when
+ * the task failed, either now or in an earlier run.
+ */
+async function settleTask(
+	session: Session,
+	node: string,
+	task: string,
+	key: string
+): Promise<Outcome> {
+	const { graph, options, results } = session;
+	const stored = results.get(key);
+	if (stored === 'error') {
+		throw new TaskFailure(`task ${task} failed in an earlier run`);
+	}
+	if (stored !== undefined) {
+		options.onEvent?.({
+			type: 'task-settled',
+			task,
+			key,
+			outcome: stored,
+			source: 'stored',
+		});
+		return stored;
+	}
+
+	if (options.verify !== undefined) {
+		const done: unknown = await options.verify(task, key);
+		if (done !== undefined) {
+			if (!isOutcome(done)) {
+				throw new Error(`verify returned "${String(done)}"`);
+			}
+			recordResult(session, key, done);
+			options.onEvent?.({
+				type: 'task-settled',
+				task,
+				key,
+				outcome: done,
+				source: 'verified',
+			});
+			return done;
+		}
+	}
+	const attempts = graph.nodeFlags(node).includes(options.retryFlag)
+		? (options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS)
+		: 1;
+	let outcome: Outcome;
+	try {
+		outcome = await attempt(options, task, key, attempts);
+	} catch (error) {
+		recordResult(session, key, 'error');
+		throw new TaskFailure(`task ${task} failed: ${errorText(error)}`);
+	}
+	options.onCheckpoint?.('task-done', key);
+	recordResult(session, key, outcome);
+	options.onEvent?.({
+		type: 'task-settled',
+		task,
+		key,
+		outcome,
+		source: 'ran',
+	});
+	return outcome;
+}
+
+/** Reads the status without narrowing: a step can change it, which the compiler cannot see. */
+function statusOf(run: RunLike): RunLike['status'] {
+	return run.status;
+}
+
+function errorResult(session: Session, key: string): Result {
+	const error =
+		session.run.error === 'limit'
+			? `run reached maxTransitions (${session.options.maxTransitions ?? DEFAULT_MAX_TRANSITIONS})`
+			: String(session.run.error);
+	return {
+		status: 'error',
+		transitions: session.run.transitions,
+		key,
+		error,
+	};
+}
+
+/** Saves the run's position. Results are written by recordResult, so this stays small. */
+function saveSnapshot(session: Session, label: Checkpoint, key: string): void {
+	session.store.saveSnapshot(session.run.snapshot());
+	session.options.onCheckpoint?.(label, key);
+}
+
+/** Records one task's result. It is durable before the run moves on. */
+function recordResult(
+	session: Session,
+	key: string,
+	outcome: StoredOutcome
+): void {
+	session.store.recordResult(key, session.run.transitions, outcome);
+	session.results.set(key, outcome);
+	session.options.onCheckpoint?.('result-saved', key);
+}
+
+function sequenceOf(key: string): number {
+	return Number(key.slice(0, key.indexOf(':')));
+}
+
+function taskOf(
+	graph: GraphLike,
+	node: string,
+	annotation: string
+): string | undefined {
+	return graph
+		.nodeAnnotations(node)
+		.find((entry) => entry.key === annotation)?.value;
+}
+
+async function attempt(
+	options: DurableOptions,
+	task: string,
+	key: string,
+	attempts: number
+): Promise<Outcome> {
+	const timeoutMs = options.taskTimeoutMs ?? DEFAULT_TASK_TIMEOUT_MS;
+	let lastError: unknown = new Error('no attempts');
+	for (let number = 1; number <= attempts; number++) {
+		try {
+			return await runOnce(
+				options.runner,
+				task,
+				{ key, attempt: number },
+				timeoutMs
+			);
+		} catch (error) {
+			lastError = error;
+			options.onEvent?.({
+				type: 'attempt-failed',
+				task,
+				key,
+				attempt: number,
+				error: errorText(error),
+			});
+		}
+	}
+	throw lastError;
+}
+
+async function runOnce(
+	runner: Runner,
+	task: string,
+	ids: { key: string; attempt: number },
+	timeoutMs: number
+): Promise<Outcome> {
+	const controller = new AbortController();
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const timeout = new Promise<never>((_, reject) => {
+		timer = setTimeout(() => {
+			controller.abort();
+			reject(new Error(`timed out after ${timeoutMs}ms`));
+		}, timeoutMs);
+	});
+	try {
+		const outcome: unknown = await Promise.race([
+			runner(task, { ...ids, signal: controller.signal }),
+			timeout,
+		]);
+		if (!isOutcome(outcome)) {
+			throw new Error(`runner returned "${String(outcome)}"`);
+		}
+		return outcome;
+	} finally {
+		clearTimeout(timer);
+	}
+}
+
+function isOutcome(value: unknown): value is Outcome {
+	return (
+		typeof value === 'string' &&
+		(OUTCOMES as readonly string[]).includes(value)
+	);
+}
+
+function isStoredOutcome(value: unknown): value is StoredOutcome {
+	return typeof value === 'string' && STORED_OUTCOMES.includes(value);
+}
+
+function errorText(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === 'object' && value !== null;
+}
+
+function readSnapshot(file: string): unknown {
+	const parsed: unknown = JSON.parse(readFileSync(file, 'utf8'));
+	if (!isRecord(parsed) || !('snapshot' in parsed)) {
+		throw new Error(`state file ${file} is malformed`);
+	}
+	return parsed.snapshot;
+}
+
+interface ResultRecord {
+	readonly key: string;
+	readonly sequence: number;
+	readonly outcome: StoredOutcome | null;
+}
+
+function parseRecord(line: string): ResultRecord | undefined {
+	try {
+		const value: unknown = JSON.parse(line);
+		if (
+			!isRecord(value) ||
+			typeof value.key !== 'string' ||
+			typeof value.sequence !== 'number'
+		) {
+			return undefined;
+		}
+		const outcome = value.outcome;
+		if (outcome !== null && !isStoredOutcome(outcome)) {
+			return undefined;
+		}
+		return { key: value.key, sequence: value.sequence, outcome };
+	} catch {
+		return undefined;
+	}
+}
+
+/**
+ * Reads the records at `since` or later, in order, keeping the last outcome for each key. The
+ * file is read in chunks, so only those records are held in memory. A last line cut short by a
+ * crash is dropped, and the file is cut back to the end of the last complete line, so later
+ * appends start on a clean line. A bad complete line means the file is damaged.
+ */
+function readRecords(file: string, since: number): Map<string, StoredOutcome> {
+	const latest = new Map<string, StoredOutcome | null>();
+	if (!existsSync(file)) return new Map();
+	const fd = openSync(file, 'r+');
+	try {
+		const size = fstatSync(fd).size;
+		const completeEnd = forEachLine(fd, (line) => {
+			if (line === '') return;
+			const record = parseRecord(line);
+			if (record === undefined) {
+				throw new Error(`results file ${file} is malformed`);
+			}
+			if (record.sequence >= since)
+				latest.set(record.key, record.outcome);
+		});
+		if (completeEnd < size) {
+			ftruncateSync(fd, completeEnd);
+			fsyncSync(fd);
+		}
+	} finally {
+		closeSync(fd);
+	}
+	const recovered = new Map<string, StoredOutcome>();
+	for (const [key, outcome] of latest) {
+		if (outcome !== null) recovered.set(key, outcome);
+	}
+	return recovered;
+}
+
+/**
+ * Calls `visit` with each complete line, in order, reading the file in chunks. Returns the byte
+ * offset just past the last complete line. Text after it is an unfinished line.
+ */
+function forEachLine(fd: number, visit: (line: string) => void): number {
+	const chunk = Buffer.alloc(READ_CHUNK_BYTES);
+	let carry = Buffer.alloc(0);
+	let offset = 0;
+	let completeEnd = 0;
+	for (;;) {
+		const bytes = readSync(fd, chunk, 0, READ_CHUNK_BYTES, offset);
+		if (bytes === 0) break;
+		const data = Buffer.concat([carry, chunk.subarray(0, bytes)]);
+		const dataStart = offset - carry.length;
+		offset += bytes;
+		let start = 0;
+		let newline = data.indexOf(0x0a);
+		while (newline !== -1) {
+			visit(data.subarray(start, newline).toString('utf8'));
+			start = newline + 1;
+			completeEnd = dataStart + start;
+			newline = data.indexOf(0x0a, start);
+		}
+		carry = Buffer.from(data.subarray(start));
+	}
+	return completeEnd;
+}
+
+/** Appends one line and makes it durable before returning. */
+function appendLine(file: string, line: string): void {
+	const isNew = !existsSync(file);
+	const fd = openSync(file, 'a');
+	try {
+		writeFileSync(fd, `${line}\n`);
+		fsyncSync(fd);
+	} finally {
+		closeSync(fd);
+	}
+	if (isNew) fsyncDir(dirname(file));
+}
+
+/** Temp file, fsync, rename, then fsync the directory so the rename itself is durable. */
+function writeAtomic(file: string, text: string): void {
+	const temp = `${file}.${process.pid}.tmp`;
+	const fd = openSync(temp, 'w');
+	try {
+		writeFileSync(fd, text);
+		fsyncSync(fd);
+	} finally {
+		closeSync(fd);
+	}
+	renameSync(temp, file);
+	fsyncDir(dirname(file));
+}
+
+function fsyncDir(dir: string): void {
+	const fd = openSync(dir, 'r');
+	try {
+		fsyncSync(fd);
+	} finally {
+		closeSync(fd);
+	}
+}
+
+async function withLock<T>(
+	stateFile: string,
+	body: () => T | Promise<T>
+): Promise<T> {
+	const release = acquire(stateFile);
+	try {
+		return await body();
+	} finally {
+		release();
+	}
+}
+
+/**
+ * Creates `<state>.lock` holding this process's pid. A lock whose pid is no longer running is
+ * taken over. shortcut: the takeover is not atomic, so two operators recovering at the same
+ * instant could both win; upgrade to flock if that happens.
+ */
+function acquire(stateFile: string): () => void {
+	const lock = `${stateFile}.lock`;
+	for (let tries = 0; tries < 2; tries++) {
+		try {
+			const fd = openSync(lock, 'wx');
+			writeSync(fd, String(process.pid));
+			closeSync(fd);
+			return () => unlinkSync(lock);
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code !== 'EEXIST')
+				throw error;
+			const owner = Number(readFileSync(lock, 'utf8'));
+			if (alive(owner)) {
+				throw new Error(
+					`state ${stateFile} is locked by process ${owner}`
+				);
+			}
+			unlinkSync(lock);
+		}
+	}
+	throw new Error(`could not lock ${stateFile}`);
+}
+
+function alive(pid: number): boolean {
+	if (!Number.isInteger(pid) || pid <= 0) return false;
+	try {
+		process.kill(pid, 0);
+		return true;
+	} catch (error) {
+		return (error as NodeJS.ErrnoException).code === 'EPERM';
+	}
+}

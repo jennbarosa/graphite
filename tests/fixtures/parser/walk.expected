@@ -1,0 +1,15 @@
+graph walk entry=0
+storage nodes=4 edges=3 choices=1 arms=4 annotations=6 flags=0
+conditions ["keyup", "left", "right", "up"]
+node[0] windup loop=false end=false flags=0..0 [] annotations=0..1 [("anim", Some("windup"))] outgoing=0..2 [0, 1] sequence=Some(1)
+node[1] going loop=true end=false flags=0..0 [] annotations=1..3 [("anim", Some("walk")), ("group", Some("locomotion"))] outgoing=2..3 [2] sequence=None
+node[2] winddown loop=false end=true flags=0..0 [] annotations=3..4 [("anim", Some("winddown"))] outgoing=3..3 [] sequence=None
+node[3] stopped loop=false end=true flags=0..0 [] annotations=4..5 [("anim", Some("idle"))] outgoing=3..3 [] sequence=None
+edge[0] windup[0] -> stopped[3] condition=Some((0, "keyup")) annotations=5..5 []
+edge[1] windup[0] -> going[1] condition=None annotations=5..5 []
+edge[2] going[1] -> winddown[2] condition=Some((0, "keyup")) annotations=5..5 []
+choice[0] facing arms=0..4
+arm[0] condition=Some((1, "left")) tag=side annotations=5..6 [("flip", Some("true"))]
+arm[1] condition=Some((2, "right")) tag=side annotations=6..6 []
+arm[2] condition=Some((3, "up")) tag=up annotations=6..6 []
+arm[3] condition=None tag=down annotations=6..6 []

@@ -1,0 +1,8 @@
+graph walk entry=0
+storage nodes=3 edges=2 choices=0 arms=0 annotations=3 flags=2
+conditions ["keyup"]
+node[0] windup loop=false end=false flags=0..1 ["looping"] annotations=0..1 [("anim", Some("windup"))] outgoing=0..1 [0] sequence=Some(0)
+node[1] going loop=true end=false flags=1..2 ["looping"] annotations=1..2 [("anim", Some("walk"))] outgoing=1..2 [1] sequence=None
+node[2] stopped loop=false end=true flags=2..2 [] annotations=2..3 [("anim", Some("idle"))] outgoing=2..2 [] sequence=None
+edge[0] windup[0] -> going[1] condition=None annotations=3..3 []
+edge[1] going[1] -> stopped[2] condition=Some((0, "keyup")) annotations=3..3 []

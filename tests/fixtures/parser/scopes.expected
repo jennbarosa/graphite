@@ -1,0 +1,15 @@
+graph door entry=0
+storage nodes=2 edges=1 choices=1 arms=1 annotations=0 flags=0
+conditions ["request"]
+node[0] closed loop=false end=false flags=0..0 [] annotations=0..0 [] outgoing=0..1 [0] sequence=None
+node[1] open loop=false end=true flags=0..0 [] annotations=0..0 [] outgoing=1..1 [] sequence=None
+edge[0] closed[0] -> open[1] condition=Some((0, "request")) annotations=0..0 []
+choice[0] facing arms=0..1
+arm[0] condition=Some((0, "request")) tag=side annotations=0..0 []
+graph walk entry=0
+storage nodes=1 edges=0 choices=1 arms=2 annotations=2 flags=0
+conditions ["request"]
+node[0] closed loop=false end=true flags=0..0 [] annotations=0..1 [("anim", Some("idle"))] outgoing=0..0 [] sequence=None
+choice[0] facing arms=0..2
+arm[0] condition=Some((0, "request")) tag=down annotations=1..1 []
+arm[1] condition=None tag=side annotations=1..2 [("flip", Some("true"))]

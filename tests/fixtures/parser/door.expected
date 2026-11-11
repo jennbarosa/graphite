@@ -1,0 +1,11 @@
+graph door entry=0
+storage nodes=4 edges=4 choices=0 arms=0 annotations=5 flags=0
+conditions ["request", "timeout"]
+node[0] closed loop=false end=false flags=0..0 [] annotations=0..1 [("anim", Some("idle"))] outgoing=0..1 [0] sequence=None
+node[1] opening loop=false end=false flags=0..0 [] annotations=1..2 [("anim", Some("open"))] outgoing=1..2 [1] sequence=Some(1)
+node[2] open loop=false end=false flags=0..0 [] annotations=2..3 [("anim", Some("idle_open"))] outgoing=2..3 [2] sequence=None
+node[3] closing loop=false end=false flags=0..0 [] annotations=3..4 [("anim", Some("close"))] outgoing=3..4 [3] sequence=Some(3)
+edge[0] closed[0] -> opening[1] condition=Some((0, "request")) annotations=4..4 []
+edge[1] opening[1] -> open[2] condition=None annotations=4..4 []
+edge[2] open[2] -> closing[3] condition=Some((1, "timeout")) annotations=4..4 []
+edge[3] closing[3] -> closed[0] condition=None annotations=4..5 [("sfx", Some("latch"))]
