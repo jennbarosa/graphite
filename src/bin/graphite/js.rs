@@ -5,17 +5,18 @@
 
 use std::ffi::OsString;
 use std::io;
+use std::path::Path;
 use std::process::{Command, ExitStatus};
 
 /// Runs `script` with `args` and returns its exit status.
-pub fn launch(script: &str, args: &[OsString]) -> Result<ExitStatus, String> {
+pub fn launch(script: &Path, args: &[OsString]) -> Result<ExitStatus, String> {
     match std::env::var("GRAPHITE_JS_RUNNER") {
         Ok(runner) => run_configured(&runner, script, args),
         Err(_) => run_default(script, args),
     }
 }
 
-fn run_configured(runner: &str, script: &str, args: &[OsString]) -> Result<ExitStatus, String> {
+fn run_configured(runner: &str, script: &Path, args: &[OsString]) -> Result<ExitStatus, String> {
     let mut words = runner.split_whitespace();
     let program = words
         .next()
@@ -25,7 +26,7 @@ fn run_configured(runner: &str, script: &str, args: &[OsString]) -> Result<ExitS
         .map_err(|error| format!("cannot start GRAPHITE_JS_RUNNER `{runner}`: {error}"))
 }
 
-fn run_default(script: &str, args: &[OsString]) -> Result<ExitStatus, String> {
+fn run_default(script: &Path, args: &[OsString]) -> Result<ExitStatus, String> {
     let candidates: [(&str, &[&str]); 2] = [("bun", &[]), ("npx", &["tsx"])];
     for (program, extra) in candidates {
         match spawn(program, extra, script, args) {
@@ -42,7 +43,12 @@ fn run_default(script: &str, args: &[OsString]) -> Result<ExitStatus, String> {
     )
 }
 
-fn spawn(program: &str, extra: &[&str], script: &str, args: &[OsString]) -> io::Result<ExitStatus> {
+fn spawn(
+    program: &str,
+    extra: &[&str],
+    script: &Path,
+    args: &[OsString],
+) -> io::Result<ExitStatus> {
     Command::new(program)
         .args(extra)
         .arg(script)

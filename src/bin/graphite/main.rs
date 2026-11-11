@@ -1,4 +1,4 @@
-//! The `graphite` command: `compile`, `check`, `inspect` and `debug` a DSL file.
+//! The `graphite` command: `init`, `check`, `compile`, `inspect`, `debug`, `run` and `doctor`.
 
 mod allow;
 mod args;
@@ -6,6 +6,10 @@ mod check;
 mod compile;
 mod debug;
 mod debugger;
+mod doctor;
+mod help;
+mod host_assets;
+mod init;
 mod inspect;
 mod js;
 mod load;
@@ -28,12 +32,21 @@ fn main() -> ExitCode {
 
 fn run(command: Command) -> Result<(), String> {
     match command {
+        Command::Help { topic } => {
+            match topic.as_deref() {
+                None => println!("{}", help::OVERVIEW),
+                Some(name) => println!("{}", help::for_command(name).unwrap_or(help::OVERVIEW)),
+            }
+            Ok(())
+        }
+        Command::Init { input } => init::run(&input),
+        Command::Doctor => doctor::run(),
         Command::Compile {
             input,
             out,
             target,
             allow,
-        } => compile::run(&input, &out, &target, allow.as_deref()),
+        } => compile::run(&input, out.as_deref(), &target, allow.as_deref()),
         Command::Check {
             input,
             target,

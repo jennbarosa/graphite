@@ -41,9 +41,7 @@ pub const fn chunked<const SHIFT: u32>() -> TypeScript<SHIFT> {
 pub const TARGET: Target = Target {
     key: "typescript",
     frontend: &TYPESCRIPT,
-    // Fixed at build time: the debugger runs from this checkout.
-    // shortcut: debugger path is baked in at build time, ship the scripts beside the binary to lift this.
-    debugger: Some(concat!(env!("CARGO_MANIFEST_DIR"), "/cli/debug.ts")),
+    debugger: Some("cli/debug.ts"),
 };
 
 /// TypeScript's rendering of the shared layout.

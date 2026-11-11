@@ -3,7 +3,8 @@ use super::{Frontend, typescript};
 pub struct Target {
     pub key: &'static str,
     pub frontend: &'static (dyn Frontend + Sync),
-    /// The debugger script `graphite debug` runs for this target, if it has one.
+    /// The debugger script `graphite debug` runs for this target, if it has one. A path relative
+    /// to the CLI's bundled scripts, such as `cli/debug.ts`.
     pub debugger: Option<&'static str>,
 }
 
