@@ -75,6 +75,11 @@ of this repository. Installing it elsewhere will not find those files.
 - TypeScript 5 or later for the type-check test. Set `GRAPHITE_TSC` to the compiler's
   path, or put `tsc` on your `PATH`.
 
+## Why Typescript??
+Graphite started as a tool for managing and creating animation state machines/graphs for animating spritesheets in my web game.
+Naturally, being a web-based game, the obvious front-end I could use for executing the graph was Typescript, so that it could integrate seamlessly. This library quickly outgrew being for animation state and instead became a general purpose graph compiler and executor.
+New front-ends for Graphite can be easily added to integrate with any type of project in any language.
+
 ## Quick start
 
 ```sh
