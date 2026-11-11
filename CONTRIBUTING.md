@@ -55,6 +55,8 @@ is a clear reason, and say that reason in a comment.
 - **Add a test for new behavior.** Parser changes usually belong in a fixture under
   `tests/fixtures/parser/`. The `.expected` files are hand-written, so update them by
   reasoning about the expected output, not by copying what the parser prints.
+- **Keep the language out of the core.** Anything specific to one host language belongs in its
+  front end. See [front ends](docs/front-ends.md).
 - **Keep errors source-located.** Compile errors should point at the line and column
   that caused them.
 - **Don't add dependencies for small helpers.** Check whether the standard library or

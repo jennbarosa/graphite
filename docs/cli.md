@@ -6,7 +6,7 @@ one command's options.
 ```text
 graphite init <file.dsl>                               write a starter graph
 graphite check <file.dsl> [--allow <list.toml>]        validate a graph
-graphite compile <file.dsl> [--out <dir>]              generate TypeScript modules
+graphite compile <file.dsl> [--out <dir>]              generate modules with a front end
 graphite run <file.dsl> [--state <file.json>] [--runner <tasks.ts>] [--allow <list.toml>]
 graphite debug <file.dsl> [command...]                 step through a graph in the terminal
 graphite inspect <file.dsl>                            print the compiled graph
@@ -19,7 +19,7 @@ graphite doctor                                        check the JavaScript runt
 | --- | --- | --- |
 | `init <file>` | Writes a starter graph. Refuses to overwrite. | Yes, one file |
 | `check <file>` | Validates the graph and prints `ok: N graphs`. | No |
-| `compile <file>` | Generates TypeScript into `--out`, default `graphite-out/<stem>/`. | Yes |
+| `compile <file>` | Generates the front end's modules into `--out`, default `graphite-out/<stem>/`. | Yes |
 | `run <file>` | Runs the first graph as a durable workflow. See [durable workflows](durable-workflows.md). | State file only |
 | `debug <file>` | Runs the debugger with the given commands, or reads them from stdin. | No |
 | `inspect <file>` | Prints the compiled nodes, edges, conditions, choices and annotations. | No |
@@ -35,7 +35,7 @@ graphite doctor                                        check the JavaScript runt
 | `--state <file.json>` | `run` | Checkpoint file. Defaults to `<stem>.state.json` beside the file. |
 | `--runner <tasks.ts>` | `run` | Module whose default export runs tasks. Runs as code with your permissions. |
 | `--durable` | `run` | Accepted and ignored: `run` is always durable. |
-| `--target typescript` | `check`, `compile`, `debug` | Output format. `typescript` is the only target and the default. |
+| `--target <key>` | `check`, `compile`, `debug` | The front end to use. `typescript` is the only one shipped, and the default. See [front ends](front-ends.md). |
 
 ## Exit status
 

@@ -17,18 +17,17 @@ you find in play.
 ## How is it different from a state-machine library?
 
 Graphite does not run your code. It compiles a description of states and edges into checked data,
-then generates TypeScript types for your names. Your host decides when time passes, what a
+then generates typed code for your names, through a front end (TypeScript today). Your host decides when time passes, what a
 condition means, and what an animation does. The graph itself is a value you can inspect and test.
 
-## Why TypeScript?
+## Why is TypeScript the first front end?
 
 Graphite started as a tool for animation state machines in a web game. TypeScript was the obvious
-host, because it could run inside the game without a bridge. The project quickly outgrew animation,
-and it is now a general graph compiler and executor.
+first host, because it could run inside the game without a bridge.
 
-The DSL and the core are language-neutral. TypeScript is one **target**: new targets and host
-languages can be added without changing the graph language. If you want another target, see
-[CONTRIBUTING.md](../CONTRIBUTING.md).
+The DSL and the core do not depend on any language. A **front end** generates the code for one host
+language, and new front ends can be added without changing the graph language. See
+[front ends](front-ends.md) for how to add one.
 
 ## Why does `run` need Bun?
 
@@ -38,8 +37,9 @@ compiled, only to be executed. [`graphite doctor`](cli.md) reports what you have
 
 ## Do I have to use TypeScript?
 
-No. `check`, `compile`, `inspect` and the Rust API run without it. You need a JavaScript runtime
-only for `run`, `debug`, and TypeScript hosts that you write.
+No. `check`, `inspect` and the Rust API need no host language at all. `compile` writes the output of
+one front end, which is TypeScript today. You need a JavaScript runtime only for `run`, `debug`, and
+TypeScript hosts that you write.
 
 ## Can a graph have more than one start?
 

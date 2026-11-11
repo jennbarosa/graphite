@@ -5,7 +5,7 @@ What Graphite does not do yet, and known limits. Items are roughly in priority o
 ## Missing
 
 - **A Rust executor.** The step executor exists only in the TypeScript runtime. Rust code can
-  parse, check and generate TypeScript, but cannot step a graph itself.
+  parse, check and generate code through a front end, but cannot step a graph itself.
 - **Static checks for condition stalls.** Nothing yet warns when a node's conditions can never
   become true.
 - **A condition handler for gate cases source order cannot express.** Not designed.
@@ -22,7 +22,8 @@ What Graphite does not do yet, and known limits. Items are roughly in priority o
   [`src/frontend/typescript/index.rs`](src/frontend/typescript/index.rs).
 - **One top-level block runs serially in the parallel benchmark.** Parallelizing it needs
   indentation checkpoints. See [`benches/support/parallel.rs`](benches/support/parallel.rs).
-- **Only the TypeScript target exists.** The front-end interface is ready for others.
+- **Only the TypeScript front end exists.** The front-end interface is ready for others. See
+  [front ends](docs/front-ends.md) for how to add one.
 
 ## Done recently
 

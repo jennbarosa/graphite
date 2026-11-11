@@ -1,6 +1,6 @@
 # Rust API
 
-The Rust crate parses and checks graphs, and can generate the same TypeScript as the CLI. Use it
+The Rust crate parses and checks graphs, and generates code through any registered front end. Use it
 when your build or tooling is written in Rust. [`examples/rust_api.rs`](../examples/rust_api.rs)
 is a complete program, and `cargo run --example rust_api` runs it.
 
@@ -36,12 +36,13 @@ let schema = Schema { node_flags: &flags };
 compile("graph job\n  node run retry end\n", &schema)?;
 ```
 
-## Generate TypeScript
+## Generate code
 
 `graphite::pipeline::write_modules(frontend, &graphs, directory)` writes the runtime and every
 module. `graphite::pipeline::check_outputs(frontend, &graphs)` checks the output names without
-writing anything. The TypeScript frontend is `graphite::frontend::typescript::TYPESCRIPT`, and
-`graphite::frontend::registry::lookup("typescript")` finds it by name.
+writing anything. Front ends are listed in `graphite::frontend::registry::TARGETS`, and
+`graphite::frontend::registry::lookup(key)` finds one by its key. The TypeScript front end is
+`graphite::frontend::typescript::TYPESCRIPT`.
 
 `write_modules` never overwrites a file. If a file already exists, or two graphs would write the
 same name, it fails before writing anything.

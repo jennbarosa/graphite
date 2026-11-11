@@ -1,7 +1,8 @@
-# TypeScript guide
+# TypeScript front end
 
-`graphite compile` writes TypeScript modules for each graph. This page describes what they
-contain and how a host drives them.
+The TypeScript front end is the one Graphite ships. `graphite compile` uses it by default, writing
+TypeScript modules for each graph. This page describes what they contain and how a host drives
+them. For the general idea of a front end, see [front ends](front-ends.md).
 
 ## What gets generated
 

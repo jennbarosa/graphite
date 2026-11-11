@@ -72,13 +72,13 @@ graphite debug door.dsl "set request on" step finish step show
 The debugger prints the result of each command. After the first `step` the door is `opening`.
 After `finish` and the next `step` it is `open`, and the last `show` confirms that.
 
-## 5. Compile to TypeScript
+## 5. Compile
 
 ```sh
 graphite compile door.dsl
 ```
 
-This writes `graphite-out/door/`:
+The TypeScript front end is the default, so this writes `graphite-out/door/`:
 
 - `door.ts` describes the graph. Its node and condition names are types.
 - `door.nodes.0.ts` holds the node data.

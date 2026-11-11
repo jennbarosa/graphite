@@ -34,11 +34,12 @@ graphite doctor
 
 `graphite doctor` reports whether a JavaScript runtime is available. The runtime is needed
 for `run`, `debug`, and TypeScript hosts. [Bun](https://bun.sh) is the default; `npx tsx` also
-works. The generated TypeScript needs nothing else.
+works. Compiling needs nothing else.
 
 ## Quick start
 
-Create a starter graph, check it, and compile it to TypeScript:
+Create a starter graph, check it, and compile it. The TypeScript front end is the one Graphite
+ships today:
 
 ```sh
 graphite init hello.dsl
@@ -52,7 +53,7 @@ Step through it in the terminal. Each argument is one command:
 graphite debug hello.dsl "set start on" step show finish step show
 ```
 
-Drive it from TypeScript:
+Drive it from a TypeScript host:
 
 ```ts
 import { graph } from "./graphite-out/hello/hello";
@@ -74,11 +75,12 @@ The [tutorial](docs/tutorial.md) builds a real graph from scratch and explains e
 | [Tutorial](docs/tutorial.md) | Build a graph, check it, compile it, and drive it. |
 | [Glossary](docs/glossary.md) | What *gate*, *stage*, *host*, *finish* and the other terms mean. |
 | [DSL reference](docs/dsl.md) | Every line type, the rules, and chains. |
-| [TypeScript guide](docs/typescript.md) | The generated API and writing a host. |
+| [Front ends](docs/front-ends.md) | How graphs become code in each language, and how to add one. |
+| [TypeScript front end](docs/typescript.md) | The generated TypeScript API and writing a host. |
 | [Durable workflows](docs/durable-workflows.md) | Running tasks with checkpoints and retries. |
 | [CLI reference](docs/cli.md) | Every command and option. Also `graphite help <command>`. |
 | [Rust API](docs/rust.md) | Compiling graphs from Rust code. |
-| [FAQ](docs/faq.md) | When to use Graphite, and why it uses TypeScript. |
+| [FAQ](docs/faq.md) | When to use Graphite, and why TypeScript comes first. |
 | [Troubleshooting](docs/troubleshooting.md) | Fixes for the errors you are most likely to see. |
 
 Working examples are in [`examples/`](examples/): `door.dsl` and `walk.dsl` for animation,
