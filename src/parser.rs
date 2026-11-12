@@ -7,16 +7,10 @@ mod grammar;
 mod structure;
 mod tokens;
 
-use std::collections::HashSet;
-
 use crate::graph::CompiledGraph;
-use crate::lexer::TokenKind;
 
 pub use capacity::Capacity;
-use capacity::{buffer, push};
-use compiler::Builder;
 pub use error::ParseError;
-use tokens::Tokens;
 
 /// The keyword that opens each graph block.
 pub const GRAPH_KEYWORD: &str = "graph";
@@ -38,24 +32,8 @@ pub fn parse(
     schema: &Schema<'_>,
     capacities: &[Capacity],
 ) -> Result<Vec<CompiledGraph>, ParseError> {
-    parse_with(
-        source,
-        schema,
-        capacities,
-        Box::new(crate::lexer::lex::GraphLexer::new(source)),
-    )
-}
-
-/// [`parse`], reading tokens from `lexer` instead of the graph lexer. The graph lexer's own
-/// description is parsed this way, since the graph lexer cannot lex itself before it exists.
-pub fn parse_with<'a>(
-    source: &'a str,
-    schema: &Schema<'_>,
-    capacities: &[Capacity],
-    lexer: tokens::TokenSource<'a>,
-) -> Result<Vec<CompiledGraph>, ParseError> {
     check_source_len(source)?;
-    grammar::parse(source, schema, capacities, lexer)
+    grammar::parse(source, schema, capacities)
 }
 
 /// Positions are `u32`, so a longer source cannot be parsed.
@@ -67,49 +45,4 @@ fn check_source_len(source: &str) -> Result<(), ParseError> {
         ));
     }
     Ok(())
-}
-
-/// The recursive parser, which reads the grammar through `compiler.rs` directly. The grammar graph
-/// is parsed with it, since the graph parser cannot read its own description before it exists.
-pub(crate) fn parse_seed<'a>(
-    source: &'a str,
-    schema: &Schema<'_>,
-    capacities: &[Capacity],
-    lexer: tokens::TokenSource<'a>,
-) -> Result<Vec<CompiledGraph>, ParseError> {
-    check_source_len(source)?;
-    let mut graphs = buffer(capacities.len())?;
-    let mut names = HashSet::new();
-    names
-        .try_reserve(capacities.len())
-        .map_err(|_| ParseError::new("could not reserve memory for graph names", 0))?;
-    let flags: HashSet<&str> = schema.node_flags.iter().copied().collect();
-    let mut tokens = Tokens::new(source, lexer);
-    while tokens.peek()?.is_some() {
-        tokens.expect(TokenKind::Word(GRAPH_KEYWORD))?;
-        let (name, offset) = tokens.name("expected a graph name after `graph`")?;
-        let capacity = capacities.get(graphs.len()).ok_or_else(|| {
-            ParseError::new(
-                "no capacity hint for this graph; pass one per graph",
-                offset,
-            )
-        })?;
-        if !names.insert(name) {
-            return Err(ParseError::new(
-                "graph name is already used by an earlier graph in this source",
-                offset,
-            ));
-        }
-        tokens.expect(TokenKind::Newline)?;
-        tokens.expect(TokenKind::Indent)?;
-        let mut builder = Builder::new(*capacity, name, &mut tokens, &flags)?;
-        builder.graph.offset = offset;
-        builder.body(&mut tokens)?;
-        structure::finish_in_order(&mut builder.graph)?;
-        push(&mut graphs, builder.graph, offset)?;
-    }
-    if graphs.is_empty() {
-        return Err(tokens.error("expected a `graph` block; the source declares no graphs"));
-    }
-    Ok(graphs)
 }

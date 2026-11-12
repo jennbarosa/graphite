@@ -136,6 +136,7 @@ fn interning_lookup_and_capacity_errors_do_not_allocate_after_setup() {
 
 #[test]
 fn lexer_allocations_do_not_grow_with_graph_count() {
+    warm_rule_graphs();
     let source = "graph door\n  node closed end\n".repeat(1_000);
     let mut lexer = Lexer::new(&source);
     while lexer.next().unwrap().unwrap().kind != TokenKind::Indent {}
@@ -148,6 +149,7 @@ fn lexer_allocations_do_not_grow_with_graph_count() {
 
 #[test]
 fn parser_allocations_do_not_grow_with_node_count() {
+    warm_rule_graphs();
     let source = |nodes: usize| {
         let mut text = String::from("graph door\n");
         for index in 0..nodes {
@@ -161,7 +163,6 @@ fn parser_allocations_do_not_grow_with_node_count() {
         }
         text
     };
-    warm_lexer_graph();
     let small = source(8);
     let large = source(5_000);
     let capacity = |nodes, bytes| Capacity {
@@ -190,7 +191,6 @@ fn parser_allocations_do_not_grow_with_node_count() {
 
 #[test]
 fn parser_storage_excludes_keywords_and_known_node_references() {
-    warm_lexer_graph();
     let edges = 1_000;
     let source = format!(
         "graph door\n  node closed loop\n{}",
@@ -214,8 +214,11 @@ fn parser_storage_excludes_keywords_and_known_node_references() {
     assert!(requested <= 128 * edges, "requested {requested} bytes");
 }
 
-/// The graph lexer compiles its own description the first time it runs. Do that before any test
-/// counts allocations, so the one-time setup is not charged to a parse.
-fn warm_lexer_graph() {
-    let _ = graphite::lexer::lex::GraphLexer::new("").next();
+/// The lexer, grammar and structure graphs are built the first time a parse runs. Do that before a
+/// test counts allocations, so the one-time setup is not charged to a parse.
+fn warm_rule_graphs() {
+    let _ = graphite::pipeline::compile(
+        "graph warm\n  node a end\n",
+        &graphite::parser::Schema::default(),
+    );
 }

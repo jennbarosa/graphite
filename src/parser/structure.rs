@@ -3,13 +3,10 @@
 
 use std::sync::OnceLock;
 
+use crate::bootstrap;
 use crate::graph::{CompiledGraph, index};
-use crate::lexer::Lexer;
-use crate::parser::{ParseError, Schema};
-use crate::pipeline::block_capacities;
+use crate::parser::ParseError;
 use crate::stage::Stepper;
-
-const STRUCTURE: &str = include_str!("structure.graphite");
 
 /// The tasks of `structure.graphite`, one per task node.
 #[derive(Clone, Copy)]
@@ -33,22 +30,10 @@ impl StructureTask {
 const OK: &[&str] = &["ok"];
 const FAILED: &[&str] = &["error"];
 
-/// The `graph structure` description, parsed once by the seed parser. The seed runs these checks
-/// in order through `finish_in_order`, so parsing this description does not wait on itself.
+/// The `graph structure` description, rebuilt from its bootstrap form.
 fn structure_graph() -> &'static CompiledGraph {
     static GRAPH: OnceLock<CompiledGraph> = OnceLock::new();
-    GRAPH.get_or_init(|| {
-        let schema = Schema::default();
-        let capacities = block_capacities(STRUCTURE, &schema);
-        let mut graphs = crate::parser::parse_seed(
-            STRUCTURE,
-            &schema,
-            &capacities,
-            Box::new(Lexer::new(STRUCTURE)),
-        )
-        .unwrap_or_else(|error| panic!("the bundled structure.graphite does not parse: {error:?}"));
-        graphs.remove(0)
-    })
+    GRAPH.get_or_init(bootstrap::structure::graph)
 }
 
 /// Checks a finished graph by running the structure graph over it.
@@ -59,7 +44,7 @@ pub(super) fn finish(graph: &mut CompiledGraph) -> Result<(), ParseError> {
     loop {
         match stepper.step(&mut |task| work.run(task)) {
             Ok(None) => {}
-            Ok(Some(end)) if end == "failed" => {
+            Ok(Some("failed")) => {
                 return Err(work.error.take().unwrap_or_else(|| {
                     ParseError::new("the structure checks stopped without an error", 0)
                 }));
@@ -68,22 +53,6 @@ pub(super) fn finish(graph: &mut CompiledGraph) -> Result<(), ParseError> {
             Err(message) => panic!("the structure graph stopped: {message}"),
         }
     }
-}
-
-/// The checks of `structure.graphite` in its order, for the seed parser, which runs before the graph
-/// exists. A test holds the graph to this order.
-const SEED_ORDER: [&str; 3] = ["degrees", "offsets", "reach"];
-
-/// The same checks in their fixed order, for the seed parser, which runs before the graph exists.
-pub(super) fn finish_in_order(graph: &mut CompiledGraph) -> Result<(), ParseError> {
-    let mut work = Work { graph, error: None };
-    for name in SEED_ORDER {
-        let task = StructureTask::named(name).expect("SEED_ORDER names known checks");
-        if work.run(task) == FAILED {
-            return Err(work.error.take().expect("a failed check records its error"));
-        }
-    }
-    Ok(())
 }
 
 /// The graph under check, and the first error any of its checks reports.
@@ -162,36 +131,5 @@ fn reachability(graph: &CompiledGraph) -> Result<(), ParseError> {
             graph.nodes[unreached].offset,
         )),
         None => Ok(()),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{SEED_ORDER, structure_graph};
-    use crate::graph::index;
-    use crate::stage::task_of;
-
-    /// Follows the `ok` edges from the entry and names each check, so the seed's order can be
-    /// compared with the graph's.
-    #[test]
-    fn seed_order_matches_structure_graphite() {
-        let graph = structure_graph();
-        let mut names = Vec::new();
-        let mut node = 0usize;
-        loop {
-            names.extend(task_of(graph, node));
-            let next = graph.outgoing[index(&graph.nodes[node].outgoing)]
-                .iter()
-                .map(|&id| &graph.edges[id as usize])
-                .find(|edge| {
-                    edge.condition
-                        .is_some_and(|id| graph.text(graph.conditions[id as usize]) == "ok")
-                });
-            match next {
-                Some(edge) => node = edge.target as usize,
-                None => break,
-            }
-        }
-        assert_eq!(names, SEED_ORDER);
     }
 }

@@ -5,43 +5,30 @@
 use std::collections::HashSet;
 use std::sync::OnceLock;
 
+use crate::bootstrap;
 use crate::graph::CompiledGraph;
 use crate::interner::StringId;
 use crate::lexer::{Lexer, TokenKind};
 use crate::parser::compiler::{Builder, CHOOSE_ARM, GRAPH_FORM};
-use crate::parser::tokens::{TokenSource, Tokens};
+use crate::parser::tokens::Tokens;
 use crate::parser::{Capacity, GRAPH_KEYWORD, ParseError, Schema, structure};
-use crate::pipeline::block_capacities;
 use crate::stage::Stepper;
 
-const GRAMMAR: &str = include_str!("grammar.graphite");
-
-/// The `graph grammar` description, parsed once by the seed parser. The graph parser cannot read
-/// its own description before it exists, so the seed reads this one.
+/// The `graph grammar` description, rebuilt from its bootstrap form.
 fn grammar_graph() -> &'static CompiledGraph {
     static GRAPH: OnceLock<CompiledGraph> = OnceLock::new();
-    GRAPH.get_or_init(|| {
-        let schema = Schema::default();
-        let capacities = block_capacities(GRAMMAR, &schema);
-        let mut graphs =
-            crate::parser::parse_seed(GRAMMAR, &schema, &capacities, Box::new(Lexer::new(GRAMMAR)))
-                .unwrap_or_else(|error| {
-                    panic!("the bundled grammar.graphite does not parse: {error:?}")
-                });
-        graphs.remove(0)
-    })
+    GRAPH.get_or_init(bootstrap::grammar::graph)
 }
 
 /// Parses `source` by running the grammar graph over its tokens.
-pub(crate) fn parse<'a>(
-    source: &'a str,
+pub(crate) fn parse(
+    source: &str,
     schema: &Schema<'_>,
     capacities: &[Capacity],
-    lexer: TokenSource<'a>,
 ) -> Result<Vec<CompiledGraph>, ParseError> {
     let flags: HashSet<&str> = schema.node_flags.iter().copied().collect();
     let mut session = Session {
-        tokens: Tokens::new(source, lexer),
+        tokens: Tokens::new(source, Lexer::new(source)),
         flags: &flags,
         capacities,
         names: HashSet::new(),
@@ -60,7 +47,7 @@ pub(crate) fn parse<'a>(
     loop {
         match stepper.step(&mut |task| session.run(task)) {
             Ok(None) => {}
-            Ok(Some(end)) if end == "failed" => {
+            Ok(Some("failed")) => {
                 return Err(session.error.take().unwrap_or_else(|| {
                     ParseError::new("the grammar stopped without an error", 0)
                 }));
@@ -390,135 +377,6 @@ impl<'a, 's> Session<'a, 's> {
         match stored {
             Ok(()) => OK,
             Err(error) => self.fail(error),
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::frontend::registry;
-    use crate::lexer::Lexer;
-    use crate::parser::parse_seed;
-    use crate::pipeline::block_capacities;
-
-    /// The generated Rust for each graph, or the error. Two parsers agree when these are equal.
-    fn outcome(parsed: Result<Vec<CompiledGraph>, ParseError>) -> Result<Vec<u8>, ParseError> {
-        let graphs = parsed?;
-        let frontend = registry::lookup("rust").unwrap().frontend;
-        let mut bytes = Vec::new();
-        for graph in &graphs {
-            for module in frontend.modules(graph) {
-                frontend.emit_module(graph, module, &mut bytes).unwrap();
-            }
-        }
-        Ok(bytes)
-    }
-
-    fn both(source: &str) -> (Result<Vec<u8>, ParseError>, Result<Vec<u8>, ParseError>) {
-        let schema = Schema {
-            node_flags: &["retry"],
-        };
-        let capacities = block_capacities(source, &schema);
-        let seed = parse_seed(source, &schema, &capacities, Box::new(Lexer::new(source)));
-        let graph = parse(
-            source,
-            &schema,
-            &capacities,
-            Box::new(crate::lexer::lex::GraphLexer::new(source)),
-        );
-        (outcome(seed), outcome(graph))
-    }
-
-    fn assert_agree(source: &str) {
-        let (seed, graph) = both(source);
-        assert_eq!(
-            graph, seed,
-            "graph parser differs from the seed on {source:?}"
-        );
-    }
-
-    #[test]
-    fn hand_written_sources_parse_the_same_either_way() {
-        let cases = [
-            "graph a\n  node b end\n",
-            "graph a\n  node b\n  node c end\n  edge b -> c\n",
-            "graph a\n  node b\n  edge b -> b when x else c\n",
-            "graph a\n  node b end\n  node c end\n  choose k\n    when x -> t @f:y\n    else -> u\n",
-            "graph a\n  node b end\n  choose k\n    else -> u\n",
-            "graph a\n  node b end\n  choose k\n    when x -> t\n    else -> u\n    when y -> v\n",
-            "graph a\n  node b end\n  choose k\n  node c\n",
-            "graph a\n  node b end\n  node b end\n",
-            "graph a\n  node b end\n  edge b -> c\n",
-            "graph a\n  edge b -> c\n",
-            "graph a\n  node b\n  node c end\n  edge b -> c\n  node d end\n",
-            "graph a\n  node b @k @j:v\n  node c end\n  edge b -> c @x:y\n",
-            "graph a\n  node b retry end\n",
-            "graph a\n  node b bogus end\n",
-            "graph a\n",
-            "graph\n  node b end\n",
-            "graph a\n  node b end\ngraph a\n  node c end\n",
-            "graph a\n  node b end\ngraph c\n  node d end\n",
-            "node floating end\n",
-            "",
-            "graph a\n  node b end\n  choose k\n    when x -> t\n  node z end\n",
-            "graph a\n  node b end\n  choose k\n    when -> t\n",
-            "graph a\n  node b end\n  choose k\n    when x y -> t\n",
-            "graph a\n  node b end\n  choose k\n    when x -> t @\n",
-            "graph a\n  node b\n    node c end\n",
-        ];
-        for case in cases {
-            assert_agree(case);
-        }
-    }
-
-    /// Random graph bodies from grammar fragments, indentation included, so the states are reached
-    /// in many orders. Seeded, so a failure repeats.
-    #[test]
-    fn random_graph_bodies_parse_the_same_either_way() {
-        const LINES: &[&str] = &[
-            "node a end",
-            "node b",
-            "node c loop end",
-            "node d retry",
-            "node e @k:v",
-            "node f @k.j",
-            "node g bogus",
-            "edge a -> b",
-            "edge b -> c when x",
-            "edge c -> a -> d when y else e",
-            "edge a -> b @w:z",
-            "edge a -> nowhere",
-            "choose k",
-            "when x -> t",
-            "when y -> u @f:g",
-            "else -> v",
-            "when -> w",
-            "@tag",
-            "stray words here",
-            "-> t",
-        ];
-        let mut state = 99u64;
-        let mut next = |bound: usize| {
-            state = state
-                .wrapping_mul(6364136223846793005)
-                .wrapping_add(1442695040888963407);
-            ((state >> 33) % bound as u64) as usize
-        };
-        for _ in 0..1500 {
-            let mut source = String::from("graph g\n");
-            let mut depth = 1;
-            for _ in 0..(1 + next(12)) {
-                let indent = "  ".repeat(depth.max(1));
-                let line = LINES[next(LINES.len())];
-                source.push_str(&format!("{indent}{line}\n"));
-                match next(5) {
-                    0 if depth < 3 => depth += 1,
-                    1 if depth > 1 => depth -= 1,
-                    _ => {}
-                }
-            }
-            assert_agree(&source);
         }
     }
 }
