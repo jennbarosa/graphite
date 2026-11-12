@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/assets/graphite.png" alt="Graphite" width="480">
+</p>
+
 # Graphite
 
 Graphite compiles **state graphs** and runs them one step at a time. You describe the
