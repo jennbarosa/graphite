@@ -1135,4 +1135,25 @@ describe('durable host', () => {
 		});
 		expect(resumed.status).toBe('ended');
 	});
+
+	test('a graph checked under one set of options is checked again under another', async () => {
+		const files = scratch();
+		const ok = await runDurable({
+			modulePath: graphModule,
+			...workflowNames,
+			stateFile: files.state,
+			runner: async () => 'pass',
+		});
+		expect(ok.status).toBe('ended');
+		// The same graph, now without outcome conditions: its tasks must still be refused.
+		await expect(
+			runDurable({
+				modulePath: graphModule,
+				taskAnnotation: 'task',
+				retryFlag: 'retry',
+				stateFile: scratch().state,
+				runner: async () => 'pass',
+			})
+		).rejects.toThrow('the graph has tasks');
+	});
 });

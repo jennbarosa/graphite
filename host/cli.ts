@@ -73,6 +73,8 @@ for (const g of itemGraph === undefined ? [graph] : [graph, itemGraph]) {
 }
 
 const runner = await pickRunner(table, runnerPath);
+// One log sink for every run: it clears its own counts at each run's start.
+const log = runLog(console.error);
 const input = inputPath === undefined ? undefined : loadJson(inputPath);
 const modulePathResolved = resolve(modulePath);
 const statePathResolved = resolve(statePath);
@@ -91,7 +93,7 @@ const optionsFor = (
 	taskAnnotation: 'task',
 	retryFlag: 'retry',
 	outcomeConditions: outcomeConditionsOf(g),
-	onEvent: runLog(console.error),
+	onEvent: log,
 });
 
 if (itemGraph === undefined || eachPath === undefined || keyField === undefined) {

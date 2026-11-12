@@ -350,6 +350,9 @@ interface Session {
 	readonly inputDigest: string | null;
 }
 
+/** Graphs already checked, with the options they were checked under. Keyed by graph, so it frees itself. */
+const checked = new WeakMap<object, string>();
+
 /** Runs the graph from its saved state, or from the entry if there is none. */
 export async function runDurable(options: DurableOptions): Promise<Result> {
 	const maxAttempts = options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
@@ -363,35 +366,41 @@ export async function runDurable(options: DurableOptions): Promise<Result> {
 	const { start, restore } = await import(
 		join(dirname(file), 'graphite.ts')
 	);
-	if (options.outcomeConditions === undefined) {
-		for (let id = 0; id < graph.data.nodeCount; id++) {
-			const node = graph.nodeName(id);
-			if (
-				taskOf(graph, node, options.taskAnnotation) !==
-				undefined
-			) {
-				throw new RangeError(
-					`the graph has tasks (node "${node}" among them), so it needs outcomeConditions naming its pass and fail conditions`
-				);
+	// The checks depend on the graph and on these two options, so a graph checked once with the same
+	// options is not walked again. A fan-out checks each item's run with the same graph.
+	const checkKey = JSON.stringify([options.taskAnnotation, options.outcomeConditions ?? null]);
+	if (checked.get(graph) !== checkKey) {
+		if (options.outcomeConditions === undefined) {
+			for (let id = 0; id < graph.data.nodeCount; id++) {
+				const node = graph.nodeName(id);
+				if (
+					taskOf(graph, node, options.taskAnnotation) !==
+					undefined
+				) {
+					throw new RangeError(
+						`the graph has tasks (node "${node}" among them), so it needs outcomeConditions naming its pass and fail conditions`
+					);
+				}
+			}
+		} else {
+			const names = [
+				options.outcomeConditions.pass,
+				options.outcomeConditions.fail,
+			];
+			if (options.outcomeConditions.error !== undefined) {
+				names.push(options.outcomeConditions.error);
+			}
+			for (const name of names) {
+				try {
+					graph.conditionId(name);
+				} catch {
+					throw new RangeError(
+						`the graph has no condition "${name}", which outcomeConditions names`
+					);
+				}
 			}
 		}
-	} else {
-		const names = [
-			options.outcomeConditions.pass,
-			options.outcomeConditions.fail,
-		];
-		if (options.outcomeConditions.error !== undefined) {
-			names.push(options.outcomeConditions.error);
-		}
-		for (const name of names) {
-			try {
-				graph.conditionId(name);
-			} catch {
-				throw new RangeError(
-					`the graph has no condition "${name}", which outcomeConditions names`
-				);
-			}
-		}
+		checked.set(graph, checkKey);
 	}
 	const limits = {
 		maxTransitions: options.maxTransitions ?? DEFAULT_MAX_TRANSITIONS,
