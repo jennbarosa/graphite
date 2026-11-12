@@ -53,3 +53,24 @@ fn refuses_frontend_even_when_it_is_the_default() {
     assert!(!output.status.success());
     assert!(stderr(&output).contains("inspect does not take --frontend"));
 }
+
+/// `inspect --json` carries the same facts as the text form, and an `else` arm's condition is `null`.
+#[test]
+fn inspect_json_describes_the_graph_with_null_for_else() {
+    let spec = walk_spec();
+    let output = graphite(["inspect".as_ref(), spec.as_os_str(), "--json".as_ref()]);
+    assert!(output.status.success(), "{}", stderr(&output));
+    let text = stdout(&output);
+    assert!(
+        text.starts_with(r#"{"ok":true,"graphs":[{"name":"walk","#),
+        "{text}"
+    );
+    assert!(
+        text.contains(r#"{"condition":null,"tag":"down","annotations":[]}"#),
+        "{text}"
+    );
+    assert!(
+        text.contains(r#""conditions":["keyup","left","right","up"]"#),
+        "{text}"
+    );
+}

@@ -65,3 +65,12 @@ fn version_prints_the_package_version_for_both_flags() {
         assert_eq!(stdout(&output), expected);
     }
 }
+
+/// `--json` belongs to `check`, `inspect` and `doctor`; other commands refuse it as a usage error.
+#[test]
+fn json_is_refused_by_commands_that_do_not_print_it() {
+    let spec = walk_spec();
+    let output = graphite(["compile".as_ref(), spec.as_os_str(), "--json".as_ref()]);
+    assert_eq!(output.status.code(), Some(2));
+    assert!(stderr(&output).contains("compile does not take --json"));
+}

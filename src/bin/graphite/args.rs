@@ -24,9 +24,11 @@ pub enum Command {
         input: PathBuf,
         front_end: String,
         allow: Option<PathBuf>,
+        json: bool,
     },
     Inspect {
         input: PathBuf,
+        json: bool,
     },
     Debug {
         input: PathBuf,
@@ -45,7 +47,9 @@ pub enum Command {
         runner: Option<PathBuf>,
         allow: Option<PathBuf>,
     },
-    Doctor,
+    Doctor {
+        json: bool,
+    },
     /// `graphite help [command]`, or `--help` after any command.
     Help {
         topic: Option<String>,
@@ -62,6 +66,7 @@ struct Options {
     durable: bool,
     state: Option<PathBuf>,
     runner: Option<PathBuf>,
+    json: bool,
 }
 
 pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> {
@@ -89,10 +94,14 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
             return Ok(Command::Help { topic });
         }
         "doctor" => {
-            if args.len() > 1 {
-                return Err(format!("doctor takes no arguments, got \"{}\"", args[1]));
-            }
-            return Ok(Command::Doctor);
+            return match args.get(1).map(String::as_str) {
+                None => Ok(Command::Doctor { json: false }),
+                Some("--json") if args.len() == 2 => Ok(Command::Doctor { json: true }),
+                Some(_) => Err(format!(
+                    "doctor takes no arguments except --json, got \"{}\"",
+                    args[1..].join(" ")
+                )),
+            };
         }
         _ => {}
     }
@@ -114,6 +123,7 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
             "--state" => options.state = Some(PathBuf::from(value(&mut rest_args, "--state")?)),
             "--runner" => options.runner = Some(PathBuf::from(value(&mut rest_args, "--runner")?)),
             "--durable" => options.durable = true,
+            "--json" => options.json = true,
             flag if flag.starts_with("--") => return Err(format!("unknown option {flag}")),
             _ => positionals.push(arg),
         }
@@ -133,8 +143,12 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
         durable,
         state,
         runner,
+        json,
     } = options;
     let front_end_given = front_end.is_some();
+    if json && !matches!(verb.as_str(), "check" | "inspect") {
+        return Err(format!("{verb} does not take --json"));
+    }
     let front_end = front_end.unwrap_or_else(|| registry::DEFAULT_FRONT_END.to_string());
     match verb.as_str() {
         "init" => {
@@ -166,6 +180,7 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
                 input,
                 front_end,
                 allow,
+                json,
             })
         }
         "inspect" => {
@@ -175,7 +190,7 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
             refuse(front_end_given, "--frontend", &verb)?;
             refuse(allow.is_some(), "--allow", &verb)?;
             refuse_run_flags(durable, &state, &runner, &verb)?;
-            Ok(Command::Inspect { input })
+            Ok(Command::Inspect { input, json })
         }
         "run" => {
             only_file(&rest, &verb)?;

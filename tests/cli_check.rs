@@ -114,3 +114,22 @@ fn allow_rejects_sections_it_does_not_know() {
     assert!(!output.status.success());
     assert!(stderr(&output).contains("unknown key [extra]"));
 }
+
+/// `check --json` prints `{"ok":true,"graphs":N}` when the graph checks, and
+/// `{"ok":false,"error":...}` on stdout, with exit status 1, when it does not.
+#[test]
+fn check_json_reports_the_graph_count_or_the_error() {
+    let spec = walk_spec();
+    let good = graphite(["check".as_ref(), spec.as_os_str(), "--json".as_ref()]);
+    assert!(good.status.success());
+    assert_eq!(stdout(&good).trim(), r#"{"ok":true,"graphs":1}"#);
+
+    let missing = graphite(["check", "no-such-file.dsl", "--json"]);
+    assert_eq!(missing.status.code(), Some(1));
+    assert!(stderr(&missing).is_empty());
+    let line = stdout(&missing);
+    assert!(
+        line.starts_with(r#"{"ok":false,"error":"no-such-file.dsl"#),
+        "{line}"
+    );
+}

@@ -50,6 +50,23 @@ Scripts can tell a bad invocation from a failed command:
 
 Errors go to stderr. Help and `--version` go to stdout.
 
+## JSON output
+
+`check`, `inspect` and `doctor` take `--json` and print one JSON object on stdout, for scripts
+and editors. Every object starts with `"ok"`:
+
+| Command | Success | Failure |
+| --- | --- | --- |
+| `check --json` | `{"ok":true,"graphs":1}` | `{"ok":false,"error":"..."}`, exit 1 |
+| `inspect --json` | `{"ok":true,"graphs":[{"name":...,"nodes":[...],"conditions":[...],"choices":[...],"edges":[...]}]}` | `{"ok":false,"error":"..."}`, exit 1 |
+| `doctor --json` | `{"ok":true,"graphite":{...},"core":{...},"front_ends":[...],"test_tools":[...],"blocked":[]}` | `"ok":false` with the `blocked` list, exit 1 |
+
+On failure, `error` holds the same text the command prints to stderr without `--json`. Usage errors
+(exit 2) still go to stderr, because the arguments were not understood and no JSON is produced.
+
+In `inspect`, a choice arm's `condition` is `null` for `else`, and an annotation's `value` is `null`
+for a bare annotation such as `@flip`. Lists keep the order the text form prints.
+
 ## Environment variables
 
 | Variable | Effect |

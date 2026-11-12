@@ -97,4 +97,20 @@ fn doctor_reports_blocked_commands_when_no_runtime_is_installed() {
         "{text}"
     );
     assert!(stderr(&output).contains("some commands cannot run here"));
+
+    let json = Command::new(env!("CARGO_BIN_EXE_graphite"))
+        .args(["doctor", "--json"])
+        .env_clear()
+        .env("PATH", &empty)
+        .output()
+        .unwrap();
+    let line = stdout(&json);
+    let line = line.trim_end();
+    assert_eq!(json.status.code(), Some(1));
+    assert!(line.starts_with(r#"{"ok":false,"#), "{line}");
+    assert!(
+        line.ends_with(r#""blocked":["typescript debug","typescript run"]}"#),
+        "{line}"
+    );
+    assert!(stderr(&json).is_empty());
 }

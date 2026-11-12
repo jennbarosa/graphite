@@ -3,12 +3,12 @@
 pub const OVERVIEW: &str = "usage:
   graphite --version                                     print the version
   graphite init <file.dsl>                               write a starter graph
-  graphite check <file.dsl> [--allow <list.toml>]        validate a graph
+  graphite check <file.dsl> [--allow <list.toml>] [--json]  validate a graph
   graphite compile <file.dsl> [--out <dir>]              generate TypeScript modules
   graphite run <file.dsl> [--state <file.json>] [--runner <tasks.ts>] [--allow <list.toml>]
   graphite debug <file.dsl> [command...]                 step through a graph in the terminal
-  graphite inspect <file.dsl>                            print the compiled graph
-  graphite doctor                                        report this build, its front ends, and what works here
+  graphite inspect <file.dsl> [--json]                   print the compiled graph
+  graphite doctor [--json]                               report this build, its front ends, and what works here
 
 Run `graphite help <command>` for a command's options.";
 
@@ -22,10 +22,11 @@ Writes a starter graph to <file.dsl>. It refuses to overwrite an existing file.
 Next: `graphite check <file.dsl>`, then `graphite compile <file.dsl>`."
         }
         "check" => {
-            "usage: graphite check <file.dsl> [--frontend typescript] [--allow <list.toml>]
+            "usage: graphite check <file.dsl> [--frontend typescript] [--allow <list.toml>] [--json]
 
 Parses and validates the graph, and checks that the generated file names do not collide.
-Prints `ok: N graphs` when the file is valid. Writes nothing."
+Prints `ok: N graphs` when the file is valid. With --json, prints {\"ok\":true,\"graphs\":N}, or
+{\"ok\":false,\"error\":...} on failure. Writes nothing."
         }
         "compile" => {
             "usage: graphite compile <file.dsl> [--out <dir>] [--frontend typescript] [--allow <list.toml>]
@@ -52,17 +53,17 @@ command. Without commands, the debugger reads them from standard input.
 Commands: show, set <cond> on|off, finish, step, choose <choice>, history, reset."
         }
         "inspect" => {
-            "usage: graphite inspect <file.dsl>
+            "usage: graphite inspect <file.dsl> [--json]
 
 Prints the compiled nodes, edges, conditions, choices and annotations, for checking what the
-parser understood."
+parser understood. --json prints the same facts as one JSON object."
         }
         "doctor" => {
-            "usage: graphite doctor
+            "usage: graphite doctor [--json]
 
 Reports the graphite version and platform, the commands that need no outside tools, and each
 registered front end: whether it compiles, and whether its debug and run have the runtime they
-need. Each blocked command says how to fix it. Exits with an error when any command is blocked."
+need. Each blocked command says how to fix it. Exits with an error when any command is blocked. --json prints the same report as one JSON object."
         }
         _ => return None,
     })
