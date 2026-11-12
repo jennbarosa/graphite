@@ -5,6 +5,7 @@
 use std::sync::OnceLock;
 
 use crate::bootstrap;
+use crate::bootstrap::lex::{Task, task};
 use crate::graph::CompiledGraph;
 use crate::lexer::{LexError, LexErrorKind, Token, TokenKind};
 use crate::stage::Stepper;
@@ -17,7 +18,7 @@ fn lexer_graph() -> &'static CompiledGraph {
 /// The lexer as an iterator. Each call steps the graph until it has a token
 /// or an error to hand out, so the source is scanned lazily.
 pub struct Lexer<'a> {
-    stepper: Stepper<'static, LexTask>,
+    stepper: Stepper<'static, Task>,
     state: State<'a>,
     /// Tokens already handed out, as an index into `state.tokens`.
     handed: usize,
@@ -27,7 +28,7 @@ pub struct Lexer<'a> {
 impl<'a> Lexer<'a> {
     pub fn new(source: &'a str) -> Self {
         Lexer {
-            stepper: Stepper::new(lexer_graph(), LexTask::named)
+            stepper: Stepper::new(lexer_graph(), task)
                 .unwrap_or_else(|error| panic!("the bundled lex.graphite is wrong: {error}")),
             state: State::new(source),
             handed: 0,
@@ -60,39 +61,6 @@ impl<'a> Iterator for Lexer<'a> {
                 self.finished = true;
             }
         }
-    }
-}
-
-/// The tasks of `lex.graphite`, one per task node.
-#[derive(Clone, Copy)]
-enum LexTask {
-    Pending,
-    Classify,
-    LineBreak,
-    Indentation,
-    At,
-    Colon,
-    Arrow,
-    Word,
-    TabError,
-    Finish,
-}
-
-impl LexTask {
-    fn named(name: &str) -> Option<LexTask> {
-        Some(match name {
-            "pending" => LexTask::Pending,
-            "classify" => LexTask::Classify,
-            "line_break" => LexTask::LineBreak,
-            "indentation" => LexTask::Indentation,
-            "at" => LexTask::At,
-            "colon" => LexTask::Colon,
-            "arrow" => LexTask::Arrow,
-            "word" => LexTask::Word,
-            "tab_error" => LexTask::TabError,
-            "finish" => LexTask::Finish,
-            _ => return None,
-        })
     }
 }
 
@@ -139,18 +107,18 @@ impl<'a> State<'a> {
     }
 
     /// Runs the task of one state and returns the conditions that hold after it.
-    fn run(&mut self, task: LexTask) -> &'static [&'static str] {
+    fn run(&mut self, task: Task) -> &'static [&'static str] {
         match task {
-            LexTask::Pending => self.pending(),
-            LexTask::Classify => self.classify(),
-            LexTask::LineBreak => self.line_break(),
-            LexTask::Indentation => self.indentation(),
-            LexTask::At => self.punctuation(TokenKind::At, 1),
-            LexTask::Colon => self.punctuation(TokenKind::Colon, 1),
-            LexTask::Arrow => self.punctuation(TokenKind::Arrow, 2),
-            LexTask::Word => self.word(),
-            LexTask::TabError => self.fail(LexErrorKind::Tab, self.position),
-            LexTask::Finish => self.finish(),
+            Task::Pending => self.pending(),
+            Task::Classify => self.classify(),
+            Task::LineBreak => self.line_break(),
+            Task::Indentation => self.indentation(),
+            Task::At => self.punctuation(TokenKind::At, 1),
+            Task::Colon => self.punctuation(TokenKind::Colon, 1),
+            Task::Arrow => self.punctuation(TokenKind::Arrow, 2),
+            Task::Word => self.word(),
+            Task::TabError => self.fail(LexErrorKind::Tab, self.position),
+            Task::Finish => self.finish(),
         }
     }
 

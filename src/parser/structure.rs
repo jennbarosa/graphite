@@ -4,28 +4,10 @@
 use std::sync::OnceLock;
 
 use crate::bootstrap;
+use crate::bootstrap::structure::{Task, task};
 use crate::graph::{CompiledGraph, index};
 use crate::parser::ParseError;
 use crate::stage::Stepper;
-
-/// The tasks of `structure.graphite`, one per task node.
-#[derive(Clone, Copy)]
-enum StructureTask {
-    Degrees,
-    Offsets,
-    Reach,
-}
-
-impl StructureTask {
-    fn named(name: &str) -> Option<StructureTask> {
-        Some(match name {
-            "degrees" => StructureTask::Degrees,
-            "offsets" => StructureTask::Offsets,
-            "reach" => StructureTask::Reach,
-            _ => return None,
-        })
-    }
-}
 
 const OK: &[&str] = &["ok"];
 const FAILED: &[&str] = &["error"];
@@ -39,7 +21,7 @@ fn structure_graph() -> &'static CompiledGraph {
 /// Checks a finished graph by running the structure graph over it.
 pub(super) fn finish(graph: &mut CompiledGraph) -> Result<(), ParseError> {
     let mut work = Work { graph, error: None };
-    let mut stepper = Stepper::new(structure_graph(), StructureTask::named)
+    let mut stepper = Stepper::new(structure_graph(), task)
         .unwrap_or_else(|error| panic!("the bundled structure.graphite is wrong: {error}"));
     loop {
         match stepper.step(&mut |task| work.run(task)) {
@@ -62,11 +44,11 @@ struct Work<'g> {
 }
 
 impl Work<'_> {
-    fn run(&mut self, task: StructureTask) -> &'static [&'static str] {
+    fn run(&mut self, task: Task) -> &'static [&'static str] {
         let result = match task {
-            StructureTask::Degrees => degrees(self.graph),
-            StructureTask::Offsets => offsets(self.graph),
-            StructureTask::Reach => reachability(self.graph),
+            Task::Degrees => degrees(self.graph),
+            Task::Offsets => offsets(self.graph),
+            Task::Reach => reachability(self.graph),
         };
         match result {
             Ok(()) => OK,

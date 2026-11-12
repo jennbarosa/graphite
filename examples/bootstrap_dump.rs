@@ -5,7 +5,7 @@
 
 use std::process::ExitCode;
 
-use graphite::graph::{CompiledGraph, Span};
+use graphite::graph::{CompiledGraph, Span, index};
 use graphite::interner::StringId;
 use graphite::parser::Schema;
 
@@ -147,7 +147,7 @@ fn emit(graph: &CompiledGraph) -> String {
         "    }".to_string(),
         "}".to_string(),
     ];
-    lines.join("\n") + "\n"
+    lines.join("\n") + "\n" + &task_source(graph)
 }
 
 /// The generated code's name for a string: its zero-based index in the string table.
@@ -157,4 +157,48 @@ fn id(name: StringId) -> String {
 
 fn span(span: &Span) -> String {
     format!("{}..{}", span.start, span.end)
+}
+
+/// The `Task` enum and `task` lookup for the graph's `@task:` names, in first-use order. The
+/// library matches on `Task`, so a task that has no handler fails to compile.
+fn task_source(graph: &CompiledGraph) -> String {
+    let mut names: Vec<&str> = Vec::new();
+    for node in &graph.nodes {
+        let annotations = &graph.annotations[index(&node.annotations)];
+        for annotation in annotations {
+            if graph.text(annotation.key) != "task" {
+                continue;
+            }
+            let value = annotation.value.map(|value| graph.text(value));
+            let value = value.expect("a @task annotation names a task");
+            if !names.contains(&value) {
+                names.push(value);
+            }
+        }
+    }
+    let variants: Vec<String> = names.iter().map(|name| pascal(name)).collect();
+    let mut out = String::new();
+    out.push_str("\n#[derive(Clone, Copy, Debug, PartialEq, Eq)]\npub(crate) enum Task {\n");
+    for variant in &variants {
+        out.push_str(&format!("    {variant},\n"));
+    }
+    out.push_str("}\n\npub(crate) fn task(name: &str) -> Option<Task> {\n    Some(match name {\n");
+    for (name, variant) in names.iter().zip(&variants) {
+        out.push_str(&format!("        {name:?} => Task::{variant},\n"));
+    }
+    out.push_str("        _ => return None,\n    })\n}\n");
+    out
+}
+
+/// `check_pending` becomes `CheckPending`.
+fn pascal(name: &str) -> String {
+    name.split('_')
+        .map(|part| {
+            let mut letters = part.chars();
+            match letters.next() {
+                Some(first) => first.to_ascii_uppercase().to_string() + letters.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect()
 }

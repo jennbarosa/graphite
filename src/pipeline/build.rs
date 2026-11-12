@@ -3,13 +3,13 @@
 
 use std::path::{Path, PathBuf};
 
+use crate::bootstrap;
+use crate::bootstrap::build::{Task, task};
 use crate::frontend::registry::Target;
 use crate::graph::CompiledGraph;
 use crate::parser::Schema;
 use crate::pipeline::{Collision, check_outputs, compile, write_modules};
 use crate::stage;
-
-const BUILD: &str = include_str!("../graphs/build.graphite");
 
 /// A check on the parsed graphs. An `Err` fails the build with its message.
 pub type Verify<'a> = dyn Fn(&[CompiledGraph]) -> Result<(), String> + 'a;
@@ -33,7 +33,7 @@ pub fn run(request: Request<'_>) -> Result<Vec<PathBuf>, String> {
         error: None,
     };
     let graph = stage_graph();
-    let end = stage::drive(&graph, StageTask::named, |task| job.run_task(task))?;
+    let end = stage::drive(&graph, task, |task| job.run_task(task))?;
     if end == "failed" {
         return Err(job.error.unwrap_or_else(|| "build failed".to_string()));
     }
@@ -41,30 +41,7 @@ pub fn run(request: Request<'_>) -> Result<Vec<PathBuf>, String> {
 }
 
 fn stage_graph() -> CompiledGraph {
-    let mut graphs = compile(BUILD, &Schema::default())
-        .unwrap_or_else(|error| panic!("the bundled build.graphite does not parse: {error:?}"));
-    graphs.remove(0)
-}
-
-/// The tasks of `build.graphite`, one per task node.
-#[derive(Clone, Copy, Debug)]
-enum StageTask {
-    Read,
-    Parse,
-    Check,
-    Write,
-}
-
-impl StageTask {
-    fn named(name: &str) -> Option<StageTask> {
-        Some(match name {
-            "read" => StageTask::Read,
-            "parse" => StageTask::Parse,
-            "check" => StageTask::Check,
-            "write" => StageTask::Write,
-            _ => return None,
-        })
-    }
+    bootstrap::build::graph()
 }
 
 struct Job<'a> {
@@ -77,12 +54,12 @@ struct Job<'a> {
 }
 
 impl Job<'_> {
-    fn run_task(&mut self, task: StageTask) -> &'static [&'static str] {
+    fn run_task(&mut self, task: Task) -> &'static [&'static str] {
         let result = match task {
-            StageTask::Read => self.read(),
-            StageTask::Parse => self.parse(),
-            StageTask::Check => self.check(),
-            StageTask::Write => self.write(),
+            Task::Read => self.read(),
+            Task::Parse => self.parse(),
+            Task::Check => self.check(),
+            Task::Write => self.write(),
         };
         match result {
             Ok(()) => &["passed"],
@@ -146,13 +123,14 @@ impl Job<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::{StageTask, stage_graph};
+    use super::stage_graph;
+    use crate::bootstrap::build::task;
     use crate::stage;
 
     fn visit(fail_at: Option<&str>) -> (String, Vec<String>) {
         let graph = stage_graph();
         let mut seen = Vec::new();
-        let end = stage::drive(&graph, StageTask::named, |task| {
+        let end = stage::drive(&graph, task, |task| {
             let name = format!("{task:?}").to_lowercase();
             let outcome = if Some(name.as_str()) == fail_at {
                 &["failed"]

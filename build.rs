@@ -6,10 +6,11 @@ use std::env;
 use std::path::PathBuf;
 use std::process::Command;
 
-const RULES: [(&str, &str); 3] = [
+const RULES: [(&str, &str); 4] = [
     ("src/graphs/lex.graphite", "lex.rs"),
     ("src/graphs/grammar.graphite", "grammar.rs"),
     ("src/graphs/structure.graphite", "structure.rs"),
+    ("src/graphs/build.graphite", "build.rs"),
 ];
 
 fn main() {
