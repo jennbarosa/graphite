@@ -6,18 +6,30 @@ use std::path::Path;
 
 use crate::json;
 
-/// The JSON table for the manifest at `path`: `{"cwd": ..., "commands": {task: [argv...]}}`.
-pub fn table_json(path: &Path) -> Result<String, String> {
+/// The task names the manifest at `path` declares: its `[tasks]` keys. A run given this manifest
+/// accepts only these tasks in its graphs.
+pub fn names(path: &Path) -> Result<Vec<String>, String> {
+    Ok(tasks_table(path)?.keys().cloned().collect())
+}
+
+/// The `[tasks]` table of the manifest at `path`.
+fn tasks_table(path: &Path) -> Result<toml::Table, String> {
     let text =
         std::fs::read_to_string(path).map_err(|error| format!("{}: {error}", path.display()))?;
     let manifest: toml::Table =
         toml::from_str(&text).map_err(|error| format!("{}: {error}", path.display()))?;
-    let tasks = manifest
+    manifest
         .get("tasks")
         .and_then(toml::Value::as_table)
-        .ok_or_else(|| format!("{}: expected a [tasks] table of commands", path.display()))?;
+        .cloned()
+        .ok_or_else(|| format!("{}: expected a [tasks] table of commands", path.display()))
+}
+
+/// The JSON table for the manifest at `path`: `{"cwd": ..., "commands": {task: [argv...]}}`.
+pub fn table_json(path: &Path) -> Result<String, String> {
+    let tasks = tasks_table(path)?;
     let mut commands = Vec::new();
-    for (name, value) in tasks {
+    for (name, value) in &tasks {
         commands.push((name.as_str(), json::array(&argv_json(path, name, value)?)));
     }
     let manifest_path =

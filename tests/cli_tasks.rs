@@ -130,7 +130,7 @@ fn runner_and_tasks_together_are_refused_as_a_usage_error() {
 }
 
 #[test]
-fn a_task_without_a_command_is_named_before_anything_is_recorded() {
+fn a_task_missing_from_the_manifest_is_refused_before_anything_is_recorded() {
     let dir = workdir(
         "cli-tasks-missing",
         &format!("[tasks]\nwrite = {}\n", logged("{}")),
@@ -139,12 +139,45 @@ fn a_task_without_a_command_is_named_before_anything_is_recorded() {
     let output = run(&dir, &tasks_flag(&dir));
     assert!(!output.status.success());
     assert!(
-        stderr(&output).contains("no command in"),
+        stderr(&output).contains("@task:lint is not allowed; allowed: write"),
         "{}",
         stderr(&output)
     );
-    assert!(stderr(&output).contains("lint"), "{}", stderr(&output));
     assert!(!dir.join("state.json").exists());
+}
+
+/// The manifest's task names are the allowed tasks, so an allowlist with only flags is enough.
+#[test]
+fn a_flags_only_allowlist_works_when_the_manifest_names_the_tasks() {
+    let pass = r#"{"outcome":"pass"}"#;
+    let tasks = format!(
+        "[tasks]\nwrite = {}\nlint = {}\nfix = {}\ndeploy = {}\n",
+        logged(pass),
+        logged(pass),
+        logged(pass),
+        logged(pass)
+    );
+    let dir = workdir(
+        "cli-tasks-flags-only",
+        &tasks,
+        &[("flags.toml", "node_flags = [\"retry\"]\n")],
+    );
+    let output = graphite([
+        "run".as_ref(),
+        dir.join("workflow.dsl").as_os_str(),
+        "--allow".as_ref(),
+        dir.join("flags.toml").as_os_str(),
+        "--tasks".as_ref(),
+        dir.join("tasks.toml").as_os_str(),
+        "--state".as_ref(),
+        dir.join("state.json").as_os_str(),
+    ]);
+    assert!(
+        output.status.success(),
+        "{}{}",
+        stdout(&output),
+        stderr(&output)
+    );
 }
 
 #[test]

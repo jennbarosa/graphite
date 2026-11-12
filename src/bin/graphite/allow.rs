@@ -29,6 +29,20 @@ fn string_list(value: &toml::Value) -> Option<Vec<String>> {
 }
 
 impl Allowlist {
+    /// An allowlist that restricts nothing: no annotation key is limited and no node flag is added.
+    pub fn unrestricted() -> Self {
+        Self {
+            values: BTreeMap::new(),
+            node_flags: Vec::new(),
+        }
+    }
+
+    /// This allowlist with the allowed values for `key` replaced.
+    pub fn restrict(mut self, key: &str, values: Vec<String>) -> Self {
+        self.values.insert(key.to_string(), values);
+        self
+    }
+
     pub fn load(path: &Path) -> Result<Self, String> {
         let text = std::fs::read_to_string(path)
             .map_err(|error| format!("{}: {error}", path.display()))?;
@@ -48,12 +62,16 @@ impl Allowlist {
                 format!("{}: node_flags must be an array of strings", path.display())
             })?,
         };
-        let annotations = table
-            .get("annotations")
-            .and_then(|value| value.as_table())
-            .ok_or_else(|| format!("{}: needs an [annotations] table", path.display()))?;
+        // An allowlist may hold only node flags, which leaves every annotation unrestricted.
+        let annotations = match table.get("annotations") {
+            None => toml::Table::new(),
+            Some(value) => value
+                .as_table()
+                .cloned()
+                .ok_or_else(|| format!("{}: [annotations] must be a table", path.display()))?,
+        };
         let mut values = BTreeMap::new();
-        for (key, list) in annotations {
+        for (key, list) in &annotations {
             let allowed = string_list(list).ok_or_else(|| {
                 format!(
                     "{}: [annotations] {key} must be an array of strings",

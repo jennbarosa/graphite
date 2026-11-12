@@ -9,6 +9,7 @@ use graphite::frontend::Module;
 use graphite::frontend::registry;
 use graphite::pipeline::write_modules;
 
+use crate::allow::Allowlist;
 use crate::{host_assets, js, load, scratch, tasks};
 
 /// What one `graphite run` takes, besides the graph and its state file.
@@ -50,12 +51,24 @@ pub fn run(input: &Path, state: Option<&Path>, options: &Options<'_>) -> Result<
     }
     // Read before anything is locked or written, so a bad manifest changes nothing.
     let task_table = options.tasks.map(tasks::table_json).transpose()?;
-    let (_, graphs) = load::graphs(input, options.allow)?;
+    // With a manifest, its task names are the only ones a graph may use, so the allowlist need not
+    // list tasks itself. Without one, the allowlist's own task list applies.
+    let allowlist = match (options.allow, options.tasks) {
+        (allow, Some(tasks_path)) => {
+            let base = allow.map(Allowlist::load).transpose()?;
+            Some(
+                base.unwrap_or_else(Allowlist::unrestricted)
+                    .restrict("task", tasks::names(tasks_path)?),
+            )
+        }
+        (allow, None) => allow.map(Allowlist::load).transpose()?,
+    };
+    let (_, graphs) = load::graphs_with(input, allowlist.as_ref())?;
     let entry = load::select(&graphs, None)?;
     let item_graphs = options
         .fan_out
         .as_ref()
-        .map(|fan| load::graphs(fan.each, options.allow).map(|(_, graphs)| graphs))
+        .map(|fan| load::graphs_with(fan.each, allowlist.as_ref()).map(|(_, graphs)| graphs))
         .transpose()?;
     let frontend = load::front_end(registry::DURABLE_FRONT_END)?.frontend;
     let state = state.map_or_else(|| input.with_extension("state.json"), Path::to_path_buf);

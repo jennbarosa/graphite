@@ -94,6 +94,7 @@ that task through --runner, or through the command --tasks names for it, and sta
 after every result, so running the same command again resumes where it stopped.
 --input <data.json> is a JSON value every task receives as context.input. A resume must give the
 same input.
+With --tasks, the manifest's [tasks] keys are the allowed task names, so --allow needs only node_flags.
 --each <item.dsl> runs that graph once per item the file's graph ends with, as an array. --key names
 the item field that identifies it. --seen keeps the keys already started, so a second run skips them.
 --until-passed <N> stops starting items once N have ended on a passing stage.

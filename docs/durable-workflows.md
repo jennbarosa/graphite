@@ -22,8 +22,8 @@ graph review
   edge fix   -> check
 ```
 
-`retry` is a domain flag, and the task names are annotation values. Both must be allowed, in
-[`workflow.toml`](../examples/workflow/workflow.toml):
+`retry` is a domain flag, and the task names are annotation values. Both must be allowed. The
+allowlist lists the flag and the task names, in [`workflow.toml`](../examples/workflow/workflow.toml):
 
 ```toml
 node_flags = ["retry"]
@@ -31,6 +31,9 @@ node_flags = ["retry"]
 [annotations]
 task = ["write", "lint", "fix", "deploy"]
 ```
+
+With a `tasks.toml` (see [command tasks](#command-tasks)), the task names come from its `[tasks]` keys, so
+the allowlist only needs `node_flags`.
 
 ## The runner
 
@@ -53,7 +56,7 @@ graphite run examples/workflow/workflow.dsl \
   --runner examples/workflow/runner.ts
 ```
 
-- `--allow` is optional, but the task names are checked against it.
+- `--allow` is optional, but the task names are checked against it, or against `--tasks` when given.
 - `--state` defaults to the file's name with `.state.json`, beside the file.
 - `--runner` is optional. Without it, every task settles as `none`.
 - `--durable` is accepted and does nothing. `run` is always durable.

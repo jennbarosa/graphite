@@ -87,7 +87,7 @@ edge setup -> baseline -> plan when pass else report
 ## Allowlists
 
 An allowlist is a TOML file that says which flags and annotation values a graph may use. Pass it
-with `--allow` to `check`, `compile`, `run`, or `debug`:
+with `--allow` to `check`, `compile`, `run`, or `debug`. Its `[annotations]` table is optional:
 
 ```toml
 node_flags = ["retry"]
@@ -97,6 +97,9 @@ task = ["write", "lint", "fix", "deploy"]
 ```
 
 Without an allowlist, any annotation is accepted, and only `loop` and `end` are allowed as flags.
+
+With `graphite run --tasks tasks.toml`, the task names are the keys of the manifest's `[tasks]` table.
+The allowlist then needs only `node_flags`, and a `task` list in it is replaced by the manifest's keys.
 Use one when you want typos in task or flag names to fail at build time. The
 [durable workflow example](../examples/workflow/workflow.toml) shows a complete file.
 
