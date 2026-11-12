@@ -31,11 +31,11 @@ graphite --version                                     print the version
 | Option | Commands | Meaning |
 | --- | --- | --- |
 | `--out <dir>` | `compile`, `debug` | Output directory. `compile` defaults to `graphite-out/<stem>`. `debug` uses a temporary directory. |
-| `--allow <list.toml>` | `check`, `compile`, `run`, `debug` | Allowlist of flags and annotation values. See [allowlists](dsl.md#allowlists). |
+| `--allow <list.toml>` | `check`, `compile`, `run`, `debug` | Allowlist of flags and annotation values, as names only. It holds no commands. See [allowlists](dsl.md#allowlists). |
 | `--graph <name>` | `debug` | Debug this graph instead of the file's first one. |
 | `--state <file.json>` | `run` | Checkpoint file. Defaults to `<stem>.state.json` beside the file. |
 | `--runner <tasks.ts>` | `run` | Module whose default export runs tasks. Runs as code with your permissions. |
-| `--tasks <tasks.toml>` | `run` | Runs each task as a command, from a manifest. Cannot be combined with `--runner`. See [command tasks](durable-workflows.md#command-tasks). |
+| `--tasks <tasks.toml>` | `run` | Runs each task as a command, from a manifest whose `[tasks]` table holds the commands. Cannot be combined with `--runner`. See [command tasks](durable-workflows.md#command-tasks). |
 | `--input <input.json>` | `run` | A JSON value every task receives as `context.input`. See [input](durable-workflows.md#input). |
 | `--each <item.dsl>` | `run` | Runs the item graph once per item the graph produces. Needs `--key`. See [fan-out](durable-workflows.md#fan-out). |
 | `--key <field>` | `run` | The item field that identifies each item. |

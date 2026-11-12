@@ -23,7 +23,8 @@ graph review
 ```
 
 `retry` is a domain flag, and the task names are annotation values. Both must be allowed. The
-allowlist lists the flag and the task names, in [`workflow.toml`](../examples/workflow/workflow.toml):
+allowlist (`--allow`) lists the flag and the task names, in [`workflow.toml`](../examples/workflow/workflow.toml).
+It is a list of names the graph may use. It does not define any task, and it holds no commands:
 
 ```toml
 node_flags = ["retry"]
@@ -34,6 +35,17 @@ task = ["write", "lint", "fix", "deploy"]
 
 With a `tasks.toml` (see [command tasks](#command-tasks)), the task names come from its `[tasks]` keys, so
 the allowlist only needs `node_flags`.
+
+### Where each thing goes
+
+| File | Passed as | Holds | Never holds |
+|---|---|---|---|
+| graph (`.dsl`) | the first argument | nodes, edges, `@task:<name>` | commands |
+| allowlist (`workflow.toml` above) | `--allow` | `node_flags`, and allowed task names under `[annotations]` | commands, or a `[tasks]` table |
+| task manifest (`tasks.toml`) | `--tasks` | `[tasks]`: each task name mapped to its command | flags, graph structure |
+
+A task's command goes only in the `[tasks]` table of a `tasks.toml`. An allowlist with a `[tasks]`
+section is refused, because its only sections are `[annotations]` and `node_flags`.
 
 ## The runner
 

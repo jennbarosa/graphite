@@ -103,6 +103,9 @@ The allowlist then needs only `node_flags`, and a `task` list in it is replaced 
 Use one when you want typos in task or flag names to fail at build time. The
 [durable workflow example](../examples/workflow/workflow.toml) shows a complete file.
 
+An allowlist names flags and values only. Commands go in the `[tasks]` table of a `--tasks` manifest,
+and a `[tasks]` section in an allowlist is refused.
+
 ## Conditions and choices
 
 Conditions are set by the host and keep their values until the host changes them. A choice is
