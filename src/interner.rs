@@ -17,7 +17,6 @@ impl StringId {
         (self.0.get() - 1) as usize
     }
 
-    #[cfg(test)]
     pub(crate) fn from_index(index: u32) -> Self {
         Self(NonZeroU32::new(index + 1).unwrap())
     }

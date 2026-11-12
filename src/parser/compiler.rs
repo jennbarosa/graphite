@@ -63,32 +63,6 @@ impl<'s> Builder<'s> {
             .map_err(|_| tokens.error(STRINGS_FULL))
     }
 
-    pub(super) fn body<'a>(&mut self, tokens: &mut Tokens<'a>) -> Result<(), ParseError> {
-        let mut linking = false;
-        while !tokens.at(TokenKind::Dedent)? {
-            let (keyword, offset) = tokens.word_or(GRAPH_FORM)?;
-            match keyword {
-                "node" if !linking => self.node(tokens)?,
-                "edge" => {
-                    linking = true;
-                    self.edge(tokens)?;
-                }
-                "choose" => {
-                    linking = true;
-                    self.choice(tokens)?;
-                }
-                "node" => {
-                    return Err(ParseError::new(
-                        "nodes must be declared before edges and choices",
-                        offset,
-                    ));
-                }
-                _ => return Err(ParseError::new(GRAPH_FORM, offset)),
-            }
-        }
-        self.body_end(tokens)
-    }
-
     pub(super) fn node<'a>(&mut self, tokens: &mut Tokens<'a>) -> Result<(), ParseError> {
         let (name, offset) = tokens.name("expected a node name after `node`")?;
         let id = self.graph.nodes.len() as u32;
@@ -333,26 +307,6 @@ impl<'s> Builder<'s> {
             return Err(tokens.error("graph needs at least one node; the first is its entry"));
         }
         tokens.expect(TokenKind::Dedent)
-    }
-
-    /// Reads a whole choose block, after its keyword. Used by the seed parser.
-    pub(super) fn choice<'a>(&mut self, tokens: &mut Tokens<'a>) -> Result<(), ParseError> {
-        let (name, offset) = self.choice_head(tokens)?;
-        let start = self.graph.arms.len();
-        let mut fallback = false;
-        while !tokens.at(TokenKind::Dedent)? {
-            let (keyword, offset) = tokens.word_or(CHOOSE_ARM)?;
-            let condition = match keyword {
-                "when" if !fallback => Some(self.condition(tokens)?),
-                "else" if !fallback && self.graph.arms.len() > start => {
-                    fallback = true;
-                    None
-                }
-                _ => return Err(ParseError::new(CHOOSE_ARM, offset)),
-            };
-            self.arm(tokens, condition, offset)?;
-        }
-        self.choice_end(tokens, name, start, offset)
     }
 
     /// Reads one arm's `-> tag` and annotations, then stores it.

@@ -22,7 +22,7 @@ pub fn drive<T: Copy>(
     let mut stepper = Stepper::new(graph, lookup)?;
     loop {
         if let Some(end) = stepper.step(&mut task)? {
-            return Ok(end);
+            return Ok(end.to_owned());
         }
     }
 }
@@ -71,7 +71,7 @@ impl<'g, T: Copy> Stepper<'g, T> {
     pub fn step(
         &mut self,
         task: &mut impl FnMut(T) -> &'static [&'static str],
-    ) -> Result<Option<String>, String> {
+    ) -> Result<Option<&'g str>, String> {
         let graph = self.graph;
         let current = &graph.nodes[self.node];
         let name = graph.text(current.name);
@@ -85,7 +85,7 @@ impl<'g, T: Copy> Stepper<'g, T> {
             }
         }
         if current.end {
-            return Ok(Some(name.to_owned()));
+            return Ok(Some(name));
         }
         let holds = &self.holds;
         let next = graph.outgoing[index(&current.outgoing)]

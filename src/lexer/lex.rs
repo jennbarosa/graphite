@@ -4,41 +4,19 @@
 
 use std::sync::OnceLock;
 
+use crate::bootstrap;
 use crate::graph::CompiledGraph;
-use crate::lexer::{LexError, LexErrorKind, Lexer, Token, TokenKind};
-use crate::parser::{Schema, parse_with};
-use crate::pipeline::block_capacities;
+use crate::lexer::{LexError, LexErrorKind, Token, TokenKind};
 use crate::stage::Stepper;
-
-const LEXER: &str = include_str!("lex.graphite");
 
 fn lexer_graph() -> &'static CompiledGraph {
     static GRAPH: OnceLock<CompiledGraph> = OnceLock::new();
-    GRAPH.get_or_init(|| {
-        let schema = Schema::default();
-        let capacities = block_capacities(LEXER, &schema);
-        let mut graphs = parse_with(LEXER, &schema, &capacities, Box::new(Lexer::new(LEXER)))
-            .unwrap_or_else(|error| panic!("the bundled lex.graphite does not parse: {error:?}"));
-        graphs.remove(0)
-    })
+    GRAPH.get_or_init(bootstrap::lex::graph)
 }
 
-/// The tokens of `source` up to the first error, and that error when there is one.
-pub fn lex(source: &str) -> (Vec<Token<'_>>, Option<LexError>) {
-    let mut lexer = GraphLexer::new(source);
-    let mut tokens = Vec::new();
-    for item in &mut lexer {
-        match item {
-            Ok(token) => tokens.push(token),
-            Err(error) => return (tokens, Some(error)),
-        }
-    }
-    (tokens, None)
-}
-
-/// The lexer as an iterator, like `lexer::Lexer`. Each call steps the graph until it has a token
+/// The lexer as an iterator. Each call steps the graph until it has a token
 /// or an error to hand out, so the source is scanned lazily.
-pub struct GraphLexer<'a> {
+pub struct Lexer<'a> {
     stepper: Stepper<'static, LexTask>,
     state: State<'a>,
     /// Tokens already handed out, as an index into `state.tokens`.
@@ -46,9 +24,9 @@ pub struct GraphLexer<'a> {
     finished: bool,
 }
 
-impl<'a> GraphLexer<'a> {
+impl<'a> Lexer<'a> {
     pub fn new(source: &'a str) -> Self {
-        GraphLexer {
+        Lexer {
             stepper: Stepper::new(lexer_graph(), LexTask::named)
                 .unwrap_or_else(|error| panic!("the bundled lex.graphite is wrong: {error}")),
             state: State::new(source),
@@ -58,7 +36,7 @@ impl<'a> GraphLexer<'a> {
     }
 }
 
-impl<'a> Iterator for GraphLexer<'a> {
+impl<'a> Iterator for Lexer<'a> {
     type Item = Result<Token<'a>, LexError>;
 
     fn next(&mut self) -> Option<Self::Item> {

@@ -16,9 +16,8 @@ fn declared_node_certifies_condition_spelling() {
         string_bytes: 11,
         ..Capacity::default()
     };
-    // The graph lexer parses its own description the first time it runs, and that parse validates
-    // names too. Warm it up so the count below covers only this parse.
-    let _ = crate::lexer::lex::GraphLexer::new("").next();
+    // The rule graphs are built on the first parse, and that build validates names too.
+    let _ = crate::pipeline::compile("graph warm\n  node a end\n", &Schema::default());
     VALIDATIONS.with(|count| count.set(0));
     let graphs = parse(
         "graph door\n  node request\n  edge request -> request when request\n",

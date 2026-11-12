@@ -9,7 +9,7 @@ use crate::parser::Schema;
 use crate::pipeline::{Collision, check_outputs, compile, write_modules};
 use crate::stage;
 
-const BUILD: &str = include_str!("build.graphite");
+const BUILD: &str = include_str!("../graphs/build.graphite");
 
 /// A check on the parsed graphs. An `Err` fails the build with its message.
 pub type Verify<'a> = dyn Fn(&[CompiledGraph]) -> Result<(), String> + 'a;
