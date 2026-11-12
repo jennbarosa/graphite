@@ -14,12 +14,12 @@ fn workdir(name: &str, items: &str) -> PathBuf {
     let dir = scratch(name);
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(
-        dir.join("list.dsl"),
+        dir.join("list.graphite"),
         "graph list\n  node find @task:discover\n  node done end @task:emit\n\n  edge find -> done when passed\n  edge find -> done when failed\n",
     )
     .unwrap();
     std::fs::write(
-        dir.join("item.dsl"),
+        dir.join("item.graphite"),
         "graph item\n  node audit @task:audit\n  node save end @task:save\n  node skip end\n\n  edge audit -> save when passed\n  edge audit -> skip when failed\n",
     )
     .unwrap();
@@ -47,13 +47,13 @@ fn workdir(name: &str, items: &str) -> PathBuf {
     dir
 }
 
-/// `graphite run list.dsl --each item.dsl --key domain` in `dir`, with `extra` flags.
+/// `graphite run list.graphite --each item.graphite --key domain` in `dir`, with `extra` flags.
 fn fan_out(dir: &Path, extra: &[&str]) -> std::process::Output {
     let mut args: Vec<std::ffi::OsString> = vec![
         "run".into(),
-        dir.join("list.dsl").into_os_string(),
+        dir.join("list.graphite").into_os_string(),
         "--each".into(),
-        dir.join("item.dsl").into_os_string(),
+        dir.join("item.graphite").into_os_string(),
         "--key".into(),
         "domain".into(),
         "--allow".into(),
@@ -136,16 +136,16 @@ fn each_and_key_go_together_and_fan_out_flags_need_each() {
     let dir = workdir("cli-fanout-flags", "[]");
     let no_key = graphite([
         "run".as_ref(),
-        dir.join("list.dsl").as_os_str(),
+        dir.join("list.graphite").as_os_str(),
         "--each".as_ref(),
-        dir.join("item.dsl").as_os_str(),
+        dir.join("item.graphite").as_os_str(),
     ]);
     assert_eq!(no_key.status.code(), Some(2));
     assert!(stderr(&no_key).contains("--each and --key go together"));
 
     let no_each = graphite([
         "run".as_ref(),
-        dir.join("list.dsl").as_os_str(),
+        dir.join("list.graphite").as_os_str(),
         "--until-passed".as_ref(),
         "2".as_ref(),
     ]);

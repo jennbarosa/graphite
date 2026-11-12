@@ -6,7 +6,8 @@
 use std::ffi::OsString;
 use std::path::Path;
 
-use graphite::frontend::{Module, registry};
+use graphite::frontend::Module;
+use graphite::frontend::registry::{self, Debugger};
 use graphite::pipeline::write_modules;
 
 use crate::{debugger, js, load, runtime_assets, scratch};
@@ -23,8 +24,8 @@ pub fn run(
     simulate: &[String],
 ) -> Result<(), String> {
     let front_end = load::front_end(front_end)?;
-    let script = front_end.debugger;
-    if simulate.is_empty() && script.is_none() {
+    let debugger = front_end.debugger;
+    if simulate.is_empty() && debugger.is_none() {
         return Err(format!("no debugger for front end \"{}\"", front_end.key));
     }
     if !simulate.is_empty() {
@@ -32,17 +33,29 @@ pub fn run(
     }
     let (_, graphs) = load::graphs(input, allow)?;
     let entry = load::select(&graphs, graph)?;
+    let stem = entry.text(entry.name).to_owned();
     in_directory(out, |directory| {
         write_modules(front_end.frontend, &graphs, directory).map_err(|error| error.to_string())?;
         let module = directory.join(front_end.frontend.file_name(entry, Module::Index));
-        let bundle = runtime_assets::materialize()?;
-        let result = match (simulate.is_empty(), script) {
-            (true, Some(script)) => debugger::launch(&bundle.join(script), &module, commands),
-            _ => simulate_run(&bundle, &module, simulate),
-        };
-        runtime_assets::discard(&bundle);
-        result
+        match (simulate.is_empty(), debugger) {
+            (true, Some(Debugger::Program(build))) => {
+                let program = build(directory, &stem)?;
+                debugger::run_program(&program, commands)
+            }
+            (true, Some(Debugger::Script(script))) => {
+                with_bundle(|bundle| debugger::launch(&bundle.join(script), &module, commands))
+            }
+            _ => with_bundle(|bundle| simulate_run(bundle, &module, simulate)),
+        }
     })
+}
+
+/// Runs `body` with the bundled scripts written to a scratch directory, removed afterwards.
+fn with_bundle(body: impl FnOnce(&Path) -> Result<(), String>) -> Result<(), String> {
+    let bundle = runtime_assets::materialize()?;
+    let result = body(&bundle);
+    runtime_assets::discard(&bundle);
+    result
 }
 
 /// Runs `body` in `out`, or in a scratch directory that is removed afterwards when `out` is not given.

@@ -1,7 +1,7 @@
 //! `graphite doctor`: reports this build, what works without outside tools, each registered front
 //! end, and whether its `debug` and `run` have the runtime they need on this machine.
 
-use graphite::frontend::registry::{self, Runtime, Target};
+use graphite::frontend::registry::{self, Debugger, Runtime, Target};
 
 use crate::{Failure, js, json};
 
@@ -117,6 +117,14 @@ fn runtime_state(target: &Target, probes: &mut Vec<(Runtime, Probe)>) -> State {
     }
 }
 
+/// The state of a debugger that the front end builds with `rustc`.
+fn rustc_state() -> State {
+    match js::version("rustc", &["--version"]) {
+        Some(found) => State::Ok(format!("rustc to build the debugger: {found}")),
+        None => State::Blocked("needs rustc to build the debugger: install Rust".into()),
+    }
+}
+
 fn tsc_state() -> State {
     let program = std::env::var("GRAPHITE_TSC").unwrap_or_else(|_| "tsc".into());
     match js::version(&program, &["--version"]) {
@@ -135,7 +143,8 @@ fn build() -> Report {
     let mut front_ends = Vec::new();
     for target in registry::TARGETS {
         let debug = match target.debugger {
-            Some(_) => runtime_state(target, &mut probes),
+            Some(Debugger::Script(_)) => runtime_state(target, &mut probes),
+            Some(Debugger::Program(_)) => rustc_state(),
             None => State::Unavailable("this front end has no debugger".into()),
         };
         let run = if target.key == registry::DURABLE_FRONT_END {

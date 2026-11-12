@@ -1,0 +1,16 @@
+graph compile
+  node read   @task:read
+  node parse  @task:parse
+  node check  @task:check
+  node write  @task:write
+  node done   end
+  node failed end
+
+  edge read  -> parse  when passed
+  edge read  -> failed when failed
+  edge parse -> check  when passed
+  edge parse -> failed when failed
+  edge check -> write  when passed
+  edge check -> failed when failed
+  edge write -> done   when passed
+  edge write -> failed when failed

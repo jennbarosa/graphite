@@ -10,6 +10,7 @@ the graph language.
 | Key (`--frontend`) | Language | Status |
 | --- | --- | --- |
 | `typescript` | TypeScript | Shipped. The default. |
+| `rust` | Rust | Shipped. Plain `static` data, one module per graph. |
 
 ## What a front end produces
 
@@ -29,10 +30,35 @@ anything, for every front end.
 `check`, `compile` and `debug` take `--frontend <key>`:
 
 ```sh
-graphite compile door.dsl --frontend typescript
+graphite compile door.graphite --frontend typescript
 ```
 
 In Rust, `graphite::frontend::registry::lookup` finds a front end by its key.
+
+## The Rust front end
+
+`--frontend rust` writes one module per graph, `<graph>.rs`, and a `graphite.rs` runtime. The
+generated module holds the graph as a `static GRAPH: Graph` value, plus constants for every
+name:
+
+- `nodes::CLOSED` is a `NodeId`, and `nodes` names each node in source order.
+- `conditions::REQUEST` is the condition's index, as a `u32`.
+- `choices::X` is the choice's index, as a `u32`.
+
+Names become upper-case identifiers. Other characters become `_`, and two names that land on
+the same identifier are an error. The host crate declares the runtime and the modules:
+
+```rust
+mod graphite;   // the runtime, written next to the generated modules
+mod door;       // door.rs, generated from door.graphite
+
+let (id, node) = door::GRAPH.node("closed").unwrap();
+```
+
+The runtime has the data types, `Graph::node` and `Graph::get`, and a `Run` that steps the graph
+with the same rules as the TypeScript runtime. `graphite debug` builds a Rust debugger for the
+graph with `rustc`, so `debug` works with `--frontend rust`. The durable engine (`run`,
+`--simulate`) is still TypeScript-only.
 
 ## Adding a front end
 

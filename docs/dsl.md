@@ -3,6 +3,21 @@
 A file holds one or more `graph` blocks. Indentation sets the structure, and there are no
 parentheses. Terms such as *gate* and *sequence edge* are defined in the [glossary](glossary.md).
 
+Graph files end in `.graphite`, for example `door.graphite`. Editor support is in
+[Editor support](#editor-support) below.
+
+## Editor support
+
+[`editors/nvim`](../editors/nvim) is a Neovim plugin. It sets the file type of `*.graphite` files to
+`graphite` and highlights the keywords (`graph`, `node`, `edge`, `choose`, `when`, `else`), the flags
+(`loop`, `end`), annotations (`@key:value`), and arrows (`->`).
+
+To use it, add the folder to Neovim's runtime path, for example in `init.lua`:
+
+```lua
+vim.opt.runtimepath:append("/path/to/graphite/editors/nvim")
+```
+
 ## Lines
 
 | Line | Meaning |
@@ -35,7 +50,7 @@ line and column that caused it.
 
 ## Example
 
-A walk cycle with a choice. The full file is [`examples/walk.dsl`](../examples/walk.dsl).
+A walk cycle with a choice. The full file is [`examples/walk.graphite`](../examples/walk.graphite).
 
 ```text
 graph walk

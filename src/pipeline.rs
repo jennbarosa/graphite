@@ -9,6 +9,8 @@ use std::fs::File;
 use std::io::{self, BufWriter, Write};
 use std::path::{Path, PathBuf};
 
+pub mod build;
+
 use crate::frontend::Frontend;
 use crate::graph::CompiledGraph;
 use crate::lexer::Diagnostic;

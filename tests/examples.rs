@@ -10,11 +10,11 @@ use cli::{graphite, manifest, stderr};
 fn every_example_graph_checks() {
     let examples = manifest().join("examples");
     let cases = [
-        (examples.join("door.dsl"), None),
-        (examples.join("walk.dsl"), None),
-        (examples.join("order.dsl"), None),
+        (examples.join("door.graphite"), None),
+        (examples.join("walk.graphite"), None),
+        (examples.join("order.graphite"), None),
         (
-            examples.join("workflow/workflow.dsl"),
+            examples.join("workflow/workflow.graphite"),
             Some(examples.join("workflow/workflow.toml")),
         ),
     ];

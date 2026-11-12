@@ -29,7 +29,7 @@ edges.
 
 ```sh
 rm -rf graphite-out/door
-graphite compile door.dsl
+graphite compile door.graphite
 ```
 
 **`Cannot find module './graphite'`** when importing a generated graph

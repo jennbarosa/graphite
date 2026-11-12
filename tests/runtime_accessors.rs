@@ -16,7 +16,7 @@ use graphite::pipeline::{compile, write_modules};
 fn host_accessors_workflow_host_and_persistence_run_on_the_fixtures() {
     let out = cli::scratch("runtime-accessors");
     let workflow =
-        std::fs::read_to_string(cli::manifest().join("tests/fixtures/runtime/workflow.dsl"))
+        std::fs::read_to_string(cli::manifest().join("tests/fixtures/runtime/workflow.graphite"))
             .unwrap();
     let mut graphs = compile(
         &workflow,

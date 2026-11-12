@@ -9,7 +9,7 @@ pub fn manifest() -> &'static Path {
 }
 
 pub fn walk_spec() -> PathBuf {
-    manifest().join("tests/fixtures/runtime/walk_spec.dsl")
+    manifest().join("tests/fixtures/runtime/walk_spec.graphite")
 }
 
 /// A fresh path under the test scratch directory, with any earlier run removed.
@@ -44,4 +44,14 @@ pub fn stdout(output: &Output) -> String {
 
 pub fn stderr(output: &Output) -> String {
     String::from_utf8_lossy(&output.stderr).into_owned()
+}
+
+/// The keys of every registered front end that has a debugger, in registry order. The
+/// TypeScript front end comes first, because it is the reference the others must match.
+pub fn debugging_front_ends() -> Vec<&'static str> {
+    graphite::frontend::registry::TARGETS
+        .iter()
+        .filter(|target| target.debugger.is_some())
+        .map(|target| target.key)
+        .collect()
 }

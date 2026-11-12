@@ -12,7 +12,7 @@ use cli::{graphite, manifest, scratch, stderr, stdout};
 #[test]
 fn runs_the_graph_to_its_end_and_resumes_from_saved_state() {
     let fixtures = manifest().join("tests/fixtures/runtime");
-    let dsl = fixtures.join("workflow.dsl");
+    let dsl = fixtures.join("workflow.graphite");
     let allow = fixtures.join("workflow.toml");
     let runner = fixtures.join("pass_runner.ts");
     let state = scratch("cli-run").join("state.json");
@@ -50,7 +50,7 @@ fn runs_the_graph_to_its_end_and_resumes_from_saved_state() {
 #[test]
 fn refuses_a_graph_with_tasks_when_no_runner_is_given() {
     let fixtures = manifest().join("tests/fixtures/runtime");
-    let dsl = fixtures.join("workflow.dsl");
+    let dsl = fixtures.join("workflow.graphite");
     let allow = fixtures.join("workflow.toml");
     let dir = scratch("cli-run-no-runner");
     let state = dir.join("state.json");
@@ -100,7 +100,7 @@ fn runs_durably_without_the_durable_flag() {
     let state = scratch("cli-run-without-flag").join("state.json");
     let output = graphite([
         "run".as_ref(),
-        fixtures.join("workflow.dsl").as_os_str(),
+        fixtures.join("workflow.graphite").as_os_str(),
         "--allow".as_ref(),
         fixtures.join("workflow.toml").as_os_str(),
         "--state".as_ref(),
@@ -121,8 +121,8 @@ fn the_state_file_defaults_beside_the_graph() {
     let fixtures = manifest().join("tests/fixtures/runtime");
     let dir = scratch("cli-run-default-state");
     std::fs::create_dir_all(&dir).unwrap();
-    let dsl = dir.join("workflow.dsl");
-    std::fs::copy(fixtures.join("workflow.dsl"), &dsl).unwrap();
+    let dsl = dir.join("workflow.graphite");
+    std::fs::copy(fixtures.join("workflow.graphite"), &dsl).unwrap();
     let output = graphite([
         "run".as_ref(),
         dsl.as_os_str(),

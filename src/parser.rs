@@ -4,6 +4,7 @@ mod capacity;
 mod compiler;
 mod error;
 mod structure;
+mod grammar;
 mod tokens;
 
 use std::collections::HashSet;
@@ -37,19 +38,53 @@ pub fn parse(
     schema: &Schema<'_>,
     capacities: &[Capacity],
 ) -> Result<Vec<CompiledGraph>, ParseError> {
+    parse_with(
+        source,
+        schema,
+        capacities,
+        Box::new(crate::lexer::lex::GraphLexer::new(source)),
+    )
+}
+
+/// [`parse`], reading tokens from `lexer` instead of the graph lexer. The graph lexer's own
+/// description is parsed this way, since the graph lexer cannot lex itself before it exists.
+pub fn parse_with<'a>(
+    source: &'a str,
+    schema: &Schema<'_>,
+    capacities: &[Capacity],
+    lexer: tokens::TokenSource<'a>,
+) -> Result<Vec<CompiledGraph>, ParseError> {
+    check_source_len(source)?;
+    grammar::parse(source, schema, capacities, lexer)
+}
+
+/// Positions are `u32`, so a longer source cannot be parsed.
+fn check_source_len(source: &str) -> Result<(), ParseError> {
     if source.len() > u32::MAX as usize {
         return Err(ParseError::new(
             "source is larger than 4 GiB; positions must fit in u32",
             0,
         ));
     }
+    Ok(())
+}
+
+/// The recursive parser, which reads the grammar through `compiler.rs` directly. The grammar graph
+/// is parsed with it, since the graph parser cannot read its own description before it exists.
+pub(crate) fn parse_seed<'a>(
+    source: &'a str,
+    schema: &Schema<'_>,
+    capacities: &[Capacity],
+    lexer: tokens::TokenSource<'a>,
+) -> Result<Vec<CompiledGraph>, ParseError> {
+    check_source_len(source)?;
     let mut graphs = buffer(capacities.len())?;
     let mut names = HashSet::new();
     names
         .try_reserve(capacities.len())
         .map_err(|_| ParseError::new("could not reserve memory for graph names", 0))?;
     let flags: HashSet<&str> = schema.node_flags.iter().copied().collect();
-    let mut tokens = Tokens::new(source);
+    let mut tokens = Tokens::new(source, lexer);
     while tokens.peek()?.is_some() {
         tokens.expect(TokenKind::Word(GRAPH_KEYWORD))?;
         let (name, offset) = tokens.name("expected a graph name after `graph`")?;
@@ -69,8 +104,8 @@ pub fn parse(
         tokens.expect(TokenKind::Indent)?;
         let mut builder = Builder::new(*capacity, name, &mut tokens, &flags)?;
         builder.graph.offset = offset;
-        builder.body()?;
-        structure::finish(&mut builder.graph)?;
+        builder.body(&mut tokens)?;
+        structure::finish_in_order(&mut builder.graph)?;
         push(&mut graphs, builder.graph, offset)?;
     }
     if graphs.is_empty() {

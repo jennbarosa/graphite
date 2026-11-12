@@ -2,7 +2,8 @@ use std::hint::black_box;
 use std::time::Duration;
 
 use criterion::{Criterion, Throughput, criterion_group, criterion_main};
-use graphite::lexer::{Lexer, TokenKind};
+use graphite::lexer::lex::GraphLexer;
+use graphite::lexer::{Lexer, Token, TokenKind};
 
 #[path = "support/dsl.rs"]
 mod dsl;
@@ -79,6 +80,11 @@ fn lexer(criterion: &mut Criterion) {
         missing.is_empty(),
         "generated DSL lacks features: {missing:?}"
     );
+    // The graph lexer must agree with the iterator lexer before its speed is worth reporting.
+    assert!(
+        GraphLexer::new(&source).eq(Lexer::new(&source)),
+        "graph lexer tokens must match the iterator lexer"
+    );
     let tokens = Lexer::new(&source).count();
     if workers > 0 {
         assert_eq!(
@@ -110,20 +116,10 @@ fn lexer(criterion: &mut Criterion) {
         }
         group.throughput(count);
         group.bench_function(format!("tokenize/{unit}"), |bencher| {
-            bencher.iter(|| {
-                // Fold each token into a checksum so the lexer work is not dominated by
-                // per-token black_box stores; the final black_box keeps the result live.
-                let mut checksum = 0usize;
-                for token in Lexer::new(black_box(&source)) {
-                    let token = token.unwrap();
-                    let kind_len = match token.kind {
-                        TokenKind::Word(word) => word.len(),
-                        _ => 1,
-                    };
-                    checksum = checksum.wrapping_add(token.offset ^ kind_len);
-                }
-                black_box(checksum);
-            });
+            bencher.iter(|| black_box(checksum(Lexer::new(black_box(&source)))));
+        });
+        group.bench_function(format!("tokenize_graph/{unit}"), |bencher| {
+            bencher.iter(|| black_box(checksum(GraphLexer::new(black_box(&source)))));
         });
         if workers > 0 {
             group.bench_function(format!("collect/{unit}"), |bencher| {
@@ -143,6 +139,22 @@ fn lexer(criterion: &mut Criterion) {
         }
     }
     group.finish();
+}
+
+/// Folds each token into a checksum, so the lexer work is not dominated by per-token black_box
+/// stores. The caller keeps the result live.
+#[inline(always)]
+fn checksum<'a, E: std::fmt::Debug>(tokens: impl Iterator<Item = Result<Token<'a>, E>>) -> usize {
+    let mut total = 0usize;
+    for token in tokens {
+        let token = token.unwrap();
+        let kind_len = match token.kind {
+            TokenKind::Word(word) => word.len(),
+            _ => 1,
+        };
+        total = total.wrapping_add(token.offset ^ kind_len);
+    }
+    total
 }
 
 criterion_group! {

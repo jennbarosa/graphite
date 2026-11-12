@@ -19,7 +19,7 @@ fn workdir(name: &str, tasks: &str, files: &[(&str, &str)]) -> PathBuf {
     let dir = scratch(name);
     std::fs::create_dir_all(&dir).unwrap();
     let fixtures = manifest().join("tests/fixtures/runtime");
-    std::fs::copy(fixtures.join("workflow.dsl"), dir.join("workflow.dsl")).unwrap();
+    std::fs::copy(fixtures.join("workflow.graphite"), dir.join("workflow.graphite")).unwrap();
     std::fs::copy(fixtures.join("workflow.toml"), dir.join("workflow.toml")).unwrap();
     std::fs::write(dir.join("tasks.toml"), tasks).unwrap();
     std::fs::write(dir.join("log.sh"), LOG_SCRIPT).unwrap();
@@ -38,7 +38,7 @@ fn logged(report: &str) -> String {
 fn run(dir: &Path, extra: &[OsString]) -> std::process::Output {
     let mut args: Vec<OsString> = vec![
         "run".into(),
-        dir.join("workflow.dsl").into_os_string(),
+        dir.join("workflow.graphite").into_os_string(),
         "--allow".into(),
         dir.join("workflow.toml").into_os_string(),
         "--state".into(),
@@ -164,7 +164,7 @@ fn a_flags_only_allowlist_works_when_the_manifest_names_the_tasks() {
     );
     let output = graphite([
         "run".as_ref(),
-        dir.join("workflow.dsl").as_os_str(),
+        dir.join("workflow.graphite").as_os_str(),
         "--allow".as_ref(),
         dir.join("flags.toml").as_os_str(),
         "--tasks".as_ref(),
@@ -197,7 +197,7 @@ fn input_is_refused_for_commands_that_do_not_run_tasks() {
     let dir = workdir("cli-tasks-refused", "[tasks]\n", &[]);
     let output = graphite([
         "check".as_ref(),
-        dir.join("workflow.dsl").as_os_str(),
+        dir.join("workflow.graphite").as_os_str(),
         "--input".as_ref(),
         dir.join("workflow.toml").as_os_str(),
     ]);
@@ -245,11 +245,11 @@ fn a_thrown_error_routes_to_the_errored_edge_when_the_graph_declares_it() {
     let dir = workdir(
         "cli-tasks-errored",
         &tasks,
-        &[("lint.sh", lint), ("errors.dsl", graph)],
+        &[("lint.sh", lint), ("errors.graphite", graph)],
     );
     let output = graphite([
         "run".as_ref(),
-        dir.join("errors.dsl").as_os_str(),
+        dir.join("errors.graphite").as_os_str(),
         "--allow".as_ref(),
         dir.join("workflow.toml").as_os_str(),
         "--state".as_ref(),

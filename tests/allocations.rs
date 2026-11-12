@@ -161,6 +161,7 @@ fn parser_allocations_do_not_grow_with_node_count() {
         }
         text
     };
+    warm_lexer_graph();
     let small = source(8);
     let large = source(5_000);
     let capacity = |nodes, bytes| Capacity {
@@ -182,11 +183,14 @@ fn parser_allocations_do_not_grow_with_node_count() {
     assert_eq!(small_graph[0].nodes.len(), 8);
     assert_eq!(large_graph[0].nodes.len(), 5_000);
     assert_eq!(large_allocations, small_allocations);
-    assert!(large_allocations < 25, "{large_allocations} allocations");
+    // The graph lexer, grammar and structure checks each keep a stepper, which allocates a few small
+    // buffers once per parse. That is a fixed cost; the equality above is what rules out growth.
+    assert!(large_allocations < 32, "{large_allocations} allocations");
 }
 
 #[test]
 fn parser_storage_excludes_keywords_and_known_node_references() {
+    warm_lexer_graph();
     let edges = 1_000;
     let source = format!(
         "graph door\n  node closed loop\n{}",
@@ -208,4 +212,10 @@ fn parser_storage_excludes_keywords_and_known_node_references() {
     assert_eq!(graphs[0].conditions.len(), 1);
     // Includes compiled arrays, binding slots, interner bounds, and parser setup.
     assert!(requested <= 128 * edges, "requested {requested} bytes");
+}
+
+/// The graph lexer compiles its own description the first time it runs. Do that before any test
+/// counts allocations, so the one-time setup is not charged to a parse.
+fn warm_lexer_graph() {
+    let _ = graphite::lexer::lex::GraphLexer::new("").next();
 }

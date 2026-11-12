@@ -11,7 +11,7 @@ macro_rules! fixture {
     ($name:ident $(, $flag:literal)*) => {
         #[test]
         fn $name() {
-            let source = include_str!(concat!("fixtures/parser/", stringify!($name), ".dsl"));
+            let source = include_str!(concat!("fixtures/parser/", stringify!($name), ".graphite"));
             let expected =
                 include_str!(concat!("fixtures/parser/", stringify!($name), ".expected"));
             let schema = Schema { node_flags: &[$($flag),*] };

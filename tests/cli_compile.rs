@@ -57,7 +57,7 @@ fn rejects_an_unknown_front_end_without_writing() {
 #[test]
 fn compile_applies_the_allowlist_and_accepts_the_front_end_by_name() {
     let fixtures = manifest().join("tests/fixtures/runtime");
-    let dsl = fixtures.join("workflow.dsl");
+    let dsl = fixtures.join("workflow.graphite");
     let allow = fixtures.join("workflow.toml");
     let out = scratch("cli-compile-allow");
 

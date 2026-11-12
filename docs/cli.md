@@ -4,13 +4,13 @@
 one command's options.
 
 ```text
-graphite init <file.dsl>                               write a starter graph
-graphite check <file.dsl> [--allow <list.toml>]        validate a graph
-graphite compile <file.dsl> [--out <dir>]              generate modules with a front end
-graphite run <file.dsl> [options]                      run the first graph as a durable workflow
-graphite debug <file.dsl> [command...]                 step through a graph in the terminal
-graphite debug <file.dsl> --simulate <task>=<outcomes> check a graph's routes, with no task run
-graphite inspect <file.dsl> [--json]                   print the compiled graph
+graphite init <file.graphite>                               write a starter graph
+graphite check <file.graphite> [--allow <list.toml>]        validate a graph
+graphite compile <file.graphite> [--out <dir>]              generate modules with a front end
+graphite run <file.graphite> [options]                      run the first graph as a durable workflow
+graphite debug <file.graphite> [command...]                 step through a graph in the terminal
+graphite debug <file.graphite> --simulate <task>=<outcomes> check a graph's routes, with no task run
+graphite inspect <file.graphite> [--json]                   print the compiled graph
 graphite doctor [--json]                               report this build, its front ends, and what works here
 graphite completions <bash|zsh|fish>                   print a shell completion script
 graphite man                                           print the manual page
@@ -44,7 +44,7 @@ graphite --version                                     print the version
 | `--runner <tasks.ts>` | `run` | Module whose default export runs tasks. Runs as code with your permissions. |
 | `--tasks <tasks.toml>` | `run` | Runs each task as a command, from a manifest whose `[tasks]` table holds the commands. Cannot be combined with `--runner`. See [command tasks](durable-workflows.md#command-tasks). |
 | `--input <input.json>` | `run` | A JSON value every task receives as `context.input`. See [input](durable-workflows.md#input). |
-| `--each <item.dsl>` | `run` | Runs the item graph once per item the graph produces. Needs `--key`. See [fan-out](durable-workflows.md#fan-out). |
+| `--each <item.graphite>` | `run` | Runs the item graph once per item the graph produces. Needs `--key`. See [fan-out](durable-workflows.md#fan-out). |
 | `--key <field>` | `run` | The item field that identifies each item. |
 | `--seen <file.json>` | `run` | Item keys already started, so a run skips them. Defaults beside the state file. |
 | `--until-passed <N>` | `run` | Stops starting items once N have passed. |

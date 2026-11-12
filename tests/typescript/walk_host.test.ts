@@ -1,4 +1,4 @@
-// A host for the spec's walk cycle, compiled from `fixtures/runtime/walk_spec.dsl` by
+// A host for the spec's walk cycle, compiled from `fixtures/runtime/walk_spec.graphite` by
 // `cargo test --test pipeline writes_the_spec_walk_cycle_for_the_host`.
 import { describe, expect, test } from 'bun:test';
 

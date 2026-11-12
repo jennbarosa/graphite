@@ -33,10 +33,10 @@ fn compile_workflow(name: &str, path: &Path) -> PathBuf {
 #[test]
 fn a_snapshot_survives_a_process_restart_and_a_changed_workflow_refuses_it() {
     let fixtures = cli::manifest().join("tests/fixtures/runtime");
-    let review = compile_workflow("persistence-review", &fixtures.join("workflow.dsl"));
+    let review = compile_workflow("persistence-review", &fixtures.join("workflow.graphite"));
     let variant = compile_workflow(
         "persistence-variant",
-        &fixtures.join("workflow_variant.dsl"),
+        &fixtures.join("workflow_variant.graphite"),
     );
     bun::assert_bun_test_passes_with(
         cli::manifest(),

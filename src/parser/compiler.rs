@@ -12,17 +12,16 @@ use super::capacity::{buffer, push};
 use super::tokens::{INVALID_NAME, Tokens, valid_name};
 
 /// The line forms allowed inside a graph body, shared by the message and the fallback arm.
-const GRAPH_FORM: &str = "expected `node`, `edge`, or `choose` line";
+pub(super) const GRAPH_FORM: &str = "expected `node`, `edge`, or `choose` line";
 /// The arms allowed inside a choose block.
-const CHOOSE_ARM: &str = "expected `when` or a final `else` arm";
+pub(super) const CHOOSE_ARM: &str = "expected `when` or a final `else` arm";
 const STRINGS_FULL: &str = "string capacity exhausted; raise the graph's `strings` hint";
 const ANNOTATION_KEY: &str =
     "invalid annotation key: use letters, digits, `_`, or `-`, separated by `.`";
 use super::{Capacity, ParseError};
 
-pub(super) struct Builder<'a, 't, 's> {
+pub(super) struct Builder<'s> {
     pub(super) graph: CompiledGraph,
-    tokens: &'t mut Tokens<'a>,
     bindings: Vec<NameBindings>,
     flags: &'s HashSet<&'s str>,
 }
@@ -36,11 +35,11 @@ struct NameBindings {
     annotation_key: bool,
 }
 
-impl<'a, 't, 's> Builder<'a, 't, 's> {
-    pub(super) fn new(
+impl<'s> Builder<'s> {
+    pub(super) fn new<'a>(
         c: Capacity,
         name: &str,
-        tokens: &'t mut Tokens<'a>,
+        tokens: &mut Tokens<'a>,
         flags: &'s HashSet<&'s str>,
     ) -> Result<Self, ParseError> {
         let graph = c.allocate(name, tokens.offset())?;
@@ -48,32 +47,35 @@ impl<'a, 't, 's> Builder<'a, 't, 's> {
         bindings.resize_with(c.strings, NameBindings::default);
         Ok(Self {
             graph,
-            tokens,
             bindings,
             flags,
         })
     }
 
-    fn intern(&mut self, word: &str) -> Result<StringId, ParseError> {
+    pub(super) fn intern<'a>(
+        &mut self,
+        tokens: &mut Tokens<'a>,
+        word: &str,
+    ) -> Result<StringId, ParseError> {
         self.graph
             .strings
             .intern(word)
-            .map_err(|_| self.tokens.error(STRINGS_FULL))
+            .map_err(|_| tokens.error(STRINGS_FULL))
     }
 
-    pub(super) fn body(&mut self) -> Result<(), ParseError> {
+    pub(super) fn body<'a>(&mut self, tokens: &mut Tokens<'a>) -> Result<(), ParseError> {
         let mut linking = false;
-        while !self.tokens.at(TokenKind::Dedent)? {
-            let (keyword, offset) = self.tokens.word_or(GRAPH_FORM)?;
+        while !tokens.at(TokenKind::Dedent)? {
+            let (keyword, offset) = tokens.word_or(GRAPH_FORM)?;
             match keyword {
-                "node" if !linking => self.node()?,
+                "node" if !linking => self.node(tokens)?,
                 "edge" => {
                     linking = true;
-                    self.edge()?;
+                    self.edge(tokens)?;
                 }
                 "choose" => {
                     linking = true;
-                    self.choice()?;
+                    self.choice(tokens)?;
                 }
                 "node" => {
                     return Err(ParseError::new(
@@ -84,18 +86,13 @@ impl<'a, 't, 's> Builder<'a, 't, 's> {
                 _ => return Err(ParseError::new(GRAPH_FORM, offset)),
             }
         }
-        if self.graph.nodes.is_empty() {
-            return Err(self
-                .tokens
-                .error("graph needs at least one node; the first is its entry"));
-        }
-        self.tokens.expect(TokenKind::Dedent)
+        self.body_end(tokens)
     }
 
-    fn node(&mut self) -> Result<(), ParseError> {
-        let (name, offset) = self.tokens.name("expected a node name after `node`")?;
+    pub(super) fn node<'a>(&mut self, tokens: &mut Tokens<'a>) -> Result<(), ParseError> {
+        let (name, offset) = tokens.name("expected a node name after `node`")?;
         let id = self.graph.nodes.len() as u32;
-        let name = self.intern(name)?;
+        let name = self.intern(tokens, name)?;
         let binding = &mut self.bindings[name.index()].node;
         if binding.is_some() {
             return Err(ParseError::new(
@@ -104,8 +101,8 @@ impl<'a, 't, 's> Builder<'a, 't, 's> {
             ));
         }
         *binding = NonZeroU32::new(id + 1);
-        let (looping, end, flags) = self.node_flags()?;
-        let annotations = narrow(self.annotations()?);
+        let (looping, end, flags) = self.node_flags(tokens)?;
+        let annotations = narrow(self.annotations(tokens)?);
         push(
             &mut self.graph.nodes,
             Node {
@@ -123,9 +120,8 @@ impl<'a, 't, 's> Builder<'a, 't, 's> {
         Ok(())
     }
 
-    fn node_reference(&mut self) -> Result<u32, ParseError> {
-        let (name, offset) = self
-            .tokens
+    pub(super) fn node_reference<'a>(&mut self, tokens: &mut Tokens<'a>) -> Result<u32, ParseError> {
+        let (name, offset) = tokens
             .word_or("expected a node name after `->` or `edge`")?;
         if let Some(id) = self
             .graph
@@ -143,11 +139,10 @@ impl<'a, 't, 's> Builder<'a, 't, 's> {
         Err(ParseError::new(message, offset))
     }
 
-    fn condition(&mut self) -> Result<u32, ParseError> {
-        let (word, offset) = self
-            .tokens
+    pub(super) fn condition<'a>(&mut self, tokens: &mut Tokens<'a>) -> Result<u32, ParseError> {
+        let (word, offset) = tokens
             .word_or("expected a condition name after `when`")?;
-        let name = self.intern(word)?;
+        let name = self.intern(tokens, word)?;
         let binding = &mut self.bindings[name.index()];
         if let Some(id) = binding.condition {
             return Ok(id.get() - 1);
@@ -162,20 +157,20 @@ impl<'a, 't, 's> Builder<'a, 't, 's> {
     }
 
     /// Reads a node's flags up to the end of its line. Returns `(looping, end, domain-flag span)`.
-    fn node_flags(&mut self) -> Result<(bool, bool, Span), ParseError> {
+    pub(super) fn node_flags<'a>(&mut self, tokens: &mut Tokens<'a>) -> Result<(bool, bool, Span), ParseError> {
         let start = self.graph.flags.len() as u32;
         let mut looping = false;
         let mut end = false;
-        while let Some(token) = self.tokens.peek()? {
+        while let Some(token) = tokens.peek()? {
             let TokenKind::Word(flag) = token.kind else {
                 break;
             };
-            self.tokens.word()?;
+            tokens.word()?;
             match flag {
                 "loop" => looping = true,
                 "end" => end = true,
                 _ if self.flags.contains(flag) => {
-                    let flag = self.intern(flag)?;
+                    let flag = self.intern(tokens, flag)?;
                     push(&mut self.graph.flags, flag, token.offset)?;
                 }
                 _ => {
@@ -192,13 +187,13 @@ impl<'a, 't, 's> Builder<'a, 't, 's> {
     /// Reads `edge A -> B [-> C ...] [when COND] [else T] [@key:value ...]`.
     /// Each hop becomes one edge carrying the line's condition and annotations.
     /// `else T` also adds an unconditional edge from each hop's source to `T`.
-    fn edge(&mut self) -> Result<(), ParseError> {
-        let offset = self.tokens.offset();
+    pub(super) fn edge<'a>(&mut self, tokens: &mut Tokens<'a>) -> Result<(), ParseError> {
+        let offset = tokens.offset();
         let start = self.graph.edges.len();
-        let mut source = self.node_reference()?;
+        let mut source = self.node_reference(tokens)?;
         loop {
-            self.tokens.expect(TokenKind::Arrow)?;
-            let target = self.node_reference()?;
+            tokens.expect(TokenKind::Arrow)?;
+            let target = self.node_reference(tokens)?;
             push(
                 &mut self.graph.edges,
                 Edge {
@@ -210,24 +205,24 @@ impl<'a, 't, 's> Builder<'a, 't, 's> {
                 offset,
             )?;
             source = target;
-            if !self.tokens.at(TokenKind::Arrow)? {
+            if !tokens.at(TokenKind::Arrow)? {
                 break;
             }
         }
         let end = self.graph.edges.len();
-        let condition = if self.tokens.at(TokenKind::Word("when"))? {
-            self.tokens.expect(TokenKind::Word("when"))?;
-            Some(self.condition()?)
+        let condition = if tokens.at(TokenKind::Word("when"))? {
+            tokens.expect(TokenKind::Word("when"))?;
+            Some(self.condition(tokens)?)
         } else {
             None
         };
-        let fallback = if self.tokens.at(TokenKind::Word("else"))? {
-            self.tokens.expect(TokenKind::Word("else"))?;
-            Some(self.node_reference()?)
+        let fallback = if tokens.at(TokenKind::Word("else"))? {
+            tokens.expect(TokenKind::Word("else"))?;
+            Some(self.node_reference(tokens)?)
         } else {
             None
         };
-        let annotations = narrow(self.annotations()?);
+        let annotations = narrow(self.annotations(tokens)?);
         for index in start..end {
             let edge = &mut self.graph.edges[index];
             edge.condition = condition;
@@ -285,9 +280,13 @@ impl<'a, 't, 's> Builder<'a, 't, 's> {
         Ok(())
     }
 
-    fn choice(&mut self) -> Result<(), ParseError> {
-        let (name, offset) = self.tokens.name("expected a choose name after `choose`")?;
-        let name = self.intern(name)?;
+    /// Reads `choose NAME` and its indented block's opening, after the `choose` keyword.
+    pub(super) fn choice_head<'a>(
+        &mut self,
+        tokens: &mut Tokens<'a>,
+    ) -> Result<(StringId, usize), ParseError> {
+        let (name, offset) = tokens.name("expected a choose name after `choose`")?;
+        let name = self.intern(tokens, name)?;
         let binding = &mut self.bindings[name.index()].choice;
         if *binding {
             return Err(ParseError::new(
@@ -296,26 +295,23 @@ impl<'a, 't, 's> Builder<'a, 't, 's> {
             ));
         }
         *binding = true;
-        self.tokens.expect(TokenKind::Newline)?;
-        self.tokens.expect(TokenKind::Indent)?;
-        let start = self.graph.arms.len();
-        let mut fallback = false;
-        while !self.tokens.at(TokenKind::Dedent)? {
-            let (keyword, offset) = self.tokens.word_or(CHOOSE_ARM)?;
-            let condition = match keyword {
-                "when" if !fallback => Some(self.condition()?),
-                "else" if !fallback && self.graph.arms.len() > start => {
-                    fallback = true;
-                    None
-                }
-                _ => return Err(ParseError::new(CHOOSE_ARM, offset)),
-            };
-            self.arm(condition, offset)?;
-        }
+        tokens.expect(TokenKind::Newline)?;
+        tokens.expect(TokenKind::Indent)?;
+        Ok((name, offset))
+    }
+
+    /// Ends a choose block: it needs an arm, and its closing dedent. Stores the choice.
+    pub(super) fn choice_end<'a>(
+        &mut self,
+        tokens: &mut Tokens<'a>,
+        name: StringId,
+        start: usize,
+        offset: usize,
+    ) -> Result<(), ParseError> {
         if self.graph.arms.len() == start {
-            return Err(self.tokens.error("choose needs at least one `when` arm"));
+            return Err(tokens.error("choose needs at least one `when` arm"));
         }
-        self.tokens.expect(TokenKind::Dedent)?;
+        tokens.expect(TokenKind::Dedent)?;
         push(
             &mut self.graph.choices,
             Choice {
@@ -327,12 +323,40 @@ impl<'a, 't, 's> Builder<'a, 't, 's> {
         Ok(())
     }
 
+    /// Ends the graph body: it needs a node, and its closing dedent.
+    pub(super) fn body_end<'a>(&mut self, tokens: &mut Tokens<'a>) -> Result<(), ParseError> {
+        if self.graph.nodes.is_empty() {
+            return Err(tokens.error("graph needs at least one node; the first is its entry"));
+        }
+        tokens.expect(TokenKind::Dedent)
+    }
+
+    /// Reads a whole choose block, after its keyword. Used by the seed parser.
+    pub(super) fn choice<'a>(&mut self, tokens: &mut Tokens<'a>) -> Result<(), ParseError> {
+        let (name, offset) = self.choice_head(tokens)?;
+        let start = self.graph.arms.len();
+        let mut fallback = false;
+        while !tokens.at(TokenKind::Dedent)? {
+            let (keyword, offset) = tokens.word_or(CHOOSE_ARM)?;
+            let condition = match keyword {
+                "when" if !fallback => Some(self.condition(tokens)?),
+                "else" if !fallback && self.graph.arms.len() > start => {
+                    fallback = true;
+                    None
+                }
+                _ => return Err(ParseError::new(CHOOSE_ARM, offset)),
+            };
+            self.arm(tokens, condition, offset)?;
+        }
+        self.choice_end(tokens, name, start, offset)
+    }
+
     /// Reads one arm's `-> tag` and annotations, then stores it.
-    fn arm(&mut self, condition: Option<u32>, offset: usize) -> Result<(), ParseError> {
-        self.tokens.expect(TokenKind::Arrow)?;
-        let (tag, _) = self.tokens.word_or("expected a tag name after `->`")?;
-        let tag = self.intern(tag)?;
-        let annotations = narrow(self.annotations()?);
+    pub(super) fn arm<'a>(&mut self, tokens: &mut Tokens<'a>, condition: Option<u32>, offset: usize) -> Result<(), ParseError> {
+        tokens.expect(TokenKind::Arrow)?;
+        let (tag, _) = tokens.word_or("expected a tag name after `->`")?;
+        let tag = self.intern(tokens, tag)?;
+        let annotations = narrow(self.annotations(tokens)?);
         push(
             &mut self.graph.arms,
             Arm {
@@ -344,18 +368,17 @@ impl<'a, 't, 's> Builder<'a, 't, 's> {
         )
     }
 
-    fn annotations(&mut self) -> Result<Range<usize>, ParseError> {
+    pub(super) fn annotations<'a>(&mut self, tokens: &mut Tokens<'a>) -> Result<Range<usize>, ParseError> {
         let start = self.graph.annotations.len();
-        while self.tokens.at(TokenKind::At)? {
-            self.tokens.expect(TokenKind::At)?;
-            let (key, offset) = self
-                .tokens
+        while tokens.at(TokenKind::At)? {
+            tokens.expect(TokenKind::At)?;
+            let (key, offset) = tokens
                 .word_or("expected an annotation key after `@`")?;
-            let key = self.annotation_key(key, offset)?;
-            let value = if self.tokens.at(TokenKind::Colon)? {
-                self.tokens.expect(TokenKind::Colon)?;
-                let (value, _) = self.tokens.word_or("expected a value after `:`")?;
-                Some(self.intern(value)?)
+            let key = self.annotation_key(tokens, key, offset)?;
+            let value = if tokens.at(TokenKind::Colon)? {
+                tokens.expect(TokenKind::Colon)?;
+                let (value, _) = tokens.word_or("expected a value after `:`")?;
+                Some(self.intern(tokens, value)?)
             } else {
                 None
             };
@@ -365,13 +388,13 @@ impl<'a, 't, 's> Builder<'a, 't, 's> {
                 offset,
             )?;
         }
-        self.tokens.expect(TokenKind::Newline)?;
+        tokens.expect(TokenKind::Newline)?;
         Ok(start..self.graph.annotations.len())
     }
 
-    fn annotation_key(&mut self, key: &str, offset: usize) -> Result<StringId, ParseError> {
+    pub(super) fn annotation_key<'a>(&mut self, tokens: &mut Tokens<'a>, key: &str, offset: usize) -> Result<StringId, ParseError> {
         // Preserve invalid-key diagnostics even when interner storage is exhausted.
-        let id = self.intern(key).map_err(|error| {
+        let id = self.intern(tokens, key).map_err(|error| {
             if key.split('.').all(valid_name) {
                 error
             } else {

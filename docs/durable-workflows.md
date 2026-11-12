@@ -7,7 +7,7 @@ without repeating finished work.
 
 ## A workflow
 
-[`examples/workflow/workflow.dsl`](../examples/workflow/workflow.dsl):
+[`examples/workflow/workflow.graphite`](../examples/workflow/workflow.graphite):
 
 ```text
 graph review
@@ -40,7 +40,7 @@ the allowlist only needs `node_flags`.
 
 | File | Passed as | Holds | Never holds |
 |---|---|---|---|
-| graph (`.dsl`) | the first argument | nodes, edges, `@task:<name>` | commands |
+| graph (`.graphite`) | the first argument | nodes, edges, `@task:<name>` | commands |
 | allowlist (`workflow.toml` above) | `--allow` | `node_flags`, and allowed task names under `[annotations]` | commands, or a `[tasks]` table |
 | task manifest (`tasks.toml`) | `--tasks` | `[tasks]`: each task name mapped to its command | flags, graph structure |
 
@@ -62,7 +62,7 @@ export default async function (task: string, context: { key: string; attempt: nu
 ## Running it
 
 ```sh
-graphite run examples/workflow/workflow.dsl \
+graphite run examples/workflow/workflow.graphite \
   --allow examples/workflow/workflow.toml \
   --state target/review.state.json \
   --runner examples/workflow/runner.ts
@@ -95,7 +95,7 @@ lint = ["python3", "tools/lint.py"]
 ```
 
 ```sh
-graphite run review.dsl --tasks tasks.toml
+graphite run review.graphite --tasks tasks.toml
 ```
 
 A task's command gets one JSON object on stdin, `{ "task", "key", "attempt", "input", "failure", "outputs" }`.
@@ -160,7 +160,7 @@ Without an `errored` condition, a thrown task stops the run, as before.
 A list graph can run another graph once per item it produces:
 
 ```sh
-graphite run discover.dsl --each prospect.dsl --key domain --tasks tasks.toml \
+graphite run discover.graphite --each prospect.graphite --key domain --tasks tasks.toml \
   --seen seen.json --until-passed 10 --state today.state.json
 ```
 
@@ -232,7 +232,7 @@ no task code runs. It finds routing mistakes, such as a gate on a condition no t
 that never leaves, before a run does:
 
 ```sh
-graphite debug examples/workflow/workflow.dsl --allow examples/workflow/workflow.toml \
+graphite debug examples/workflow/workflow.graphite --allow examples/workflow/workflow.toml \
   --simulate lint=fail,pass
 ```
 

@@ -13,7 +13,7 @@ use cli::{graphite, scratch, stderr};
 
 #[test]
 fn the_workflow_needs_its_allowlist_for_the_retry_flag() {
-    let workflow = cli::manifest().join("tests/fixtures/runtime/workflow.dsl");
+    let workflow = cli::manifest().join("tests/fixtures/runtime/workflow.graphite");
     let output = graphite(["check".as_ref(), workflow.as_os_str()]);
     assert!(!output.status.success());
     assert!(stderr(&output).contains("unknown node flag"));
@@ -25,7 +25,7 @@ fn the_durable_engine_retries_recovers_and_never_reruns_a_task_it_recorded() {
     let out = scratch("durable-review");
     let output = graphite([
         "compile".as_ref(),
-        fixtures.join("workflow.dsl").as_os_str(),
+        fixtures.join("workflow.graphite").as_os_str(),
         "--out".as_ref(),
         out.as_os_str(),
         "--allow".as_ref(),
@@ -48,7 +48,7 @@ fn a_passed_gate_on_a_middle_stage_does_not_skip_its_task() {
     let out = scratch("durable-stage-order");
     let output = graphite([
         "compile".as_ref(),
-        fixtures.join("stage_order.dsl").as_os_str(),
+        fixtures.join("stage_order.graphite").as_os_str(),
         "--out".as_ref(),
         out.as_os_str(),
         "--allow".as_ref(),

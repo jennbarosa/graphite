@@ -1,16 +1,18 @@
-use crate::lexer::{LexError, Lexer, Token, TokenKind};
+use crate::lexer::{LexError, Token, TokenKind};
 
 use super::ParseError;
 
+/// The token source a parse reads: any lexer that yields tokens or errors in source order.
+pub(crate) type TokenSource<'a> = Box<dyn Iterator<Item = Result<Token<'a>, LexError>> + 'a>;
+
 pub(super) struct Tokens<'a> {
-    lexer: Lexer<'a>,
+    lexer: TokenSource<'a>,
     current: Option<Result<Token<'a>, LexError>>,
     end: usize,
 }
 
 impl<'a> Tokens<'a> {
-    pub fn new(source: &'a str) -> Self {
-        let mut lexer = Lexer::new(source);
+    pub fn new(source: &'a str, mut lexer: TokenSource<'a>) -> Self {
         let current = lexer.next();
         Self {
             lexer,

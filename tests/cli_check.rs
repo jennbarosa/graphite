@@ -17,7 +17,7 @@ fn reports_the_graph_count() {
 #[test]
 fn rejects_two_graphs_whose_outputs_collide() {
     let source = dsl(
-        "cli-collide/collide.dsl",
+        "cli-collide/collide.graphite",
         "graph Walk\n  node a end\n\ngraph walk\n  node a end\n",
     );
     let output = graphite(["check".as_ref(), source.as_os_str()]);
@@ -27,7 +27,7 @@ fn rejects_two_graphs_whose_outputs_collide() {
 
 #[test]
 fn rejects_a_dead_end_with_its_source_location() {
-    let source = dsl("cli-dead-end/dead.dsl", "graph bad\n  node a\n");
+    let source = dsl("cli-dead-end/dead.graphite", "graph bad\n  node a\n");
     let output = graphite(["check".as_ref(), source.as_os_str()]);
     assert!(!output.status.success());
     assert_eq!(output.status.code(), Some(1));
@@ -37,7 +37,7 @@ fn rejects_a_dead_end_with_its_source_location() {
 #[test]
 fn takes_exactly_one_file() {
     let spec = walk_spec();
-    let output = graphite(["check".as_ref(), spec.as_os_str(), "extra.dsl".as_ref()]);
+    let output = graphite(["check".as_ref(), spec.as_os_str(), "extra.graphite".as_ref()]);
     assert!(!output.status.success());
     assert!(stderr(&output).contains("check takes one file"));
 }
@@ -46,7 +46,7 @@ const REVIEW: &str = "graph review\n  node draft @task:write\n  node check @task
 
 #[test]
 fn allow_accepts_values_on_the_list() {
-    let source = dsl("cli-allow-ok/review.dsl", REVIEW);
+    let source = dsl("cli-allow-ok/review.graphite", REVIEW);
     let allow = dsl(
         "cli-allow-ok/allow.toml",
         "[annotations]\ntask = [\"write\", \"lint\", \"deploy\"]\nreport = [\"ok\"]\n",
@@ -63,7 +63,7 @@ fn allow_accepts_values_on_the_list() {
 
 #[test]
 fn allow_names_the_node_holding_a_value_off_the_list() {
-    let source = dsl("cli-allow-bad/review.dsl", REVIEW);
+    let source = dsl("cli-allow-bad/review.graphite", REVIEW);
     let allow = dsl(
         "cli-allow-bad/allow.toml",
         "[annotations]\ntask = [\"write\", \"lint\"]\n",
@@ -81,7 +81,7 @@ fn allow_names_the_node_holding_a_value_off_the_list() {
 #[test]
 fn allow_refuses_a_bare_annotation_under_a_listed_key() {
     let source = dsl(
-        "cli-allow-bare/bare.dsl",
+        "cli-allow-bare/bare.graphite",
         "graph bare\n  node draft @task\n  node done end\n  edge draft -> done\n",
     );
     let allow = dsl(
@@ -100,7 +100,7 @@ fn allow_refuses_a_bare_annotation_under_a_listed_key() {
 
 #[test]
 fn allow_rejects_sections_it_does_not_know() {
-    let source = dsl("cli-allow-section/review.dsl", REVIEW);
+    let source = dsl("cli-allow-section/review.graphite", REVIEW);
     let allow = dsl(
         "cli-allow-section/allow.toml",
         "[annotations]\ntask = [\"write\"]\n[extra]\nx = 1\n",
@@ -124,12 +124,12 @@ fn check_json_reports_the_graph_count_or_the_error() {
     assert!(good.status.success());
     assert_eq!(stdout(&good).trim(), r#"{"ok":true,"graphs":1}"#);
 
-    let missing = graphite(["check", "no-such-file.dsl", "--json"]);
+    let missing = graphite(["check", "no-such-file.graphite", "--json"]);
     assert_eq!(missing.status.code(), Some(1));
     assert!(stderr(&missing).is_empty());
     let line = stdout(&missing);
     assert!(
-        line.starts_with(r#"{"ok":false,"error":"no-such-file.dsl"#),
+        line.starts_with(r#"{"ok":false,"error":"no-such-file.graphite"#),
         "{line}"
     );
 }
