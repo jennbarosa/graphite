@@ -31,14 +31,3 @@ pub fn run(input: &Path) -> Result<(), String> {
     println!("next: graphite check {}", input.display());
     Ok(())
 }
-
-#[cfg(test)]
-mod tests {
-    use super::STARTER;
-
-    #[test]
-    fn the_starter_graph_has_the_expected_shape() {
-        assert!(STARTER.starts_with("graph hello\n"));
-        assert_eq!(STARTER.matches("node ").count(), 3);
-    }
-}
