@@ -3,8 +3,8 @@
 mod capacity;
 mod compiler;
 mod error;
-mod structure;
 mod grammar;
+mod structure;
 mod tokens;
 
 use std::collections::HashSet;

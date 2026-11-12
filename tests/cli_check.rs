@@ -37,7 +37,11 @@ fn rejects_a_dead_end_with_its_source_location() {
 #[test]
 fn takes_exactly_one_file() {
     let spec = walk_spec();
-    let output = graphite(["check".as_ref(), spec.as_os_str(), "extra.graphite".as_ref()]);
+    let output = graphite([
+        "check".as_ref(),
+        spec.as_os_str(),
+        "extra.graphite".as_ref(),
+    ]);
     assert!(!output.status.success());
     assert!(stderr(&output).contains("check takes one file"));
 }

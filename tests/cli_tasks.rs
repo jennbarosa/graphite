@@ -19,7 +19,11 @@ fn workdir(name: &str, tasks: &str, files: &[(&str, &str)]) -> PathBuf {
     let dir = scratch(name);
     std::fs::create_dir_all(&dir).unwrap();
     let fixtures = manifest().join("tests/fixtures/runtime");
-    std::fs::copy(fixtures.join("workflow.graphite"), dir.join("workflow.graphite")).unwrap();
+    std::fs::copy(
+        fixtures.join("workflow.graphite"),
+        dir.join("workflow.graphite"),
+    )
+    .unwrap();
     std::fs::copy(fixtures.join("workflow.toml"), dir.join("workflow.toml")).unwrap();
     std::fs::write(dir.join("tasks.toml"), tasks).unwrap();
     std::fs::write(dir.join("log.sh"), LOG_SCRIPT).unwrap();

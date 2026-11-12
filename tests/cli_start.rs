@@ -49,7 +49,10 @@ fn init_writes_a_starter_graph_that_checks_and_refuses_to_overwrite() {
 
 #[test]
 fn compile_without_out_writes_beside_the_working_directory() {
-    let source = dsl("start-default-out/door.graphite", "graph door\n  node a end\n");
+    let source = dsl(
+        "start-default-out/door.graphite",
+        "graph door\n  node a end\n",
+    );
     let work = source.parent().unwrap().to_path_buf();
     let _ = std::fs::remove_dir_all(work.join("graphite-out"));
     let output = Command::new(env!("CARGO_BIN_EXE_graphite"))

@@ -120,9 +120,11 @@ impl<'s> Builder<'s> {
         Ok(())
     }
 
-    pub(super) fn node_reference<'a>(&mut self, tokens: &mut Tokens<'a>) -> Result<u32, ParseError> {
-        let (name, offset) = tokens
-            .word_or("expected a node name after `->` or `edge`")?;
+    pub(super) fn node_reference<'a>(
+        &mut self,
+        tokens: &mut Tokens<'a>,
+    ) -> Result<u32, ParseError> {
+        let (name, offset) = tokens.word_or("expected a node name after `->` or `edge`")?;
         if let Some(id) = self
             .graph
             .strings
@@ -140,8 +142,7 @@ impl<'s> Builder<'s> {
     }
 
     pub(super) fn condition<'a>(&mut self, tokens: &mut Tokens<'a>) -> Result<u32, ParseError> {
-        let (word, offset) = tokens
-            .word_or("expected a condition name after `when`")?;
+        let (word, offset) = tokens.word_or("expected a condition name after `when`")?;
         let name = self.intern(tokens, word)?;
         let binding = &mut self.bindings[name.index()];
         if let Some(id) = binding.condition {
@@ -157,7 +158,10 @@ impl<'s> Builder<'s> {
     }
 
     /// Reads a node's flags up to the end of its line. Returns `(looping, end, domain-flag span)`.
-    pub(super) fn node_flags<'a>(&mut self, tokens: &mut Tokens<'a>) -> Result<(bool, bool, Span), ParseError> {
+    pub(super) fn node_flags<'a>(
+        &mut self,
+        tokens: &mut Tokens<'a>,
+    ) -> Result<(bool, bool, Span), ParseError> {
         let start = self.graph.flags.len() as u32;
         let mut looping = false;
         let mut end = false;
@@ -352,7 +356,12 @@ impl<'s> Builder<'s> {
     }
 
     /// Reads one arm's `-> tag` and annotations, then stores it.
-    pub(super) fn arm<'a>(&mut self, tokens: &mut Tokens<'a>, condition: Option<u32>, offset: usize) -> Result<(), ParseError> {
+    pub(super) fn arm<'a>(
+        &mut self,
+        tokens: &mut Tokens<'a>,
+        condition: Option<u32>,
+        offset: usize,
+    ) -> Result<(), ParseError> {
         tokens.expect(TokenKind::Arrow)?;
         let (tag, _) = tokens.word_or("expected a tag name after `->`")?;
         let tag = self.intern(tokens, tag)?;
@@ -368,12 +377,14 @@ impl<'s> Builder<'s> {
         )
     }
 
-    pub(super) fn annotations<'a>(&mut self, tokens: &mut Tokens<'a>) -> Result<Range<usize>, ParseError> {
+    pub(super) fn annotations<'a>(
+        &mut self,
+        tokens: &mut Tokens<'a>,
+    ) -> Result<Range<usize>, ParseError> {
         let start = self.graph.annotations.len();
         while tokens.at(TokenKind::At)? {
             tokens.expect(TokenKind::At)?;
-            let (key, offset) = tokens
-                .word_or("expected an annotation key after `@`")?;
+            let (key, offset) = tokens.word_or("expected an annotation key after `@`")?;
             let key = self.annotation_key(tokens, key, offset)?;
             let value = if tokens.at(TokenKind::Colon)? {
                 tokens.expect(TokenKind::Colon)?;
@@ -392,7 +403,12 @@ impl<'s> Builder<'s> {
         Ok(start..self.graph.annotations.len())
     }
 
-    pub(super) fn annotation_key<'a>(&mut self, tokens: &mut Tokens<'a>, key: &str, offset: usize) -> Result<StringId, ParseError> {
+    pub(super) fn annotation_key<'a>(
+        &mut self,
+        tokens: &mut Tokens<'a>,
+        key: &str,
+        offset: usize,
+    ) -> Result<StringId, ParseError> {
         // Preserve invalid-key diagnostics even when interner storage is exhausted.
         let id = self.intern(tokens, key).map_err(|error| {
             if key.split('.').all(valid_name) {

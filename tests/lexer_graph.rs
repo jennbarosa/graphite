@@ -37,7 +37,10 @@ fn dsl_files(directory: &Path, found: &mut Vec<PathBuf>) {
         let path = entry.unwrap().path();
         if path.is_dir() {
             dsl_files(&path, found);
-        } else if path.extension().is_some_and(|extension| extension == "graphite") {
+        } else if path
+            .extension()
+            .is_some_and(|extension| extension == "graphite")
+        {
             found.push(path);
         }
     }
