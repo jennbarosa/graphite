@@ -38,6 +38,8 @@ pub enum Command {
         allow: Option<PathBuf>,
         /// Each entry is one debugger command line, run in order.
         commands: Vec<String>,
+        /// Each entry is `<task>=<outcomes>`: a stub for the durable engine's run of the graph.
+        simulate: Vec<String>,
     },
     /// Runs the first graph under the durable engine. `runner` names a module whose default
     /// export is the task runner; without it, every task settles as `none`.
@@ -91,6 +93,7 @@ struct Options {
     key: Option<String>,
     seen: Option<PathBuf>,
     until_passed: Option<u32>,
+    simulate: Vec<String>,
 }
 
 pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> {
@@ -183,6 +186,7 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
                     .map_err(|_| format!("--until-passed needs a whole number, got {text}"))?;
                 options.until_passed = Some(count);
             }
+            "--simulate" => options.simulate.push(value(&mut rest_args, "--simulate")?),
             flag if flag.starts_with("--") => return Err(format!("unknown option {flag}")),
             _ => positionals.push(arg),
         }
@@ -209,8 +213,12 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
         key,
         seen,
         until_passed,
+        simulate,
     } = options;
     let front_end_given = front_end.is_some();
+    if verb != "debug" {
+        refuse(!simulate.is_empty(), "--simulate", &verb)?;
+    }
     if verb != "run" {
         let run_only = [
             (input_data.is_some(), "--input"),
@@ -302,6 +310,12 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
         }
         "debug" => {
             refuse_run_flags(durable, &state, &runner, &verb)?;
+            if !simulate.is_empty() && !rest.is_empty() {
+                return Err(
+                    "debug --simulate takes no commands: each stub decides its task's outcome"
+                        .into(),
+                );
+            }
             Ok(Command::Debug {
                 input,
                 front_end,
@@ -309,6 +323,7 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
                 out,
                 allow,
                 commands: rest,
+                simulate,
             })
         }
         _ => Err(help::OVERVIEW.to_string()),

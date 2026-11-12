@@ -65,3 +65,12 @@ export interface StateStore {
 	): void;
 	withLock<T>(body: () => T | Promise<T>): Promise<T>;
 }
+
+/** The parts of the generated graph module the durable entry points use. */
+export interface GraphLike {
+	readonly data: { readonly nodeCount: number };
+	nodeName(id: number): string;
+	nodeAnnotations(node: string): readonly { key: string; value?: string }[];
+	nodeFlags(node: string): readonly string[];
+	conditionId(name: string): number;
+}

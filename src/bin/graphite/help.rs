@@ -21,7 +21,10 @@ pub const COMMANDS: &[(&str, &[&str])] = &[
     ("check", &["--frontend", "--allow", "--json"]),
     ("compile", &["--out", "--frontend", "--allow"]),
     ("inspect", &["--json"]),
-    ("debug", &["--frontend", "--graph", "--out", "--allow"]),
+    (
+        "debug",
+        &["--frontend", "--graph", "--out", "--allow", "--simulate"],
+    ),
     (
         "run",
         &[
@@ -59,6 +62,7 @@ pub fn takes_value(option: &str) -> bool {
             | "--key"
             | "--seen"
             | "--until-passed"
+            | "--simulate"
     )
 }
 
@@ -104,10 +108,17 @@ The runner is code that runs with your permissions. Use only runners you wrote o
         }
         "debug" => {
             "usage: graphite debug <file.dsl> [--frontend typescript] [--graph <name>] [--out <dir>] [--allow <list.toml>] [command...]
+       graphite debug <file.dsl> --simulate <task>=<outcomes> [--simulate ...] [--allow <list.toml>]
 
 Opens a debugger on the first graph, or on --graph. Each argument after the file is one
 command. Without commands, the debugger reads them from standard input.
-Commands: show, set <cond> on|off, finish, step, choose <choice>, history, reset."
+Commands: show, set <cond> on|off, finish, step, choose <choice>, history, reset.
+
+--simulate runs the graph under the durable engine without running any task. Each stub names a
+task and a comma list of outcomes: pass, fail, none, or throw (the call throws). Each call of
+the task takes the next outcome, and the last one repeats. A task with no stub settles as pass.
+The run prints each stage it enters and each task's outcome, then how it ended. It exits 0 when
+the run ends, and 1 when it stalls or errors. A stall names the node with no route taken."
         }
         "inspect" => {
             "usage: graphite inspect <file.dsl> [--json]

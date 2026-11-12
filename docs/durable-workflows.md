@@ -72,6 +72,8 @@ graphite run examples/workflow/workflow.dsl \
 - `--state` defaults to the file's name with `.state.json`, beside the file.
 - `--runner` is optional. Without it, every task settles as `none`.
 - `--durable` is accepted and does nothing. `run` is always durable.
+- To check the graph's routes before any task runs, use `graphite debug --simulate` (see
+  [checking routes](#checking-routes-without-running-tasks)).
 
 > **Security.** `--runner` runs its file as code with your user's permissions. Use only runners
 > you wrote or have reviewed.
@@ -96,9 +98,10 @@ lint = ["python3", "tools/lint.py"]
 graphite run review.dsl --tasks tasks.toml
 ```
 
-A task's command gets one JSON object on stdin, `{ "task", "key", "attempt", "input", "failure" }`.
+A task's command gets one JSON object on stdin, `{ "task", "key", "attempt", "input", "failure", "outputs" }`.
 `input` is the run's input, or `null`. `failure` is the run's last failed stage, as
-`context.failure` would show it, or `null`. The command reports one JSON object on stdout, with the
+`context.failure` would show it, or `null`. `outputs` is the directory that holds the earlier stages'
+outputs as `<node>.json`, or `null` when the store keeps none. The command reports one JSON object on stdout, with the
 same shape a runner returns:
 
 ```json
@@ -167,9 +170,10 @@ things keep the engine from doing the same work twice:
 
 - **Dedupe.** `--key` names the item field that identifies it. The key of each item started is written
   to the seen file, which defaults to `<state>.seen.json`. The file holds one key per line, appended and
-fsynced as each item starts, so an old JSON-array seen file must be deleted before it is reused. A key
-already there is skipped. Keys must be
-  letters, digits, dots, dashes or underscores, since each one is also a file name.
+  fsynced as each item starts, so an old JSON-array seen file must be deleted before it is reused. A key
+  already there is skipped. Keys must be letters, digits, dots, dashes or underscores, since each one is
+  also a file name. A line cut short by a crash is dropped, and the file is cut back to its last complete
+  line before the next key is appended, so a torn line never joins the next key.
 - **Counter.** `--until-passed N` stops starting items once N have ended on a passing stage. An item
   ends on a passing stage when its end node's own task returns `pass`.
 
@@ -203,9 +207,11 @@ The run log prints the detail after the outcome, for example
 - **Checkpoints.** The state is saved after every result, in `<state>` and the results in
   `<state>.results`. Running the same command again resumes where it stopped.
 - **Outcomes.** `pass` and `fail` set the `passed` and `failed` conditions when the graph declares
-  them. `none` sets neither. A node without a task is settled as `none`.
+  them. `none` sets neither. An `error` sets `errored` when the graph declares it. A node without a task
+  is settled as `none`.
 - **Retries.** Nodes flagged `retry` get three attempts when a task throws. A task that still
-  fails stops the run with an error naming its key.
+  fails stops the run with an error naming its key, unless the graph declares `errored`, which routes
+  it instead (see [error routing](#error-routing)).
 - **At least once.** A task that was running when the process died runs again on resume, with the
   same `key`. Tasks with external effects must dedupe on `key`.
 - **Timeouts.** A task that exceeds `taskTimeoutMs` (default 60 s) counts as a failed attempt. The
@@ -215,8 +221,51 @@ The run log prints the detail after the outcome, for example
 
 A run stops with `"status":"stalled"` when no edge can be taken and no task is running. The usual
 cause is a gate on a condition that no task sets. A gate such as `when keyup` waits for the engine;
-in a durable run, only `passed` and `failed` are set for you. If your graph needs other
-conditions, use the [TypeScript API](typescript.md) rather than `run`.
+in a durable run, the engine sets `passed`, `failed` and `errored` (when declared) for you. If your
+graph needs other conditions, use the [TypeScript API](typescript.md) rather than `run`.
+[`--simulate`](#checking-routes-without-running-tasks) finds a stall like this before a run does.
+
+## Checking routes without running tasks
+
+`graphite debug --simulate` runs the same engine over the graph with each task's outcome stubbed, so
+no task code runs. It finds routing mistakes, such as a gate on a condition no task sets, or a loop
+that never leaves, before a run does:
+
+```sh
+graphite debug examples/workflow/workflow.dsl --allow examples/workflow/workflow.toml \
+  --simulate lint=fail,pass
+```
+
+```text
+no stub, so pass: write, fix, deploy
+enter draft
+  write -> pass
+enter check
+  lint -> fail
+enter fix
+  fix -> pass
+enter check
+  lint -> pass
+enter ship
+  deploy -> pass
+ended at ship, outcome pass, after 4 transitions
+```
+
+- Each `--simulate` is `<task>=<outcomes>`. Outcomes are `pass`, `fail`, `none` or `throw`, and
+  `throw` makes the call throw, so retry and error routing apply. Each call of a task takes the next
+  outcome in its list, and the last one repeats. So `lint=fail,pass` fails the first check and passes
+  the second. Repeat the flag for more tasks.
+- A task with no stub settles as `pass`. The first line lists those tasks, so a missed stub is visible.
+- A task name that is not in the graph is refused, which catches typos.
+- A simulated run stops after 10,000 transitions, and reports a loop that never ends as an error. The
+  output shows at most 400 event lines, then says that more were left out.
+- A run that stalls names the node it stopped at, for example `stalled at a: no edge from it is taken`.
+- It exits 0 when the run ends, and 1 when it stalls, errors, or a stub is invalid.
+- `--simulate` belongs to `debug` alone, takes no commands, and runs the TypeScript durable engine, so
+  the front end must be `typescript`, the default.
+
+A simulation checks the routes for the outcomes you give it. It does not run the task code, so it
+cannot show what a task returns for real inputs.
 
 The durable engine API (`runDurable`, `fileStore`, `runLog`) is documented in
 [`engine.ts`](../src/frontend/typescript/durable/engine.ts) and [`run-log.ts`](../src/frontend/typescript/durable/run-log.ts).

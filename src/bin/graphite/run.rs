@@ -5,8 +5,8 @@
 use std::ffi::OsString;
 use std::path::Path;
 
-use graphite::frontend::registry;
 use graphite::frontend::Module;
+use graphite::frontend::registry;
 use graphite::pipeline::write_modules;
 
 use crate::allow::Allowlist;

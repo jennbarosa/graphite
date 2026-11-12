@@ -18,9 +18,18 @@
 
 import { createHash } from 'node:crypto';
 import { dirname, join, resolve } from 'node:path';
-import type { Detail, Outcome, RunnerReport, StateStore, StoredOutcome, StoredResult } from './contract';
+import type {
+	Detail,
+	GraphLike,
+	Outcome,
+	RunnerReport,
+	StateStore,
+	StoredOutcome,
+	StoredResult,
+} from './contract';
 import { MAX_DETAIL_CODE, MAX_DETAIL_DATA_BYTES, MAX_DETAIL_MESSAGE } from './contract';
 import { capMessage, isDetail, isOutcome, isRecord, normalizeReport } from './report';
+import { taskOf } from './graph-checks';
 import { fileStore } from './store';
 
 export { MAX_DETAIL_CODE, MAX_DETAIL_DATA_BYTES, MAX_DETAIL_MESSAGE } from './contract';
@@ -201,15 +210,6 @@ export async function retryFailedTask(
 		}
 		store.recordResult(key, sequence, undefined);
 	});
-}
-
-/** The parts of the generated graph module this engine uses. */
-interface GraphLike {
-	readonly data: { readonly nodeCount: number };
-	nodeName(id: number): string;
-	nodeAnnotations(node: string): readonly { key: string; value?: string }[];
-	nodeFlags(node: string): readonly string[];
-	conditionId(name: string): number;
 }
 
 /** The parts of the generated run this engine uses. */
@@ -647,16 +647,6 @@ function parseFailure(value: unknown): StageFailure | undefined {
 
 function sequenceOf(key: string): number {
 	return Number(key.slice(0, key.indexOf(':')));
-}
-
-function taskOf(
-	graph: GraphLike,
-	node: string,
-	annotation: string
-): string | undefined {
-	return graph
-		.nodeAnnotations(node)
-		.find((entry) => entry.key === annotation)?.value;
 }
 
 async function attempt(

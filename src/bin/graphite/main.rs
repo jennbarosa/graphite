@@ -159,6 +159,7 @@ fn dispatch(command: Command) -> Result<(), String> {
             out,
             allow,
             commands,
+            simulate,
         } => debug::run(
             &input,
             &front_end,
@@ -166,6 +167,7 @@ fn dispatch(command: Command) -> Result<(), String> {
             out.as_deref(),
             allow.as_deref(),
             &commands,
+            &simulate,
         ),
         Command::Doctor { .. } | Command::Check { .. } | Command::Inspect { .. } => {
             unreachable!("handled in run")

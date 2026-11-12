@@ -14,6 +14,8 @@ import { type CommandTable, commandRunner } from './commands';
 import { type DurableOptions, type Runner, runDurable } from './engine';
 import { fanOut } from './fanout';
 import { runLog } from './run-log';
+import type { GraphLike } from './contract';
+import { outcomeConditionsOf, taskNames } from './graph-checks';
 
 const USAGE =
 	'usage: cli.ts <graph.ts> <state.json> [--runner <tasks.ts> | --tasks <tasks.json>] [--input <input.json>] [--each <item.ts> --key <field>]';
@@ -81,7 +83,7 @@ const statePathResolved = resolve(statePath);
 
 /** The options for one run of `g` from `module`, with the state file and input given. */
 const optionsFor = (
-	g: unknown,
+	g: GraphLike,
 	module: string,
 	stateFile: string,
 	runInput: unknown
@@ -132,19 +134,6 @@ async function pickRunner(
 	};
 }
 
-/** The outcome conditions a graph needs: pass and fail, and errored when declared. */
-function outcomeConditionsOf(
-	g: unknown
-): { pass: string; fail: string; error?: string } | undefined {
-	const graph = g as { conditionId(name: string): number };
-	if (!declares(graph, 'passed') || !declares(graph, 'failed')) return undefined;
-	return {
-		pass: 'passed',
-		fail: 'failed',
-		...(declares(graph, 'errored') ? { error: 'errored' } : {}),
-	};
-}
-
 /** The value after `name`, or undefined when the flag is absent. */
 function flag(list: string[], name: string): string | undefined {
 	const index = list.indexOf(name);
@@ -171,35 +160,6 @@ function parseCount(text: string): number {
 		process.exit(2);
 	}
 	return value;
-}
-
-/** Each task's node and name, for the nodes that have one. */
-function taskNames(
-	graph: {
-		data: { nodeCount: number };
-		nodeName(id: number): string;
-		nodeAnnotations(node: string): readonly { key: string; value?: string }[];
-	},
-	annotation: string
-): { name: string; label: string }[] {
-	const found: { name: string; label: string }[] = [];
-	for (let id = 0; id < graph.data.nodeCount; id++) {
-		const node = graph.nodeName(id);
-		const name = graph
-			.nodeAnnotations(node)
-			.find((entry) => entry.key === annotation)?.value;
-		if (name !== undefined) found.push({ name, label: `${node} (${name})` });
-	}
-	return found;
-}
-
-function declares(graph: { conditionId(name: string): number }, name: string): boolean {
-	try {
-		graph.conditionId(name);
-		return true;
-	} catch {
-		return false;
-	}
 }
 
 async function loadRunner(path: string): Promise<Runner> {

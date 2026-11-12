@@ -29,6 +29,18 @@ pub const FILES: &[(&str, &str)] = &[
         include_str!("../../../src/frontend/typescript/durable/contract.ts"),
     ),
     (
+        "durable/graph-checks.ts",
+        include_str!("../../../src/frontend/typescript/durable/graph-checks.ts"),
+    ),
+    (
+        "durable/stubs.ts",
+        include_str!("../../../src/frontend/typescript/durable/stubs.ts"),
+    ),
+    (
+        "durable/simulate.ts",
+        include_str!("../../../src/frontend/typescript/durable/simulate.ts"),
+    ),
+    (
         "durable/engine.ts",
         include_str!("../../../src/frontend/typescript/durable/engine.ts"),
     ),
@@ -52,6 +64,9 @@ pub const FILES: &[(&str, &str)] = &[
 
 /// The durable engine's entry point, relative to the bundle root.
 pub const RUN_ENTRY: &str = "durable/cli.ts";
+
+/// The simulated-run script `debug --simulate` runs, relative to the bundle root.
+pub const SIMULATE_ENTRY: &str = "durable/simulate.ts";
 
 /// Writes the bundle into a new private scratch directory and returns its root. The caller removes
 /// the directory when the run is over.

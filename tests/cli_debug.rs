@@ -7,7 +7,126 @@ mod bun;
 #[path = "support/cli.rs"]
 mod cli;
 
-use cli::{graphite, manifest, scratch, stderr, stdout, walk_spec};
+use cli::{dsl, graphite, manifest, scratch, stderr, stdout, walk_spec};
+
+/// A graph where task `t` fails and nothing routes the failure: the run stalls at `a`.
+const STALLS_ON_FAILURE: &str = "graph g\n  node a @task:t\n  node b\n  node c end\n\n  edge a -> b when passed\n  edge b -> c when failed\n";
+
+/// The review example, with its allowlist, debugged with `extra` arguments.
+fn simulate_review(extra: &[&str]) -> std::process::Output {
+    let example = manifest().join("examples/workflow/workflow.dsl");
+    let allow = manifest().join("examples/workflow/workflow.toml");
+    let mut args: Vec<std::ffi::OsString> = vec![
+        "debug".into(),
+        example.into_os_string(),
+        "--allow".into(),
+        allow.into_os_string(),
+    ];
+    args.extend(extra.iter().map(|arg| (*arg).into()));
+    graphite(args)
+}
+
+#[test]
+fn simulate_walks_the_review_graph_to_its_end_without_running_tasks() {
+    let output = simulate_review(&["--simulate", "lint=fail,pass"]);
+    assert!(output.status.success(), "{}", stderr(&output));
+    let text = stdout(&output);
+    assert!(
+        text.starts_with("no stub, so pass: write, fix, deploy\n"),
+        "{text}"
+    );
+    // lint fails once, so the graph goes around the fix loop once: four edges in all, then ships.
+    assert!(
+        text.contains("enter fix\n  fix -> pass\nenter check\n  lint -> pass\nenter ship\n"),
+        "{text}"
+    );
+    assert!(
+        text.trim_end()
+            .ends_with("ended at ship, outcome pass, after 4 transitions"),
+        "{text}"
+    );
+}
+
+#[test]
+fn simulate_reports_the_node_a_stall_leaves_behind() {
+    let spec = dsl("cli-debug-stall", STALLS_ON_FAILURE);
+    let output = graphite([
+        "debug".as_ref(),
+        spec.as_os_str(),
+        "--simulate".as_ref(),
+        "t=fail".as_ref(),
+    ]);
+    assert_eq!(output.status.code(), Some(1), "{}", stderr(&output));
+    assert!(
+        stdout(&output).contains("stalled at a: no edge from it is taken"),
+        "{}",
+        stdout(&output)
+    );
+}
+
+#[test]
+fn simulate_stops_a_loop_that_never_ends_at_the_transition_limit() {
+    let output = simulate_review(&["--simulate", "lint=fail"]);
+    assert_eq!(output.status.code(), Some(1), "{}", stderr(&output));
+    let text = stdout(&output);
+    assert!(text.contains("... more events not shown"), "{text}");
+    assert!(
+        text.contains("run reached maxTransitions (10000)"),
+        "{text}"
+    );
+}
+
+#[test]
+fn simulate_refuses_an_unknown_task_and_an_unknown_outcome() {
+    let spec = dsl("cli-debug-stubs", STALLS_ON_FAILURE);
+    let unknown = graphite([
+        "debug".as_ref(),
+        spec.as_os_str(),
+        "--simulate".as_ref(),
+        "nope=pass".as_ref(),
+    ]);
+    assert_eq!(unknown.status.code(), Some(1));
+    assert!(
+        stderr(&unknown).contains("no task \"nope\" in the graph; its tasks are t"),
+        "{}",
+        stderr(&unknown)
+    );
+
+    let outcome = graphite([
+        "debug".as_ref(),
+        spec.as_os_str(),
+        "--simulate".as_ref(),
+        "t=maybe".as_ref(),
+    ]);
+    assert!(
+        stderr(&outcome).contains("must be <task>=<outcomes>"),
+        "{}",
+        stderr(&outcome)
+    );
+}
+
+#[test]
+fn simulate_takes_no_commands_and_belongs_to_debug_alone() {
+    let spec = dsl("cli-debug-flags", STALLS_ON_FAILURE);
+    let with_commands = graphite([
+        "debug".as_ref(),
+        spec.as_os_str(),
+        "--simulate".as_ref(),
+        "t=pass".as_ref(),
+        "finish".as_ref(),
+    ]);
+    assert_eq!(with_commands.status.code(), Some(2));
+    assert!(stderr(&with_commands).contains("debug --simulate takes no commands"));
+
+    let elsewhere = graphite([
+        "check".as_ref(),
+        spec.as_os_str(),
+        "--simulate".as_ref(),
+        "t=pass".as_ref(),
+    ]);
+    assert_eq!(elsewhere.status.code(), Some(2));
+    assert!(stderr(&elsewhere).contains("check does not take --simulate"));
+}
 
 #[test]
 fn runs_the_commands_against_the_first_graph() {
@@ -202,4 +321,75 @@ fn graphite_js_runner_selects_the_runtime() {
         .unwrap();
     assert!(working.status.success(), "{}", stderr(&working));
     assert!(stdout(&working).contains("node windup"));
+}
+
+#[test]
+fn simulate_names_a_graph_whose_tasks_have_no_pass_and_fail_routes() {
+    let spec = dsl(
+        "cli-debug-no-routes",
+        "graph g\n  node a @task:t\n  node b end\n\n  edge a -> b when passed\n",
+    );
+    let output = graphite([
+        "debug".as_ref(),
+        spec.as_os_str(),
+        "--simulate".as_ref(),
+        "t=pass".as_ref(),
+    ]);
+    assert!(!output.status.success());
+    assert!(
+        stderr(&output).contains(
+            "simulate: the graph has tasks (node \"a\" among them), so it needs outcomeConditions"
+        ),
+        "{}",
+        stderr(&output)
+    );
+}
+
+#[test]
+fn a_thrown_task_takes_the_errored_route_when_the_graph_declares_it() {
+    let spec = dsl(
+        "cli-debug-errored",
+        "graph g\n  node a @task:t\n  node b end\n  node c end\n\n  edge a -> b when passed\n  edge a -> c when failed\n  edge a -> c when errored\n",
+    );
+    let output = graphite([
+        "debug".as_ref(),
+        spec.as_os_str(),
+        "--simulate".as_ref(),
+        "t=throw".as_ref(),
+    ]);
+    assert!(output.status.success(), "{}", stderr(&output));
+    let text = stdout(&output);
+    assert!(text.contains("  t -> error\n"), "{text}");
+    assert!(
+        text.trim_end()
+            .ends_with("ended at c, outcome none, after 1 transitions"),
+        "{text}"
+    );
+}
+
+#[test]
+fn simulate_writes_the_generated_modules_to_out_when_given() {
+    let example = manifest().join("examples/workflow/workflow.dsl");
+    let allow = manifest().join("examples/workflow/workflow.toml");
+    let out = scratch("cli-debug-simulate-out");
+    let output = graphite([
+        "debug".as_ref(),
+        example.as_os_str(),
+        "--allow".as_ref(),
+        allow.as_os_str(),
+        "--out".as_ref(),
+        out.as_os_str(),
+        "--simulate".as_ref(),
+        "lint=pass".as_ref(),
+    ]);
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert!(std::fs::read_dir(&out).unwrap().count() > 0);
+}
+
+#[test]
+fn simulate_needs_a_value() {
+    let spec = dsl("cli-debug-no-value", STALLS_ON_FAILURE);
+    let output = graphite(["debug".as_ref(), spec.as_os_str(), "--simulate".as_ref()]);
+    assert_eq!(output.status.code(), Some(2));
+    assert!(stderr(&output).contains("--simulate needs a value"));
 }

@@ -10,7 +10,11 @@ change the interface.
 ### Added
 
 - With `--tasks`, the manifest's `[tasks]` keys are the allowed task names, so the allowlist can list only
-  node flags. The allowlist's `[annotations]` table is optional.
+  node flags. The allowlist's `[annotations]` table is optional. An allowlist with a `[tasks]` section is
+  refused: commands belong in the manifest.
+- `graphite debug --simulate <task>=<outcomes>` runs the durable engine over a graph with each task's
+  outcome stubbed (`pass`, `fail`, `none` or `throw`), so its routes can be checked before any task runs.
+  It reports each stage and where a run stalls, and stops a loop after 10,000 transitions.
 - Fan-out: `graphite run list.dsl --each item.dsl --key domain` runs the item graph once per item the list graph
   produces, with a seen file to skip items already started and `--until-passed N` to stop after N pass.
 - Stage outputs: a task returns `output`, and later tasks read it with `context.outputs.read(node)`. The end node's
@@ -20,7 +24,7 @@ change the interface.
   the task context as JSON on stdin and reports its outcome as JSON on stdout.
 - `graphite run --input data.json` gives every task the JSON value as `context.input`. A resumed run
   with a different input is refused.
-- Durable runners can report a detail with an outcome (`{ outcome, detail }`). The host stores it,
+- Durable runners can report a detail with an outcome (`{ outcome, detail }`). The engine stores it,
   logs it, and passes the most recent failed stage to later tasks as `context.failure`, including
   after a resume.
 
@@ -30,6 +34,14 @@ change the interface.
   load, but a state file written by this version cannot be resumed by an earlier one.
 - `StateStore` records and loads results with their detail, so custom stores must store the result
   object rather than the bare outcome.
+- The durable runner moved from `host/` to `src/frontend/typescript/durable/`, and `host/durable.ts` is
+  now `engine.ts`. Its `HostEvent` type is `RunEvent`. Code that imported these from the old paths must
+  update its imports.
+
+### Fixed
+
+- A seen file whose last line was cut short by a crash could make the next key join that line, so an
+  item could be started again. The torn line is now cut before the next key is appended.
 
 ## [0.1.0] - 2026-11-12
 
