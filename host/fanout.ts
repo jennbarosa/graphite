@@ -5,8 +5,8 @@
 // - `untilPassed` stops starting items once that many have ended on a passing stage.
 // The list graph must end with an array as its output. Each item is a JSON object with a string
 // field named by `key`, which is also the item's name on disk, so it must be a plain identifier.
-import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
-import { type DurableOptions, type Result, runDurable } from './durable';
+import { existsSync, readFileSync } from 'node:fs';
+import { type DurableOptions, type Result, appendLine, runDurable } from './durable';
 
 export interface FanOutOptions {
 	/** The list graph's run. Its end output is the array of items. */
@@ -50,7 +50,7 @@ export async function fanOut(options: FanOutOptions): Promise<FanOutSummary> {
 		if (seen.has(key)) continue;
 		// Recorded before the item runs, so a crash mid-item does not start it again.
 		seen.add(key);
-		writeSeen(options.seenFile, seen);
+		appendLine(options.seenFile, key);
 		started++;
 		const result = await runDurable(
 			options.item(item, options.itemStateFile(key))
@@ -74,18 +74,16 @@ function keyOf(item: unknown, field: string): string {
 	return key;
 }
 
+/** The keys in the seen file, one per line. A last line cut short by a crash is ignored. */
 function readSeen(file: string): Set<string> {
 	if (!existsSync(file)) return new Set();
-	const value: unknown = JSON.parse(readFileSync(file, 'utf8'));
-	if (!Array.isArray(value) || !value.every((key) => typeof key === 'string')) {
-		throw new Error(`seen file ${file} must be a JSON array of item keys`);
+	const lines = readFileSync(file, 'utf8').split('\n');
+	// The last piece is what follows the final newline: empty, or a line a crash cut short.
+	lines.pop();
+	for (const line of lines) {
+		if (!KEY.test(line)) {
+			throw new Error(`seen file ${file} has a line that is not an item key: ${line}`);
+		}
 	}
-	return new Set(value as string[]);
-}
-
-/** Writes the seen file atomically, so a crash leaves the old or the new list, never half of one. */
-function writeSeen(file: string, seen: Set<string>): void {
-	const temp = `${file}.${process.pid}.tmp`;
-	writeFileSync(temp, JSON.stringify([...seen]));
-	renameSync(temp, file);
+	return new Set(lines);
 }

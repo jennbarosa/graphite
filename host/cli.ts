@@ -72,15 +72,10 @@ for (const g of itemGraph === undefined ? [graph] : [graph, itemGraph]) {
 	}
 }
 
-const runner: Runner =
-	table !== undefined
-		? commandRunner(table)
-		: runnerPath !== undefined
-			? await loadRunner(runnerPath)
-			: async () => {
-					throw new Error('no runner, and the graph has no tasks');
-				};
+const runner = await pickRunner(table, runnerPath);
 const input = inputPath === undefined ? undefined : loadJson(inputPath);
+const modulePathResolved = resolve(modulePath);
+const statePathResolved = resolve(statePath);
 
 /** The options for one run of `g` from `module`, with the state file and input given. */
 const optionsFor = (
@@ -92,46 +87,59 @@ const optionsFor = (
 	modulePath: module,
 	stateFile,
 	runner,
-	...(runInput === undefined ? {} : { input: runInput }),
+	input: runInput,
 	taskAnnotation: 'task',
 	retryFlag: 'retry',
-	...conditionsOf(g),
+	outcomeConditions: outcomeConditionsOf(g),
 	onEvent: runLog(console.error),
 });
 
-if (itemGraph === undefined) {
+if (itemGraph === undefined || eachPath === undefined || keyField === undefined) {
 	const result = await runDurable(
-		optionsFor(graph, resolve(modulePath), resolve(statePath), input)
+		optionsFor(graph, modulePathResolved, statePathResolved, input)
 	);
 	console.log(JSON.stringify(result));
 	process.exit(result.status === 'ended' ? 0 : 1);
 }
 
 // Fan-out: the state path is a directory for the item states, and the seen file defaults beside it.
-const itemDir = `${resolve(statePath)}.items`;
+const itemDir = `${statePathResolved}.items`;
 mkdirSync(itemDir, { recursive: true });
+const eachModule = resolve(eachPath);
 const summary = await fanOut({
-	list: optionsFor(graph, resolve(modulePath), resolve(statePath), input),
-	item: (item, stateFile) => optionsFor(itemGraph, resolve(eachPath!), stateFile, item),
+	list: optionsFor(graph, modulePathResolved, statePathResolved, input),
+	item: (item, stateFile) => optionsFor(itemGraph, eachModule, stateFile, item),
 	itemStateFile: (key) => `${itemDir}/${key}.state.json`,
-	seenFile: seenPath === undefined ? `${resolve(statePath)}.seen.json` : resolve(seenPath),
-	key: keyField!,
+	seenFile: seenPath === undefined ? `${statePathResolved}.seen.json` : resolve(seenPath),
+	key: keyField,
 	...(untilPassed === undefined ? {} : { untilPassed }),
 	onItem: (key, result) => console.error(`[item] ${key} ${JSON.stringify(result)}`),
 });
 console.log(JSON.stringify(summary));
 process.exit(summary.status === 'ended' ? 0 : 1);
 
+/** The task runner: the task commands when given, else the runner module, else none. */
+async function pickRunner(
+	table: CommandTable | undefined,
+	runnerFile: string | undefined
+): Promise<Runner> {
+	if (table !== undefined) return commandRunner(table);
+	if (runnerFile !== undefined) return loadRunner(runnerFile);
+	return async () => {
+		throw new Error('no runner, and the graph has no tasks');
+	};
+}
+
 /** The outcome conditions a graph needs: pass and fail, and errored when declared. */
-function conditionsOf(g: unknown): { outcomeConditions?: { pass: string; fail: string; error?: string } } {
+function outcomeConditionsOf(
+	g: unknown
+): { pass: string; fail: string; error?: string } | undefined {
 	const graph = g as { conditionId(name: string): number };
-	if (!declares(graph, 'passed') || !declares(graph, 'failed')) return {};
+	if (!declares(graph, 'passed') || !declares(graph, 'failed')) return undefined;
 	return {
-		outcomeConditions: {
-			pass: 'passed',
-			fail: 'failed',
-			...(declares(graph, 'errored') ? { error: 'errored' } : {}),
-		},
+		pass: 'passed',
+		fail: 'failed',
+		...(declares(graph, 'errored') ? { error: 'errored' } : {}),
 	};
 }
 
@@ -171,14 +179,14 @@ function taskNames(
 		nodeAnnotations(node: string): readonly { key: string; value?: string }[];
 	},
 	annotation: string
-): { node: string; name: string; label: string }[] {
-	const found: { node: string; name: string; label: string }[] = [];
+): { name: string; label: string }[] {
+	const found: { name: string; label: string }[] = [];
 	for (let id = 0; id < graph.data.nodeCount; id++) {
 		const node = graph.nodeName(id);
 		const name = graph
 			.nodeAnnotations(node)
 			.find((entry) => entry.key === annotation)?.value;
-		if (name !== undefined) found.push({ node, name, label: `${node} (${name})` });
+		if (name !== undefined) found.push({ name, label: `${node} (${name})` });
 	}
 	return found;
 }
@@ -202,17 +210,11 @@ async function loadRunner(path: string): Promise<Runner> {
 
 /** Reads the task table `graphite run --tasks` wrote. */
 async function loadTable(path: string): Promise<CommandTable> {
-	const value: unknown = JSON.parse(readFileSync(path, 'utf8'));
-	if (
-		typeof value !== 'object' ||
-		value === null ||
-		typeof (value as { cwd?: unknown }).cwd !== 'string' ||
-		typeof (value as { commands?: unknown }).commands !== 'object' ||
-		(value as { commands?: unknown }).commands === null
-	) {
+	const table = loadJson(path) as Partial<CommandTable>;
+	if (typeof table.cwd !== 'string' || typeof table.commands !== 'object' || table.commands === null) {
 		throw new Error(`${path} is not a task table`);
 	}
-	return value as CommandTable;
+	return table as CommandTable;
 }
 
 /** Reads a JSON file. Any JSON value is allowed, including null. */

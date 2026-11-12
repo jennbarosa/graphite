@@ -90,7 +90,7 @@ struct Options {
     each: Option<PathBuf>,
     key: Option<String>,
     seen: Option<PathBuf>,
-    until_passed: Option<String>,
+    until_passed: Option<u32>,
 }
 
 pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> {
@@ -177,7 +177,11 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
             "--key" => options.key = Some(value(&mut rest_args, "--key")?),
             "--seen" => options.seen = Some(PathBuf::from(value(&mut rest_args, "--seen")?)),
             "--until-passed" => {
-                options.until_passed = Some(value(&mut rest_args, "--until-passed")?)
+                let text = value(&mut rest_args, "--until-passed")?;
+                let count = text
+                    .parse::<u32>()
+                    .map_err(|_| format!("--until-passed needs a whole number, got {text}"))?;
+                options.until_passed = Some(count);
             }
             flag if flag.starts_with("--") => return Err(format!("unknown option {flag}")),
             _ => positionals.push(arg),
@@ -208,12 +212,17 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
     } = options;
     let front_end_given = front_end.is_some();
     if verb != "run" {
-        refuse(input_data.is_some(), "--input", &verb)?;
-        refuse(tasks.is_some(), "--tasks", &verb)?;
-        refuse(each.is_some(), "--each", &verb)?;
-        refuse(key.is_some(), "--key", &verb)?;
-        refuse(seen.is_some(), "--seen", &verb)?;
-        refuse(until_passed.is_some(), "--until-passed", &verb)?;
+        let run_only = [
+            (input_data.is_some(), "--input"),
+            (tasks.is_some(), "--tasks"),
+            (each.is_some(), "--each"),
+            (key.is_some(), "--key"),
+            (seen.is_some(), "--seen"),
+            (until_passed.is_some(), "--until-passed"),
+        ];
+        for (given, flag) in run_only {
+            refuse(given, flag, &verb)?;
+        }
     }
     if json && !matches!(verb.as_str(), "check" | "inspect") {
         return Err(format!("{verb} does not take --json"));
@@ -278,13 +287,6 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
             if each.is_none() && (seen.is_some() || until_passed.is_some()) {
                 return Err("--seen and --until-passed apply to --each only".into());
             }
-            let until_passed = match until_passed {
-                Some(text) => Some(
-                    text.parse::<u32>()
-                        .map_err(|_| format!("--until-passed needs a whole number, got {text}"))?,
-                ),
-                None => None,
-            };
             Ok(Command::Run {
                 input,
                 state,

@@ -1118,4 +1118,21 @@ describe('durable host', () => {
 			'{"draft":"hello"}'
 		);
 	});
+
+	test('a wrapper saved before digests existed resumes with an input, without the mismatch check', async () => {
+		const files = scratch();
+		const stopped = await stopAtFix(files);
+		await retryFailedTask(fileStore(files.state), stopped.key);
+		const saved = JSON.parse(readFileSync(files.state, 'utf8'));
+		delete saved.snapshot.inputDigest;
+		writeFileSync(files.state, JSON.stringify(saved));
+		const resumed = await runDurable({
+			modulePath: graphModule,
+			...workflowNames,
+			stateFile: files.state,
+			input: { target: 'prospect-1' },
+			runner: async (task) => (task === 'lint' ? 'pass' : 'none'),
+		});
+		expect(resumed.status).toBe('ended');
+	});
 });

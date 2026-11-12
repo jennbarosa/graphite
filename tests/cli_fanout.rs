@@ -81,7 +81,7 @@ fn each_item_runs_once_and_a_second_run_starts_none() {
     );
     assert_eq!(
         std::fs::read_to_string(dir.join("state.json.seen.json")).unwrap(),
-        r#"["a.com","b.com"]"#
+        "a.com\nb.com\n"
     );
 
     let second = fan_out(&dir, &[]);

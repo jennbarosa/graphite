@@ -38,7 +38,7 @@ const DEFAULT_MAX_ATTEMPTS = 3;
 const DEFAULT_TASK_TIMEOUT_MS = 60_000;
 const READ_CHUNK_BYTES = 64 * 1024;
 /** Largest stage output, as UTF-8 JSON. */
-export const MAX_OUTPUT_BYTES = 1_048_576;
+const MAX_OUTPUT_BYTES = 1_048_576;
 /** Longest `detail.message` kept. A longer message is cut and ends with an ellipsis. */
 export const MAX_DETAIL_MESSAGE = 1_000;
 /** Longest `detail.code`. */
@@ -94,7 +94,7 @@ export interface OutputReader {
 	/** The directory outputs are kept in, for commands to read. Undefined for other stores. */
 	readonly directory: string | undefined;
 	/** The latest output the node's task saved, or undefined when it saved none. */
-	read(node: string): Promise<unknown>;
+	read(node: string): unknown;
 }
 
 /** A finished task's recorded result: its outcome, and the detail the runner gave, if any. */
@@ -208,15 +208,17 @@ export interface DurableOptions {
 	 * Conditions the host sets from a task's outcome. Required when the graph has tasks; the graph
 	 * must declare both. A graph without tasks may leave this out.
 	 */
-	readonly outcomeConditions?: {
-		readonly pass: string;
-		readonly fail: string;
-		/**
-		 * When given, a task that throws on every attempt sets this condition instead of stopping the
-		 * run, so the graph can route it with `when <error>`. Without it, such a task stops the run.
-		 */
-		readonly error?: string;
-	};
+	readonly outcomeConditions?:
+		| {
+				readonly pass: string;
+				readonly fail: string;
+				/**
+				 * When given, a task that throws on every attempt sets this condition instead of stopping the
+				 * run, so the graph can route it with `when <error>`. Without it, such a task stops the run.
+				 */
+				readonly error?: string;
+		  }
+		| undefined;
 }
 
 export type Result =
@@ -482,7 +484,7 @@ async function runStage(session: Session): Promise<Result | undefined> {
 			transitions: run.transitions,
 			node,
 			outcome,
-			...(output === undefined ? {} : { output }),
+			output,
 		};
 	}
 	run.finish();
@@ -555,7 +557,9 @@ async function settleTask(
 	const attempts = graph.nodeFlags(node).includes(options.retryFlag)
 		? (options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS)
 		: 1;
-	let report: RunnerReport;
+	// Only the attempt's own failure is caught here. A checkpoint or a store failure is not a task error.
+	let report: RunnerReport | undefined;
+	let failure = '';
 	try {
 		report = await attempt(
 			options,
@@ -566,42 +570,49 @@ async function settleTask(
 			outputsOf(session)
 		);
 	} catch (error) {
+		failure = errorText(error);
+	}
+	if (report === undefined) {
 		const result: StoredResult = {
 			outcome: 'error',
-			detail: { message: capMessage(errorText(error)) },
+			detail: { message: capMessage(failure) },
 		};
-		recordResult(session, key, result);
-		noteFailure(session, node, task, key, result);
-		if (routesErrors(session)) {
-			options.onEvent?.({
-				type: 'task-settled',
-				task,
-				key,
-				outcome: 'error',
-				detail: result.detail,
-				source: 'ran',
-			});
-			return result;
+		if (!routesErrors(session)) {
+			recordResult(session, key, result);
+			noteFailure(session, node, task, key, result);
+			throw new TaskFailure(`task ${task} failed: ${failure}`);
 		}
-		throw new TaskFailure(`task ${task} failed: ${errorText(error)}`);
+		return finishTask(session, node, task, key, result, undefined);
 	}
 	options.onCheckpoint?.('task-done', key);
 	const result: StoredResult =
 		report.detail === undefined
 			? { outcome: report.outcome }
 			: { outcome: report.outcome, detail: report.detail };
-	if (report.output !== undefined) {
+	return finishTask(session, node, task, key, result, report.output);
+}
+
+/** Saves the task's output, records its result, and reports it. Shared by every way a task settles. */
+function finishTask(
+	session: Session,
+	node: string,
+	task: string,
+	key: string,
+	result: StoredResult,
+	output: unknown
+): StoredResult {
+	if (output !== undefined) {
 		if (session.store.saveOutput === undefined) {
 			throw new Error(
 				`task ${task} returned an output, but the store cannot keep outputs`
 			);
 		}
 		// Saved before the result, so a crash between the two reruns the task and overwrites it.
-		session.store.saveOutput(node, report.output);
+		session.store.saveOutput(node, output);
 	}
 	recordResult(session, key, result);
 	noteFailure(session, node, task, key, result);
-	options.onEvent?.({
+	session.options.onEvent?.({
 		type: 'task-settled',
 		task,
 		key,
@@ -621,7 +632,7 @@ function routesErrors(session: Session): boolean {
 function outputsOf(session: Session): OutputReader {
 	return {
 		directory: session.store.outputDirectory,
-		read: async (node) => session.store.loadOutput?.(node),
+		read: (node) => session.store.loadOutput?.(node),
 	};
 }
 
@@ -702,11 +713,11 @@ function splitSnapshot(saved: unknown): {
 			inputDigest: undefined,
 		};
 	}
-	const digest = saved.inputDigest;
 	return {
 		runSnapshot: saved.run,
 		lastFailure: parseFailure(saved.lastFailure),
-		inputDigest: typeof digest === 'string' ? digest : null,
+		// Missing from wrappers saved before digests existed, which reads as undefined: accepted.
+		inputDigest: saved.inputDigest as string | null | undefined,
 	};
 }
 
@@ -1021,7 +1032,7 @@ function forEachLine(fd: number, visit: (line: string) => void): number {
 }
 
 /** Appends one line and makes it durable before returning. */
-function appendLine(file: string, line: string): void {
+export function appendLine(file: string, line: string): void {
 	const isNew = !existsSync(file);
 	const fd = openSync(file, 'a');
 	try {

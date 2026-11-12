@@ -37,25 +37,26 @@ pub struct FanOut<'a> {
 
 pub fn run(input: &Path, state: Option<&Path>, options: &Options<'_>) -> Result<(), String> {
     if let Some(path) = options.runner {
-        eprintln!(
-            "warning: --runner runs {} as code with your full user permissions: it can read your files, use the network, and see your secrets. Run only runners you wrote or have reviewed.",
-            path.display()
+        warn_as_code(
+            &format!("--runner runs {} as code", path.display()),
+            "runners",
         );
     }
     if let Some(path) = options.tasks {
-        eprintln!(
-            "warning: --tasks runs the commands in {} with your full user permissions: they can read your files, use the network, and see your secrets. Run only commands you wrote or have reviewed.",
-            path.display()
+        warn_as_code(
+            &format!("--tasks runs the commands in {}", path.display()),
+            "commands",
         );
     }
     // Read before anything is locked or written, so a bad manifest changes nothing.
     let task_table = options.tasks.map(tasks::table_json).transpose()?;
     let (_, graphs) = load::graphs(input, options.allow)?;
     let entry = load::select(&graphs, None)?;
-    let item_graphs = match &options.fan_out {
-        Some(fan) => Some(load::graphs(fan.each, options.allow)?.1),
-        None => None,
-    };
+    let item_graphs = options
+        .fan_out
+        .as_ref()
+        .map(|fan| load::graphs(fan.each, options.allow).map(|(_, graphs)| graphs))
+        .transpose()?;
     let frontend = load::front_end(registry::DURABLE_FRONT_END)?.frontend;
     let state = state.map_or_else(|| input.with_extension("state.json"), Path::to_path_buf);
     // The host locks the state file beside itself, so its directory must exist.
@@ -70,43 +71,75 @@ pub fn run(input: &Path, state: Option<&Path>, options: &Options<'_>) -> Result<
     let directory = scratch::create("graphite-run")?;
     let bundle = host_assets::materialize()?;
     let host = bundle.join(host_assets::HOST_ENTRY);
-    let result: Result<(), String> = (|| {
-        write_modules(frontend, &graphs, &directory).map_err(|error| error.to_string())?;
-        let module = directory.join(frontend.file_name(entry, Module::Index));
-        let mut args: Vec<OsString> = vec![module.into_os_string(), state.as_os_str().to_owned()];
-        if let (Some(fan), Some(item_graphs)) = (&options.fan_out, &item_graphs) {
-            let item_dir = directory.join("item");
-            write_modules(frontend, item_graphs, &item_dir).map_err(|error| error.to_string())?;
-            let item_entry = load::select(item_graphs, None)?;
-            let item_module = item_dir.join(frontend.file_name(item_entry, Module::Index));
-            args.extend(["--each".into(), item_module.into_os_string()]);
-            args.extend(["--key".into(), fan.key.into()]);
-            if let Some(seen) = fan.seen {
-                args.extend(["--seen".into(), seen.as_os_str().to_owned()]);
+
+    let mut args: Vec<OsString> = vec![];
+    let result = write_run_modules(frontend, &graphs, entry, &directory, &mut args, &state)
+        .and_then(|()| {
+            if let (Some(fan), Some(item_graphs)) = (&options.fan_out, &item_graphs) {
+                let item_dir = directory.join("item");
+                write_modules(frontend, item_graphs, &item_dir)
+                    .map_err(|error| error.to_string())?;
+                let item_entry = load::select(item_graphs, None)?;
+                let item_module = item_dir.join(frontend.file_name(item_entry, Module::Index));
+                push_flag(&mut args, "--each", Some(item_module.as_os_str()));
+                push_flag(&mut args, "--key", Some(fan.key.as_ref()));
+                push_flag(&mut args, "--seen", fan.seen.map(Path::as_os_str));
+                let until = fan
+                    .until_passed
+                    .map(|count| OsString::from(count.to_string()));
+                push_flag(&mut args, "--until-passed", until.as_deref());
             }
-            if let Some(until) = fan.until_passed {
-                args.extend(["--until-passed".into(), until.to_string().into()]);
+            push_flag(&mut args, "--runner", options.runner.map(Path::as_os_str));
+            push_flag(
+                &mut args,
+                "--input",
+                options.input_data.map(Path::as_os_str),
+            );
+            if let Some(table) = &task_table {
+                let file = directory.join("tasks.json");
+                std::fs::write(&file, table)
+                    .map_err(|error| format!("{}: {error}", file.display()))?;
+                push_flag(&mut args, "--tasks", Some(file.as_os_str()));
             }
-        }
-        if let Some(path) = options.runner {
-            args.extend(["--runner".into(), path.as_os_str().to_owned()]);
-        }
-        if let Some(path) = options.input_data {
-            args.extend(["--input".into(), path.as_os_str().to_owned()]);
-        }
-        if let Some(path) = &task_table {
-            let file = directory.join("tasks.json");
-            std::fs::write(&file, path).map_err(|error| format!("{}: {error}", file.display()))?;
-            args.extend(["--tasks".into(), file.into_os_string()]);
-        }
-        let status = js::launch(&host, &args)?;
-        if status.success() {
-            Ok(())
-        } else {
-            Err(format!("durable run did not end ({status})"))
-        }
-    })();
+            let status = js::launch(&host, &args)?;
+            if status.success() {
+                Ok(())
+            } else {
+                Err(format!("durable run did not end ({status})"))
+            }
+        });
     host_assets::discard(&bundle);
     let _ = std::fs::remove_dir_all(&directory);
     result
+}
+
+/// Writes the graph's modules, and starts the host's argument list with the module and state path.
+fn write_run_modules(
+    frontend: &dyn graphite::frontend::Frontend,
+    graphs: &[graphite::graph::CompiledGraph],
+    entry: &graphite::graph::CompiledGraph,
+    directory: &Path,
+    args: &mut Vec<OsString>,
+    state: &Path,
+) -> Result<(), String> {
+    write_modules(frontend, graphs, directory).map_err(|error| error.to_string())?;
+    let module = directory.join(frontend.file_name(entry, Module::Index));
+    args.push(module.into_os_string());
+    args.push(state.as_os_str().to_owned());
+    Ok(())
+}
+
+/// Appends `flag value` to the host's arguments, when there is a value.
+fn push_flag(args: &mut Vec<OsString>, flag: &str, value: Option<&std::ffi::OsStr>) {
+    if let Some(value) = value {
+        args.push(flag.into());
+        args.push(value.to_owned());
+    }
+}
+
+/// The warning for a flag that runs code. The code runs with the user's permissions, so say so.
+fn warn_as_code(what: &str, reviewed: &str) {
+    eprintln!(
+        "warning: {what} with your full user permissions: they can read your files, use the network, and see your secrets. Run only {reviewed} you wrote or have reviewed."
+    );
 }
