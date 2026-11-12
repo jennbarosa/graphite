@@ -15,6 +15,7 @@ import {
 	type Outcome,
 	type Runner,
 	type StateStore,
+	MAX_DETAIL_CODE,
 	MAX_DETAIL_DATA_BYTES,
 	MAX_DETAIL_MESSAGE,
 	type StageFailure,
@@ -92,6 +93,21 @@ function recorder(script: Array<Outcome | 'throw'> = []) {
 		return next;
 	};
 	return { runner, calls };
+}
+
+/** One line of the results file, as written. */
+interface RecordLine {
+	readonly key: string;
+	readonly sequence: number;
+	readonly outcome: string | null;
+	readonly detail?: { readonly message: string; readonly code?: string };
+}
+
+function recordsOf(files: Files): RecordLine[] {
+	return readFileSync(`${files.state}.results`, 'utf8')
+		.trim()
+		.split('\n')
+		.map((line) => JSON.parse(line) as RecordLine);
 }
 
 /** Runs the review workflow until its `fix` stage errors, so the run stops after a lint failure. */
@@ -922,5 +938,118 @@ describe('durable host', () => {
 		expect(lines).toContain(
 			'[task] lint fail (ran, key 1:check) — lint: two checks failed'
 		);
+	});
+
+	test('a task that throws stores its message as the error detail, capped like any detail', async () => {
+		const files = scratch();
+		const result = await runDurable({
+			modulePath: graphModule,
+			...workflowNames,
+			stateFile: files.state,
+			maxAttempts: 1,
+			runner: async (task) => {
+				if (task === 'lint') throw new Error('x'.repeat(MAX_DETAIL_MESSAGE + 10));
+				return 'none';
+			},
+		});
+		expect(result.status).toBe('error');
+		const record = recordsOf(files).find((line) => line.key === '1:check');
+		expect(record?.outcome).toBe('error');
+		expect(record?.detail?.message).toBe(`${'x'.repeat(MAX_DETAIL_MESSAGE - 1)}…`);
+		expect(record?.detail?.code).toBeUndefined();
+	});
+
+	test('a detail code over the limit, or not a string, is refused and the attempt fails', async () => {
+		for (const code of ['c'.repeat(MAX_DETAIL_CODE + 1), 7]) {
+			const files = scratch();
+			const result = await runDurable({
+				modulePath: graphModule,
+				...workflowNames,
+				stateFile: files.state,
+				maxAttempts: 1,
+				runner: async (task) =>
+					task === 'lint'
+						? JSON.parse(
+								JSON.stringify({ outcome: 'fail', detail: { message: 'x', code } })
+							)
+						: 'none',
+			});
+			expect(result.status).toBe('error');
+			if (result.status !== 'error') throw new Error('unreachable');
+			expect(result.error).toContain(
+				`code must be a string of at most ${MAX_DETAIL_CODE} characters`
+			);
+		}
+	});
+
+	test('a runner object whose outcome is not an outcome is an error', async () => {
+		const files = scratch();
+		const result = await runDurable({
+			modulePath: graphModule,
+			...workflowNames,
+			stateFile: files.state,
+			maxAttempts: 1,
+			runner: async (task) =>
+				task === 'lint' ? JSON.parse('{"outcome":"maybe"}') : 'none',
+		});
+		expect(result.status).toBe('error');
+		if (result.status !== 'error') throw new Error('unreachable');
+		expect(result.error).toContain('runner returned an object whose outcome is "maybe"');
+	});
+
+	test('a runner detail without a string message is an error', async () => {
+		const files = scratch();
+		const result = await runDurable({
+			modulePath: graphModule,
+			...workflowNames,
+			stateFile: files.state,
+			maxAttempts: 1,
+			runner: async (task) =>
+				task === 'lint'
+					? JSON.parse('{"outcome":"fail","detail":{"code":"lint"}}')
+					: 'none',
+		});
+		expect(result.status).toBe('error');
+		if (result.status !== 'error') throw new Error('unreachable');
+		expect(result.error).toContain('runner detail needs a string message');
+	});
+
+	test('a saved last failure that is missing its fields stops the resume, rather than being guessed at', async () => {
+		const files = scratch();
+		await stopAtFix(files);
+		const saved = JSON.parse(readFileSync(files.state, 'utf8'));
+		saved.snapshot.lastFailure = { node: 'check' };
+		writeFileSync(files.state, JSON.stringify(saved));
+		await expect(
+			runDurable({
+				modulePath: graphModule,
+				...workflowNames,
+				stateFile: files.state,
+				runner: async () => 'pass',
+			})
+		).rejects.toThrow('state file is malformed: lastFailure');
+	});
+
+	test('a results line with a non-object detail stops the resume as a damaged file', async () => {
+		const files = scratch();
+		await stopAtFix(files);
+		const sequence = recordsOf(files).at(-1)?.sequence ?? 0;
+		writeFileSync(
+			`${files.state}.results`,
+			`${readFileSync(`${files.state}.results`, 'utf8')}${JSON.stringify({
+				key: `${sequence}:fix`,
+				sequence,
+				outcome: 'pass',
+				detail: 5,
+			})}\n`
+		);
+		await expect(
+			runDurable({
+				modulePath: graphModule,
+				...workflowNames,
+				stateFile: files.state,
+				runner: async () => 'pass',
+			})
+		).rejects.toThrow(/results file .* is malformed/);
 	});
 });
