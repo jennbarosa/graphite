@@ -13,7 +13,7 @@ use std::io::{self, Write};
 
 use crate::frontend::layered::{GraphPlan, Layered, Syntax};
 use crate::frontend::layout::{ChoiceChunk, NodeChunk};
-use crate::frontend::registry::{Runtime, Target};
+use crate::frontend::registry::{Debugger, Runtime, Target};
 use crate::graph::CompiledGraph;
 
 /// File name of the runtime module. Every index imports it as `./graphite`.
@@ -41,7 +41,7 @@ pub const fn chunked<const SHIFT: u32>() -> TypeScript<SHIFT> {
 pub const TARGET: Target = Target {
     key: "typescript",
     frontend: &TYPESCRIPT,
-    debugger: Some("cli/debug.ts"),
+    debugger: Some(Debugger::Script("cli/debug.ts")),
     runtime: Some(Runtime::JavaScript),
 };
 

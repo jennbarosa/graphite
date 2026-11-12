@@ -7,14 +7,14 @@ mod bun;
 #[path = "support/cli.rs"]
 mod cli;
 
-use cli::{dsl, graphite, manifest, scratch, stderr, stdout, walk_spec};
+use cli::{debugging_front_ends, dsl, graphite, manifest, scratch, stderr, stdout, walk_spec};
 
 /// A graph where task `t` fails and nothing routes the failure: the run stalls at `a`.
 const STALLS_ON_FAILURE: &str = "graph g\n  node a @task:t\n  node b\n  node c end\n\n  edge a -> b when passed\n  edge b -> c when failed\n";
 
 /// The review example, with its allowlist, debugged with `extra` arguments.
 fn simulate_review(extra: &[&str]) -> std::process::Output {
-    let example = manifest().join("examples/workflow/workflow.dsl");
+    let example = manifest().join("examples/workflow/workflow.graphite");
     let allow = manifest().join("examples/workflow/workflow.toml");
     let mut args: Vec<std::ffi::OsString> = vec![
         "debug".into(),
@@ -131,29 +131,47 @@ fn simulate_takes_no_commands_and_belongs_to_debug_alone() {
 #[test]
 fn runs_the_commands_against_the_first_graph() {
     let spec = walk_spec();
-    let output = graphite([
-        "debug".as_ref(),
-        spec.as_os_str(),
-        "finish".as_ref(),
-        "step".as_ref(),
-    ]);
-    assert!(output.status.success(), "{}", stderr(&output));
-    assert!(stdout(&output).starts_with("node windup  status running  transitions 0  true: none"));
-    assert!(stdout(&output).contains("node going  status running  transitions 1"));
+    for front_end in debugging_front_ends() {
+        let output = graphite([
+            "debug".as_ref(),
+            spec.as_os_str(),
+            "--frontend".as_ref(),
+            front_end.as_ref(),
+            "finish".as_ref(),
+            "step".as_ref(),
+        ]);
+        assert!(output.status.success(), "{front_end}: {}", stderr(&output));
+        let text = stdout(&output);
+        assert!(
+            text.starts_with("node windup  status running  transitions 0  true: none"),
+            "{front_end}: {text}"
+        );
+        assert!(
+            text.contains("node going  status running  transitions 1"),
+            "{front_end}: {text}"
+        );
+    }
 }
 
 #[test]
 fn selects_a_graph_by_name_and_names_the_choices_when_it_is_missing() {
     let spec = walk_spec();
-    let output = graphite([
-        "debug".as_ref(),
-        spec.as_os_str(),
-        "--graph".as_ref(),
-        "walk".as_ref(),
-        "choose facing".as_ref(),
-    ]);
-    assert!(output.status.success(), "{}", stderr(&output));
-    assert!(stdout(&output).contains("facing: else -> down"));
+    for front_end in debugging_front_ends() {
+        let output = graphite([
+            "debug".as_ref(),
+            spec.as_os_str(),
+            "--frontend".as_ref(),
+            front_end.as_ref(),
+            "--graph".as_ref(),
+            "walk".as_ref(),
+            "choose facing".as_ref(),
+        ]);
+        assert!(output.status.success(), "{front_end}: {}", stderr(&output));
+        assert!(
+            stdout(&output).contains("facing: else -> down"),
+            "{front_end}"
+        );
+    }
 
     let missing = graphite([
         "debug".as_ref(),
@@ -180,17 +198,26 @@ fn refuses_an_unknown_front_end() {
 
 #[test]
 fn with_out_keeps_the_generated_modules() {
-    let out = scratch("cli-debug-out");
     let spec = walk_spec();
-    let output = graphite([
-        "debug".as_ref(),
-        spec.as_os_str(),
-        "--out".as_ref(),
-        out.as_os_str(),
-        "quit".as_ref(),
-    ]);
-    assert!(output.status.success(), "{}", stderr(&output));
-    assert!(out.join("walk.ts").is_file());
+    for front_end in debugging_front_ends() {
+        let out = scratch(&format!("cli-debug-out-{front_end}"));
+        let output = graphite([
+            "debug".as_ref(),
+            spec.as_os_str(),
+            "--frontend".as_ref(),
+            front_end.as_ref(),
+            "--out".as_ref(),
+            out.as_os_str(),
+            "quit".as_ref(),
+        ]);
+        assert!(output.status.success(), "{front_end}: {}", stderr(&output));
+        let module = match front_end {
+            "typescript" => "walk.ts",
+            "rust" => "walk.rs",
+            other => panic!("no generated module name is known for {other}"),
+        };
+        assert!(out.join(module).is_file(), "{front_end} keeps {module}");
+    }
 }
 
 #[test]
@@ -250,30 +277,47 @@ fn reads_commands_from_standard_input_when_none_are_given() {
     use std::process::{Command, Stdio};
 
     let spec = walk_spec();
-    let from_args = graphite([
-        "debug".as_ref(),
-        spec.as_os_str(),
-        "finish".as_ref(),
-        "step".as_ref(),
-    ]);
-    assert!(from_args.status.success(), "{}", stderr(&from_args));
+    for front_end in debugging_front_ends() {
+        let from_args = graphite([
+            "debug".as_ref(),
+            spec.as_os_str(),
+            "--frontend".as_ref(),
+            front_end.as_ref(),
+            "finish".as_ref(),
+            "step".as_ref(),
+        ]);
+        assert!(
+            from_args.status.success(),
+            "{front_end}: {}",
+            stderr(&from_args)
+        );
 
-    let mut child = Command::new(env!("CARGO_BIN_EXE_graphite"))
-        .args(["debug".as_ref(), spec.as_os_str()])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .unwrap();
-    child
-        .stdin
-        .take()
-        .unwrap()
-        .write_all(b"finish\nstep\n")
-        .unwrap();
-    let from_stdin = child.wait_with_output().unwrap();
-    assert!(from_stdin.status.success(), "{}", stderr(&from_stdin));
-    assert_eq!(stdout(&from_stdin), stdout(&from_args));
+        let mut child = Command::new(env!("CARGO_BIN_EXE_graphite"))
+            .args([
+                "debug".as_ref(),
+                spec.as_os_str(),
+                "--frontend".as_ref(),
+                front_end.as_ref(),
+            ])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(b"finish\nstep\n")
+            .unwrap();
+        let from_stdin = child.wait_with_output().unwrap();
+        assert!(
+            from_stdin.status.success(),
+            "{front_end}: {}",
+            stderr(&from_stdin)
+        );
+        assert_eq!(stdout(&from_stdin), stdout(&from_args), "{front_end}");
+    }
 }
 
 /// `--allow` applies to `debug`: the walk fixture uses no domain flags, so an allowlist that
@@ -281,7 +325,7 @@ fn reads_commands_from_standard_input_when_none_are_given() {
 #[test]
 fn debug_applies_the_allowlist() {
     let fixtures = manifest().join("tests/fixtures/runtime");
-    let dsl = fixtures.join("workflow.dsl");
+    let dsl = fixtures.join("workflow.graphite");
 
     let refused = graphite(["debug".as_ref(), dsl.as_os_str(), "show".as_ref()]);
     assert!(!refused.status.success());
@@ -369,7 +413,7 @@ fn a_thrown_task_takes_the_errored_route_when_the_graph_declares_it() {
 
 #[test]
 fn simulate_writes_the_generated_modules_to_out_when_given() {
-    let example = manifest().join("examples/workflow/workflow.dsl");
+    let example = manifest().join("examples/workflow/workflow.graphite");
     let allow = manifest().join("examples/workflow/workflow.toml");
     let out = scratch("cli-debug-simulate-out");
     let output = graphite([
@@ -392,4 +436,33 @@ fn simulate_needs_a_value() {
     let output = graphite(["debug".as_ref(), spec.as_os_str(), "--simulate".as_ref()]);
     assert_eq!(output.status.code(), Some(2));
     assert!(stderr(&output).contains("--simulate needs a value"));
+}
+
+/// The Rust debugger writes two helper files beside the graph. An existing file there is the user's,
+/// so the debugger must refuse rather than replace it.
+#[test]
+fn the_rust_debugger_refuses_to_replace_an_existing_file() {
+    let out = scratch("cli-debug-keep");
+    std::fs::create_dir_all(&out).unwrap();
+    std::fs::write(out.join("graphite_debugger.rs"), "keep").unwrap();
+    let spec = dsl("cli-debug-keep-src", "graph door\n  node a end\n");
+    let output = graphite([
+        "debug".as_ref(),
+        spec.as_os_str(),
+        "--frontend".as_ref(),
+        "rust".as_ref(),
+        "--out".as_ref(),
+        out.as_os_str(),
+        "quit".as_ref(),
+    ]);
+    assert!(!output.status.success());
+    assert!(
+        stderr(&output).contains("cannot write"),
+        "{}",
+        stderr(&output)
+    );
+    assert_eq!(
+        std::fs::read_to_string(out.join("graphite_debugger.rs")).unwrap(),
+        "keep"
+    );
 }

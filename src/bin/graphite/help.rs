@@ -2,12 +2,12 @@
 
 pub const OVERVIEW: &str = "usage:
   graphite --version                                     print the version
-  graphite init <file.dsl>                               write a starter graph
-  graphite check <file.dsl> [--allow <list.toml>] [--json]  validate a graph
-  graphite compile <file.dsl> [--out <dir>]              generate TypeScript modules
-  graphite run <file.dsl> [--state <file.json>] [--tasks <tasks.toml> | --runner <tasks.ts>] [--input <data.json>] [--allow <list.toml>]
-  graphite debug <file.dsl> [command...]                 step through a graph in the terminal
-  graphite inspect <file.dsl> [--json]                   print the compiled graph
+  graphite init <file.graphite>                               write a starter graph
+  graphite check <file.graphite> [--allow <list.toml>] [--json]  validate a graph
+  graphite compile <file.graphite> [--out <dir>]              generate TypeScript modules
+  graphite run <file.graphite> [--state <file.json>] [--tasks <tasks.toml> | --runner <tasks.ts>] [--input <data.json>] [--allow <list.toml>]
+  graphite debug <file.graphite> [command...]                 step through a graph in the terminal
+  graphite inspect <file.graphite> [--json]                   print the compiled graph
   graphite doctor [--json]                               report this build, its front ends, and what works here
   graphite completions <bash|zsh|fish>                  print a shell completion script
   graphite man                                          print the manual page
@@ -70,28 +70,28 @@ pub fn takes_value(option: &str) -> bool {
 pub fn for_command(name: &str) -> Option<&'static str> {
     Some(match name {
         "init" => {
-            "usage: graphite init <file.dsl>
+            "usage: graphite init <file.graphite>
 
-Writes a starter graph to <file.dsl>. It refuses to overwrite an existing file.
-Next: `graphite check <file.dsl>`, then `graphite compile <file.dsl>`."
+Writes a starter graph to <file.graphite>. It refuses to overwrite an existing file.
+Next: `graphite check <file.graphite>`, then `graphite compile <file.graphite>`."
         }
         "check" => {
-            "usage: graphite check <file.dsl> [--frontend typescript] [--allow <list.toml>] [--json]
+            "usage: graphite check <file.graphite> [--frontend typescript] [--allow <list.toml>] [--json]
 
 Parses and validates the graph, and checks that the generated file names do not collide.
 Prints `ok: N graphs` when the file is valid. With --json, prints {\"ok\":true,\"graphs\":N}, or
 {\"ok\":false,\"error\":...} on failure. Writes nothing."
         }
         "compile" => {
-            "usage: graphite compile <file.dsl> [--out <dir>] [--frontend typescript] [--allow <list.toml>]
+            "usage: graphite compile <file.graphite> [--out <dir>] [--frontend typescript] [--allow <list.toml>]
 
 Writes one index module per graph, its chunk modules, and the runtime (graphite.ts).
 --out defaults to graphite-out/<file name without extension>.
 It never overwrites: remove the directory, or pass another --out, to compile again."
         }
         "run" => {
-            "usage: graphite run <file.dsl> [--state <file.json>] [--tasks <tasks.toml> | --runner <tasks.ts>] [--input <data.json>] [--allow <list.toml>]
-                   [--each <item.dsl> --key <field> [--seen <file.json>] [--until-passed <N>]]
+            "usage: graphite run <file.graphite> [--state <file.json>] [--tasks <tasks.toml> | --runner <tasks.ts>] [--input <data.json>] [--allow <list.toml>]
+                   [--each <item.graphite> --key <field> [--seen <file.json>] [--until-passed <N>]]
 
 Runs the file's first graph as a durable workflow. Each node with a @task:NAME annotation runs
 that task through --runner, or through the command --tasks names for it, and state is checkpointed
@@ -99,7 +99,7 @@ after every result, so running the same command again resumes where it stopped.
 --input <data.json> is a JSON value every task receives as context.input. A resume must give the
 same input.
 With --tasks, the manifest's [tasks] keys are the allowed task names, so --allow needs only node_flags.
---each <item.dsl> runs that graph once per item the file's graph ends with, as an array. --key names
+--each <item.graphite> runs that graph once per item the file's graph ends with, as an array. --key names
 the item field that identifies it. --seen keeps the keys already started, so a second run skips them.
 --until-passed <N> stops starting items once N have ended on a passing stage.
 --state defaults to <file stem>.state.json beside the file.
@@ -107,8 +107,8 @@ the item field that identifies it. --seen keeps the keys already started, so a s
 The runner is code that runs with your permissions. Use only runners you wrote or reviewed."
         }
         "debug" => {
-            "usage: graphite debug <file.dsl> [--frontend typescript] [--graph <name>] [--out <dir>] [--allow <list.toml>] [command...]
-       graphite debug <file.dsl> --simulate <task>=<outcomes> [--simulate ...] [--allow <list.toml>]
+            "usage: graphite debug <file.graphite> [--frontend typescript] [--graph <name>] [--out <dir>] [--allow <list.toml>] [command...]
+       graphite debug <file.graphite> --simulate <task>=<outcomes> [--simulate ...] [--allow <list.toml>]
 
 Opens a debugger on the first graph, or on --graph. Each argument after the file is one
 command. Without commands, the debugger reads them from standard input.
@@ -121,7 +121,7 @@ The run prints each stage it enters and each task's outcome, then how it ended. 
 the run ends, and 1 when it stalls or errors. A stall names the node with no route taken."
         }
         "inspect" => {
-            "usage: graphite inspect <file.dsl> [--json]
+            "usage: graphite inspect <file.graphite> [--json]
 
 Prints the compiled nodes, edges, conditions, choices and annotations, for checking what the
 parser understood. --json prints the same facts as one JSON object."

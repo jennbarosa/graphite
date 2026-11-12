@@ -1,0 +1,8 @@
+graph cycle
+  node a
+  node b
+  node z end
+
+  edge a -> b when x
+  edge b -> a when x
+  edge a -> z when out

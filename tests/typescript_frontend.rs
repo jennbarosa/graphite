@@ -40,8 +40,8 @@ fn emitted_text<const SHIFT: u32>(frontend: &TypeScript<SHIFT>, source: &str) ->
 }
 
 #[test]
-fn registry_has_one_typescript_registration_and_no_unknown_fallback() {
-    assert_eq!(registry::TARGETS.len(), 1);
+fn registry_lists_typescript_and_rust_with_no_unknown_fallback() {
+    assert_eq!(registry::TARGETS.len(), 2);
     let target = registry::lookup("typescript").unwrap();
     assert_eq!(target.key, "typescript");
     assert!(registry::lookup("TypeScript").is_none());
@@ -79,7 +79,7 @@ fn a_graph_is_an_index_plus_chunks_with_stable_file_names() {
 
 #[test]
 fn small_chunks_split_nodes_and_choices_across_modules() {
-    let source = include_str!("fixtures/runtime/runtime.dsl");
+    let source = include_str!("fixtures/runtime/runtime.graphite");
     let graphs = fixture::parse(source, &Default::default()).unwrap();
     let wide = graphs
         .iter()
@@ -102,7 +102,7 @@ fn small_chunks_split_nodes_and_choices_across_modules() {
 #[test]
 fn emission_is_deterministic_and_does_not_change_compiled_storage() {
     let graphs = fixture::parse(
-        include_str!("fixtures/parser/walk.dsl"),
+        include_str!("fixtures/parser/walk.graphite"),
         &Default::default(),
     )
     .unwrap();
@@ -187,16 +187,16 @@ fn export_modules_for_cross_language_checks() {
     };
     let directory = std::path::Path::new(&directory);
     let inputs = [
-        ("door", include_str!("fixtures/parser/door.dsl")),
-        ("walk", include_str!("fixtures/parser/walk.dsl")),
+        ("door", include_str!("fixtures/parser/door.graphite")),
+        ("walk", include_str!("fixtures/parser/walk.graphite")),
         (
             "interleaved",
-            include_str!("fixtures/parser/interleaved.dsl"),
+            include_str!("fixtures/parser/interleaved.graphite"),
         ),
-        ("scopes", include_str!("fixtures/parser/scopes.dsl")),
+        ("scopes", include_str!("fixtures/parser/scopes.graphite")),
         (
             "domain_flags",
-            include_str!("fixtures/parser/domain_flags.dsl"),
+            include_str!("fixtures/parser/domain_flags.graphite"),
         ),
         ("empty", ""),
         (
@@ -215,7 +215,7 @@ fn export_modules_for_cross_language_checks() {
             "pairs",
             "graph walk\n  node closed end @anim:idle @sfx:idle @time.delay @anim:open @anim:idle\n  choose facing\n    when left -> side @flip:true @flip:true\n    else -> side @anim:idle\n",
         ),
-        ("runtime", include_str!("fixtures/runtime/runtime.dsl")),
+        ("runtime", include_str!("fixtures/runtime/runtime.graphite")),
     ];
     for (root, frontend_shift) in [
         (directory.to_path_buf(), 12),
@@ -257,7 +257,7 @@ fn export_modules_for_cross_language_checks() {
 
 #[test]
 fn choice_arms_keep_their_own_annotations_and_null_fallback() {
-    let text = emitted_text(&DEFAULT, include_str!("fixtures/parser/walk.dsl"));
+    let text = emitted_text(&DEFAULT, include_str!("fixtures/parser/walk.graphite"));
     assert!(text.contains(
         r#"readonly ["facing"]: never | { readonly condition: "left"; readonly tag: "side"; readonly annotations: readonly [{ readonly key: "flip"; readonly value: "true" },] } | { readonly condition: "right"; readonly tag: "side"; readonly annotations: readonly [] } | { readonly condition: "up"; readonly tag: "up"; readonly annotations: readonly [] } | { readonly condition: null; readonly tag: "down"; readonly annotations: readonly [] };"#
     ));
