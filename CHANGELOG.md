@@ -7,7 +7,14 @@ change the interface.
 
 ## [Unreleased]
 
+### Changed
+
+- Graph files now end in `.graphite` instead of `.dsl`. The examples, fixtures and bundled graph
+  descriptions use the new extension. The language itself is unchanged.
+
 ### Added
+
+- Neovim syntax highlighting and file-type detection for `*.graphite` files, in `editors/nvim`.
 
 - With `--tasks`, the manifest's `[tasks]` keys are the allowed task names, so the allowlist can list only
   node flags. The allowlist's `[annotations]` table is optional. An allowlist with a `[tasks]` section is
@@ -15,7 +22,7 @@ change the interface.
 - `graphite debug --simulate <task>=<outcomes>` runs the durable engine over a graph with each task's
   outcome stubbed (`pass`, `fail`, `none` or `throw`), so its routes can be checked before any task runs.
   It reports each stage and where a run stalls, and stops a loop after 10,000 transitions.
-- Fan-out: `graphite run list.dsl --each item.dsl --key domain` runs the item graph once per item the list graph
+- Fan-out: `graphite run list.graphite --each item.graphite --key domain` runs the item graph once per item the list graph
   produces, with a seen file to skip items already started and `--until-passed N` to stop after N pass.
 - Stage outputs: a task returns `output`, and later tasks read it with `context.outputs.read(node)`. The end node's
   name, its stage's `outcome`, and its output appear in the run result.
