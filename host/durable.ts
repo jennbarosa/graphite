@@ -15,42 +15,21 @@
 //   not grow with the length of the run. Any other store must provide an atomic snapshot save, an
 //   append that is durable when it returns, and an exclusive lock.
 // - A recorded error stops the run until `retryFailedTask` clears it.
-import {
-	closeSync,
-	existsSync,
-	fstatSync,
-	fsyncSync,
-	mkdirSync,
-	ftruncateSync,
-	openSync,
-	readFileSync,
-	readSync,
-	renameSync,
-	unlinkSync,
-	writeFileSync,
-	writeSync,
-} from 'node:fs';
+
 import { createHash } from 'node:crypto';
 import { dirname, join, resolve } from 'node:path';
+import type { Detail, Outcome, RunnerReport, StateStore, StoredOutcome, StoredResult } from './contract';
+import { MAX_DETAIL_CODE, MAX_DETAIL_DATA_BYTES, MAX_DETAIL_MESSAGE } from './contract';
+import { capMessage, isDetail, isOutcome, isRecord, normalizeReport } from './report';
+import { fileStore } from './store';
+
+export { MAX_DETAIL_CODE, MAX_DETAIL_DATA_BYTES, MAX_DETAIL_MESSAGE } from './contract';
+export type { Detail, Outcome, RunnerReport, StateStore, StoredOutcome, StoredResult } from './contract';
+export { fileStore } from './store';
 
 const DEFAULT_MAX_TRANSITIONS = 10_000_000;
 const DEFAULT_MAX_ATTEMPTS = 3;
 const DEFAULT_TASK_TIMEOUT_MS = 60_000;
-const READ_CHUNK_BYTES = 64 * 1024;
-/** Largest stage output, as UTF-8 JSON. */
-const MAX_OUTPUT_BYTES = 1_048_576;
-/** Longest `detail.message` kept. A longer message is cut and ends with an ellipsis. */
-export const MAX_DETAIL_MESSAGE = 1_000;
-/** Longest `detail.code`. */
-export const MAX_DETAIL_CODE = 64;
-/** Largest `detail.data`, as UTF-8 JSON. */
-export const MAX_DETAIL_DATA_BYTES = 4_096;
-
-const OUTCOMES = ['pass', 'fail', 'none'] as const;
-export type Outcome = (typeof OUTCOMES)[number];
-/** A finished task's recorded result: its outcome, or `error` when every attempt threw. */
-export type StoredOutcome = Outcome | 'error';
-const STORED_OUTCOMES: readonly string[] = [...OUTCOMES, 'error'];
 
 export interface TaskContext {
 	/** Stable for a stage visit, including across a crash. External systems dedupe on it. */
@@ -68,39 +47,11 @@ export interface TaskContext {
 	readonly outputs: OutputReader;
 }
 
-/**
- * Optional context a runner reports with its outcome. The host stores it with the result, writes it
- * to the run log, and passes it to later tasks as `context.failure` when the stage failed.
- */
-export interface Detail {
-	/** What happened, in a sentence. Longer text is cut to `MAX_DETAIL_MESSAGE` characters. */
-	readonly message: string;
-	/** A short label to match on, such as `timeout`. At most `MAX_DETAIL_CODE` characters. */
-	readonly code?: string;
-	/** JSON for a later task, such as the names of failing checks. At most `MAX_DETAIL_DATA_BYTES`. */
-	readonly data?: unknown;
-}
-
-/** What a runner returns: a bare outcome, or an outcome with its detail. */
-export type RunnerReport = {
-	readonly outcome: Outcome;
-	readonly detail?: Detail;
-	/** JSON a later task reads with `context.outputs.read(node)`. At most `MAX_OUTPUT_BYTES`. */
-	readonly output?: unknown;
-};
-
-/** Reads the outputs of earlier stages in this run, by node name. */
 export interface OutputReader {
 	/** The directory outputs are kept in, for commands to read. Undefined for other stores. */
 	readonly directory: string | undefined;
 	/** The latest output the node's task saved, or undefined when it saved none. */
 	read(node: string): unknown;
-}
-
-/** A finished task's recorded result: its outcome, and the detail the runner gave, if any. */
-export interface StoredResult {
-	readonly outcome: StoredOutcome;
-	readonly detail?: Detail;
 }
 
 /**
@@ -237,70 +188,6 @@ export type Result =
 
 /** A task that failed, after all its attempts. The run stops; host errors are not wrapped in this. */
 class TaskFailure extends Error {}
-
-/**
- * Where a run's state lives. `saveSnapshot` must be atomic: a reader sees the old snapshot or the
- * new one. `recordResult` must be durable when it returns. `loadRecords` returns the last outcome
- * recorded for each key at `since` or later, and leaves out keys whose last record cleared them.
- * `recordResult` with `undefined` clears a result. `withLock` must exclude other holders of the
- * same state while `body` runs.
- */
-export interface StateStore {
-	/** Where stage outputs are kept, when the store keeps them as files that commands can read. */
-	readonly outputDirectory?: string;
-	/** Keeps a stage's output, so later tasks can read it. Optional: a store without it cannot. */
-	saveOutput?(node: string, value: unknown): void;
-	/** The latest output saved for a node, or undefined. */
-	loadOutput?(node: string): unknown;
-	loadSnapshot(): unknown;
-	loadRecords(since: number): Map<string, StoredResult>;
-	saveSnapshot(snapshot: unknown): void;
-	recordResult(
-		key: string,
-		sequence: number,
-		result: StoredResult | undefined
-	): void;
-	withLock<T>(body: () => T | Promise<T>): Promise<T>;
-}
-
-/**
- * The state store backed by local files. `<file>` holds the snapshot, rewritten atomically at
- * each step. `<file>.results` holds one JSON line per recorded result, appended and fsynced as it
- * is recorded. `<file>.lock` lets one process at a time use the state.
- */
-export function fileStore(stateFile: string): StateStore {
-	const resultsFile = `${stateFile}.results`;
-	const outputDir = `${stateFile}.outputs`;
-	return {
-		outputDirectory: outputDir,
-		saveOutput: (node, value) => {
-			mkdirSync(outputDir, { recursive: true });
-			writeAtomic(join(outputDir, `${node}.json`), JSON.stringify(value));
-		},
-		loadOutput: (node) => {
-			const file = join(outputDir, `${node}.json`);
-			return existsSync(file)
-				? JSON.parse(readFileSync(file, 'utf8'))
-				: undefined;
-		},
-		loadSnapshot: () =>
-			existsSync(stateFile) ? readSnapshot(stateFile) : undefined,
-		loadRecords: (since) => readRecords(resultsFile, since),
-		saveSnapshot: (snapshot) =>
-			writeAtomic(stateFile, JSON.stringify({ snapshot })),
-		recordResult: (key, sequence, result) =>
-			appendLine(
-				resultsFile,
-				JSON.stringify({
-					key,
-					sequence,
-					outcome: result?.outcome ?? null,
-					detail: result?.detail,
-				})
-			),
-		withLock: (body) => withLock(stateFile, body),
-	};
-}
 
 /** Clears a recorded error, so the next run runs that task again. */
 export async function retryFailedTask(
@@ -839,289 +726,6 @@ async function runOnce(
 	}
 }
 
-/** Checks what a runner returned, and returns it as a report. Throws when it is not valid. */
-function normalizeReport(value: unknown): RunnerReport {
-	if (isOutcome(value)) return { outcome: value };
-	if (!isRecord(value)) {
-		throw new Error(`runner returned "${String(value)}"`);
-	}
-	if (!isOutcome(value.outcome)) {
-		throw new Error(
-			`runner returned an object whose outcome is "${String(value.outcome)}"`
-		);
-	}
-	const report: { outcome: Outcome; detail?: Detail; output?: unknown } = {
-		outcome: value.outcome,
-	};
-	if (value.detail !== undefined) report.detail = normalizeDetail(value.detail);
-	if (value.output !== undefined) report.output = normalizeOutput(value.output);
-	return report;
-}
-
-/** A copy of a stage output that is JSON and within the size limit. */
-function normalizeOutput(value: unknown): unknown {
-	const text = JSON.stringify(value);
-	if (text === undefined || Buffer.byteLength(text) > MAX_OUTPUT_BYTES) {
-		throw new Error(
-			`runner output must be JSON of at most ${MAX_OUTPUT_BYTES} bytes`
-		);
-	}
-	return JSON.parse(text) as unknown;
-}
-
-/** Checks a runner's detail against the limits, and returns a copy the host can store. */
-function normalizeDetail(value: unknown): Detail {
-	if (!isRecord(value) || typeof value.message !== 'string') {
-		throw new Error('runner detail needs a string message');
-	}
-	const detail: { message: string; code?: string; data?: unknown } = {
-		message: capMessage(value.message),
-	};
-	if (value.code !== undefined) {
-		if (
-			typeof value.code !== 'string' ||
-			value.code.length > MAX_DETAIL_CODE
-		) {
-			throw new Error(
-				`runner detail code must be a string of at most ${MAX_DETAIL_CODE} characters`
-			);
-		}
-		detail.code = value.code;
-	}
-	if (value.data !== undefined) {
-		const text = JSON.stringify(value.data);
-		if (text === undefined || Buffer.byteLength(text) > MAX_DETAIL_DATA_BYTES) {
-			throw new Error(
-				`runner detail data must be JSON of at most ${MAX_DETAIL_DATA_BYTES} bytes`
-			);
-		}
-		detail.data = JSON.parse(text) as unknown;
-	}
-	return detail;
-}
-
-/** The message, cut to `MAX_DETAIL_MESSAGE` characters with an ellipsis when it is longer. */
-function capMessage(text: string): string {
-	return text.length <= MAX_DETAIL_MESSAGE
-		? text
-		: `${text.slice(0, MAX_DETAIL_MESSAGE - 1)}…`;
-}
-
-function isOutcome(value: unknown): value is Outcome {
-	return (
-		typeof value === 'string' &&
-		(OUTCOMES as readonly string[]).includes(value)
-	);
-}
-
-function isStoredOutcome(value: unknown): value is StoredOutcome {
-	return typeof value === 'string' && STORED_OUTCOMES.includes(value);
-}
-
 function errorText(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === 'object' && value !== null;
-}
-
-function readSnapshot(file: string): unknown {
-	const parsed: unknown = JSON.parse(readFileSync(file, 'utf8'));
-	if (!isRecord(parsed) || !('snapshot' in parsed)) {
-		throw new Error(`state file ${file} is malformed`);
-	}
-	return parsed.snapshot;
-}
-
-interface ResultRecord {
-	readonly key: string;
-	readonly sequence: number;
-	readonly outcome: StoredOutcome | null;
-	readonly detail?: Detail | undefined;
-}
-
-function parseRecord(line: string): ResultRecord | undefined {
-	try {
-		const value: unknown = JSON.parse(line);
-		if (
-			!isRecord(value) ||
-			typeof value.key !== 'string' ||
-			typeof value.sequence !== 'number'
-		) {
-			return undefined;
-		}
-		const outcome = value.outcome;
-		if (outcome !== null && !isStoredOutcome(outcome)) {
-			return undefined;
-		}
-		if (value.detail !== undefined && !isDetail(value.detail)) {
-			return undefined;
-		}
-		return {
-			key: value.key,
-			sequence: value.sequence,
-			outcome,
-			detail: value.detail,
-		};
-	} catch {
-		return undefined;
-	}
-}
-
-/**
- * Reads the records at `since` or later, in order, keeping the last result for each key. The
- * file is read in chunks, so only those records are held in memory. A last line cut short by a
- * crash is dropped, and the file is cut back to the end of the last complete line, so later
- * appends start on a clean line. A bad complete line means the file is damaged.
- */
-function readRecords(file: string, since: number): Map<string, StoredResult> {
-	const latest = new Map<string, StoredResult | null>();
-	if (!existsSync(file)) return new Map();
-	const fd = openSync(file, 'r+');
-	try {
-		const size = fstatSync(fd).size;
-		const completeEnd = forEachLine(fd, (line) => {
-			if (line === '') return;
-			const record = parseRecord(line);
-			if (record === undefined) {
-				throw new Error(`results file ${file} is malformed`);
-			}
-			if (record.sequence >= since) {
-				latest.set(
-					record.key,
-					record.outcome === null
-						? null
-						: record.detail === undefined
-							? { outcome: record.outcome }
-							: { outcome: record.outcome, detail: record.detail }
-				);
-			}
-		});
-		if (completeEnd < size) {
-			ftruncateSync(fd, completeEnd);
-			fsyncSync(fd);
-		}
-	} finally {
-		closeSync(fd);
-	}
-	const recovered = new Map<string, StoredResult>();
-	for (const [key, result] of latest) {
-		if (result !== null) recovered.set(key, result);
-	}
-	return recovered;
-}
-
-/**
- * Calls `visit` with each complete line, in order, reading the file in chunks. Returns the byte
- * offset just past the last complete line. Text after it is an unfinished line.
- */
-function forEachLine(fd: number, visit: (line: string) => void): number {
-	const chunk = Buffer.alloc(READ_CHUNK_BYTES);
-	let carry = Buffer.alloc(0);
-	let offset = 0;
-	let completeEnd = 0;
-	for (;;) {
-		const bytes = readSync(fd, chunk, 0, READ_CHUNK_BYTES, offset);
-		if (bytes === 0) break;
-		const data = Buffer.concat([carry, chunk.subarray(0, bytes)]);
-		const dataStart = offset - carry.length;
-		offset += bytes;
-		let start = 0;
-		let newline = data.indexOf(0x0a);
-		while (newline !== -1) {
-			visit(data.subarray(start, newline).toString('utf8'));
-			start = newline + 1;
-			completeEnd = dataStart + start;
-			newline = data.indexOf(0x0a, start);
-		}
-		carry = Buffer.from(data.subarray(start));
-	}
-	return completeEnd;
-}
-
-/** Appends one line and makes it durable before returning. */
-export function appendLine(file: string, line: string): void {
-	const isNew = !existsSync(file);
-	const fd = openSync(file, 'a');
-	try {
-		writeFileSync(fd, `${line}\n`);
-		fsyncSync(fd);
-	} finally {
-		closeSync(fd);
-	}
-	if (isNew) fsyncDir(dirname(file));
-}
-
-/** Temp file, fsync, rename, then fsync the directory so the rename itself is durable. */
-function writeAtomic(file: string, text: string): void {
-	const temp = `${file}.${process.pid}.tmp`;
-	const fd = openSync(temp, 'w');
-	try {
-		writeFileSync(fd, text);
-		fsyncSync(fd);
-	} finally {
-		closeSync(fd);
-	}
-	renameSync(temp, file);
-	fsyncDir(dirname(file));
-}
-
-function fsyncDir(dir: string): void {
-	const fd = openSync(dir, 'r');
-	try {
-		fsyncSync(fd);
-	} finally {
-		closeSync(fd);
-	}
-}
-
-async function withLock<T>(
-	stateFile: string,
-	body: () => T | Promise<T>
-): Promise<T> {
-	const release = acquire(stateFile);
-	try {
-		return await body();
-	} finally {
-		release();
-	}
-}
-
-/**
- * Creates `<state>.lock` holding this process's pid. A lock whose pid is no longer running is
- * taken over. shortcut: the takeover is not atomic, so two operators recovering at the same
- * instant could both win; upgrade to flock if that happens.
- */
-function acquire(stateFile: string): () => void {
-	const lock = `${stateFile}.lock`;
-	for (let tries = 0; tries < 2; tries++) {
-		try {
-			const fd = openSync(lock, 'wx');
-			writeSync(fd, String(process.pid));
-			closeSync(fd);
-			return () => unlinkSync(lock);
-		} catch (error) {
-			if ((error as NodeJS.ErrnoException).code !== 'EEXIST')
-				throw error;
-			const owner = Number(readFileSync(lock, 'utf8'));
-			if (alive(owner)) {
-				throw new Error(
-					`state ${stateFile} is locked by process ${owner}`
-				);
-			}
-			unlinkSync(lock);
-		}
-	}
-	throw new Error(`could not lock ${stateFile}`);
-}
-
-function alive(pid: number): boolean {
-	if (!Number.isInteger(pid) || pid <= 0) return false;
-	try {
-		process.kill(pid, 0);
-		return true;
-	} catch (error) {
-		return (error as NodeJS.ErrnoException).code === 'EPERM';
-	}
 }

@@ -5,8 +5,16 @@
 // - `untilPassed` stops starting items once that many have ended on a passing stage.
 // The list graph must end with an array as its output. Each item is a JSON object with a string
 // field named by `key`, which is also the item's name on disk, so it must be a plain identifier.
-import { existsSync, readFileSync } from 'node:fs';
-import { type DurableOptions, type Result, appendLine, runDurable } from './durable';
+import {
+	closeSync,
+	existsSync,
+	ftruncateSync,
+	fsyncSync,
+	openSync,
+	readFileSync,
+} from 'node:fs';
+import { type DurableOptions, type Result, runDurable } from './durable';
+import { appendLine } from './store';
 
 export interface FanOutOptions {
 	/** The list graph's run. Its end output is the array of items. */
@@ -74,11 +82,25 @@ function keyOf(item: unknown, field: string): string {
 	return key;
 }
 
-/** The keys in the seen file, one per line. A last line cut short by a crash is ignored. */
+/**
+ * The keys in the seen file, one per line. A last line cut short by a crash is dropped, and the file
+ * is cut back to the end of the last complete line, so the next append starts on a clean line.
+ */
 function readSeen(file: string): Set<string> {
 	if (!existsSync(file)) return new Set();
-	const lines = readFileSync(file, 'utf8').split('\n');
-	// The last piece is what follows the final newline: empty, or a line a crash cut short.
+	const bytes = readFileSync(file);
+	const completeEnd = bytes.lastIndexOf(0x0a) + 1;
+	if (completeEnd < bytes.length) {
+		const fd = openSync(file, 'r+');
+		try {
+			ftruncateSync(fd, completeEnd);
+			fsyncSync(fd);
+		} finally {
+			closeSync(fd);
+		}
+	}
+	const lines = bytes.subarray(0, completeEnd).toString('utf8').split('\n');
+	// The last piece is what follows the final newline, which is always empty now.
 	lines.pop();
 	for (const line of lines) {
 		if (!KEY.test(line)) {

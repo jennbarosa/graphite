@@ -107,6 +107,31 @@ fn until_passed_stops_starting_items_once_enough_have_passed() {
 }
 
 #[test]
+fn a_seen_line_cut_short_by_a_crash_does_not_start_its_item_twice() {
+    let dir = workdir(
+        "cli-fanout-torn-seen",
+        r#"[{"domain":"a.com"},{"domain":"b.com"}]"#,
+    );
+    // A crash left "b.com" written without its newline: b.com was never started.
+    std::fs::write(dir.join("state.json.seen.json"), "a.com\nb.com").unwrap();
+
+    let first = fan_out(&dir, &[]);
+    assert!(first.status.success(), "{}", stderr(&first));
+    assert_eq!(
+        stdout(&first).trim(),
+        r#"{"status":"ended","items":2,"started":1,"passed":1}"#
+    );
+
+    // b.com was started by the first run, so a second run must start nothing.
+    let second = fan_out(&dir, &[]);
+    assert!(second.status.success(), "{}", stderr(&second));
+    assert_eq!(
+        stdout(&second).trim(),
+        r#"{"status":"ended","items":2,"started":0,"passed":0}"#
+    );
+}
+
+#[test]
 fn each_and_key_go_together_and_fan_out_flags_need_each() {
     let dir = workdir("cli-fanout-flags", "[]");
     let no_key = graphite([
