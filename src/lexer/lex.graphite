@@ -1,0 +1,36 @@
+graph lex
+  node check_pending @task:pending
+  node start         @task:classify
+  node line_break    @task:line_break
+  node indentation   @task:indentation
+  node at            @task:at
+  node colon         @task:colon
+  node arrow         @task:arrow
+  node word          @task:word
+  node tab_error     @task:tab_error
+  node finish        @task:finish
+  node done          end
+  node failed        end
+
+  edge check_pending -> check_pending when dedent
+  edge check_pending -> start when idle
+  edge start -> finish      when eof
+  edge start -> line_break  when newline
+  edge start -> tab_error   when tab
+  edge start -> indentation when line_start
+  edge start -> at          when at_sign
+  edge start -> colon       when colon
+  edge start -> arrow       when arrow
+  edge start -> word        when word
+  edge line_break -> start  when again
+  edge indentation -> start         when indent
+  edge indentation -> start         when same
+  edge indentation -> check_pending when dedent
+  edge indentation -> failed        when bad
+  edge at    -> start when again
+  edge colon -> start when again
+  edge arrow -> start when again
+  edge word  -> start when again
+  edge tab_error -> failed when fail
+  edge finish -> finish when again
+  edge finish -> done   when done

@@ -1,0 +1,13 @@
+graph structure
+  node degrees @task:degrees
+  node offsets @task:offsets
+  node reach   @task:reach
+  node done    end
+  node failed  end
+
+  edge degrees -> offsets when ok
+  edge degrees -> failed  when error
+  edge offsets -> reach   when ok
+  edge offsets -> failed  when error
+  edge reach   -> done    when ok
+  edge reach   -> failed  when error

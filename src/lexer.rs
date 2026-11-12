@@ -1,6 +1,7 @@
 //! Streaming lexical analysis. Grammar and schema validation belong to the parser.
 
 mod diagnostic;
+pub mod lex;
 #[cfg(all(feature = "lexer-simd", target_arch = "x86_64"))]
 mod simd;
 
@@ -62,7 +63,7 @@ impl std::fmt::Display for LexError {
 impl std::error::Error for LexError {}
 
 /// Bytes that end a bare word; `-` is a break only before `>`, which the scanners check.
-const WORD_BREAK: [bool; 256] = word_break_table();
+pub(crate) const WORD_BREAK: [bool; 256] = word_break_table();
 
 const fn word_break_table() -> [bool; 256] {
     let mut table = [false; 256];

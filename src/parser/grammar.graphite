@@ -1,0 +1,48 @@
+graph grammar
+  node next       @task:next
+  node header     @task:header
+  node body       @task:body
+  node node_line  @task:node_line
+  node edge_line  @task:edge_line
+  node choose     @task:choose
+  node arms       @task:arms
+  node when_arm   @task:when_arm
+  node else_arm   @task:else_arm
+  node arm        @task:arm
+  node arms_end   @task:arms_end
+  node block_end  @task:block_end
+  node graph_end  @task:graph_end
+  node finished   end
+  node failed     end
+
+  edge next -> header    when more
+  edge next -> finished  when finished
+  edge next -> failed    when error
+  edge header -> body    when ok
+  edge header -> failed  when error
+  edge body -> node_line when line_node
+  edge body -> edge_line when line_edge
+  edge body -> choose    when line_choose
+  edge body -> block_end when line_end
+  edge body -> failed    when error
+  edge node_line -> body   when ok
+  edge node_line -> failed when error
+  edge edge_line -> body   when ok
+  edge edge_line -> failed when error
+  edge choose -> arms    when ok
+  edge choose -> failed  when error
+  edge arms -> when_arm  when arm_when
+  edge arms -> else_arm  when arm_else
+  edge arms -> arms_end  when arm_end
+  edge arms -> failed    when error
+  edge when_arm -> arm    when ok
+  edge when_arm -> failed when error
+  edge else_arm -> arm    when ok
+  edge arm -> arms   when ok
+  edge arm -> failed when error
+  edge arms_end -> body   when ok
+  edge arms_end -> failed when error
+  edge block_end -> graph_end when ok
+  edge block_end -> failed    when error
+  edge graph_end -> next   when ok
+  edge graph_end -> failed when error
