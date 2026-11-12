@@ -35,6 +35,12 @@ const DEFAULT_MAX_TRANSITIONS = 10_000_000;
 const DEFAULT_MAX_ATTEMPTS = 3;
 const DEFAULT_TASK_TIMEOUT_MS = 60_000;
 const READ_CHUNK_BYTES = 64 * 1024;
+/** Longest `detail.message` kept. A longer message is cut and ends with an ellipsis. */
+export const MAX_DETAIL_MESSAGE = 1_000;
+/** Longest `detail.code`. */
+export const MAX_DETAIL_CODE = 64;
+/** Largest `detail.data`, as UTF-8 JSON. */
+export const MAX_DETAIL_DATA_BYTES = 4_096;
 
 const OUTCOMES = ['pass', 'fail', 'none'] as const;
 export type Outcome = (typeof OUTCOMES)[number];
@@ -47,9 +53,58 @@ export interface TaskContext {
 	readonly key: string;
 	readonly attempt: number;
 	readonly signal: AbortSignal;
+	/**
+	 * The most recent failed stage of this run, including one from before a crash. Undefined when
+	 * no stage has failed.
+	 */
+	readonly failure: StageFailure | undefined;
 }
 
-export type Runner = (task: string, context: TaskContext) => Promise<Outcome>;
+/**
+ * Optional context a runner reports with its outcome. The host stores it with the result, writes it
+ * to the run log, and passes it to later tasks as `context.failure` when the stage failed.
+ */
+export interface Detail {
+	/** What happened, in a sentence. Longer text is cut to `MAX_DETAIL_MESSAGE` characters. */
+	readonly message: string;
+	/** A short label to match on, such as `timeout`. At most `MAX_DETAIL_CODE` characters. */
+	readonly code?: string;
+	/** JSON for a later task, such as the names of failing checks. At most `MAX_DETAIL_DATA_BYTES`. */
+	readonly data?: unknown;
+}
+
+/** What a runner returns: a bare outcome, or an outcome with its detail. */
+export type RunnerReport = {
+	readonly outcome: Outcome;
+	readonly detail?: Detail;
+};
+
+/** A finished task's recorded result: its outcome, and the detail the runner gave, if any. */
+export interface StoredResult {
+	readonly outcome: StoredOutcome;
+	readonly detail?: Detail;
+}
+
+/**
+ * The stage that most recently failed in this run, with the detail it recorded. Later tasks read
+ * it as `context.failure`. Stages that passed afterward do not clear it.
+ */
+export interface StageFailure {
+	/** The graph's node name for the stage. */
+	readonly node: string;
+	/** The task the stage ran. */
+	readonly task: string;
+	/** The stage's key, `<transitions>:<node>`. */
+	readonly key: string;
+	/** `fail` when the runner reported it; `error` when every attempt threw. */
+	readonly outcome: 'fail' | 'error';
+	readonly detail?: Detail;
+}
+
+export type Runner = (
+	task: string,
+	context: TaskContext
+) => Promise<Outcome | RunnerReport>;
 
 /** Points where a test can stop the process. Each label names the write it follows. */
 export type Checkpoint =
@@ -76,6 +131,8 @@ export type HostEvent =
 			readonly task: string;
 			readonly key: string;
 			readonly outcome: StoredOutcome;
+			/** The detail the runner gave with the outcome, if any. */
+			readonly detail?: Detail | undefined;
 			/** `stored`: a result from an earlier run. `verified`: found by `verify`. `ran`: this run. */
 			readonly source: 'stored' | 'verified' | 'ran';
 	  }
@@ -151,12 +208,12 @@ class TaskFailure extends Error {}
  */
 export interface StateStore {
 	loadSnapshot(): unknown;
-	loadRecords(since: number): Map<string, StoredOutcome>;
+	loadRecords(since: number): Map<string, StoredResult>;
 	saveSnapshot(snapshot: unknown): void;
 	recordResult(
 		key: string,
 		sequence: number,
-		outcome: StoredOutcome | undefined
+		result: StoredResult | undefined
 	): void;
 	withLock<T>(body: () => T | Promise<T>): Promise<T>;
 }
@@ -174,13 +231,14 @@ export function fileStore(stateFile: string): StateStore {
 		loadRecords: (since) => readRecords(resultsFile, since),
 		saveSnapshot: (snapshot) =>
 			writeAtomic(stateFile, JSON.stringify({ snapshot })),
-		recordResult: (key, sequence, outcome) =>
+		recordResult: (key, sequence, result) =>
 			appendLine(
 				resultsFile,
 				JSON.stringify({
 					key,
 					sequence,
-					outcome: outcome ?? null,
+					outcome: result?.outcome ?? null,
+					detail: result?.detail,
 				})
 			),
 		withLock: (body) => withLock(stateFile, body),
@@ -194,7 +252,7 @@ export async function retryFailedTask(
 ): Promise<void> {
 	const sequence = sequenceOf(key);
 	await store.withLock(() => {
-		if (store.loadRecords(sequence).get(key) !== 'error') {
+		if (store.loadRecords(sequence).get(key)?.outcome !== 'error') {
 			throw new Error(`task "${key}" has no stored error`);
 		}
 		store.recordResult(key, sequence, undefined);
@@ -228,7 +286,9 @@ interface Session {
 	readonly store: StateStore;
 	readonly options: DurableOptions;
 	/** Results for the current stage only. Cleared when the stage is done. */
-	readonly results: Map<string, StoredOutcome>;
+	readonly results: Map<string, StoredResult>;
+	/** The most recent failed stage of this run. Saved with the snapshot. */
+	lastFailure: StageFailure | undefined;
 }
 
 /** Runs the graph from its saved state, or from the entry if there is none. */
@@ -277,8 +337,9 @@ export async function runDurable(options: DurableOptions): Promise<Result> {
 	return store.withLock(async () => {
 		const saved = store.loadSnapshot();
 		const resumed = saved !== undefined;
+		const { runSnapshot, lastFailure } = splitSnapshot(saved);
 		const run: RunLike = resumed
-			? restore(graph, saved, limits)
+			? restore(graph, runSnapshot, limits)
 			: start(graph, limits);
 		const results = store.loadRecords(run.transitions);
 		const session: Session = {
@@ -287,6 +348,7 @@ export async function runDurable(options: DurableOptions): Promise<Result> {
 			store,
 			options,
 			results,
+			lastFailure,
 		};
 		options.onEvent?.({
 			type: 'run-started',
@@ -317,10 +379,10 @@ async function runStage(session: Session): Promise<Result | undefined> {
 	// The task of the node a run reaches is always settled, including an end node's: the run
 	// ends after that task, not on arrival.
 	const task = taskOf(graph, node, session.options.taskAnnotation);
-	let outcome: Outcome = 'none';
+	let settled: StoredResult = { outcome: 'none' };
 	if (task !== undefined) {
 		try {
-			outcome = await settleTask(session, node, task, key);
+			settled = await settleTask(session, node, task, key);
 		} catch (error) {
 			if (!(error instanceof TaskFailure)) throw error;
 			return {
@@ -332,6 +394,7 @@ async function runStage(session: Session): Promise<Result | undefined> {
 		}
 	}
 
+	const outcome = settled.outcome;
 	const conditions = session.options.outcomeConditions;
 	if (conditions !== undefined) {
 		run.set(conditions.pass, outcome === 'pass');
@@ -360,7 +423,7 @@ async function runStage(session: Session): Promise<Result | undefined> {
 }
 
 /**
- * The task's outcome. A recorded result is returned without running the task again. Throws when
+ * The task's result. A recorded result is returned without running the task again. Throws when
  * the task failed, either now or in an earlier run.
  */
 async function settleTask(
@@ -368,18 +431,21 @@ async function settleTask(
 	node: string,
 	task: string,
 	key: string
-): Promise<Outcome> {
+): Promise<StoredResult> {
 	const { graph, options, results } = session;
 	const stored = results.get(key);
-	if (stored === 'error') {
+	if (stored?.outcome === 'error') {
+		noteFailure(session, node, task, key, stored);
 		throw new TaskFailure(`task ${task} failed in an earlier run`);
 	}
 	if (stored !== undefined) {
+		noteFailure(session, node, task, key, stored);
 		options.onEvent?.({
 			type: 'task-settled',
 			task,
 			key,
-			outcome: stored,
+			outcome: stored.outcome,
+			detail: stored.detail,
 			source: 'stored',
 		});
 		return stored;
@@ -391,7 +457,9 @@ async function settleTask(
 			if (!isOutcome(done)) {
 				throw new Error(`verify returned "${String(done)}"`);
 			}
-			recordResult(session, key, done);
+			const result: StoredResult = { outcome: done };
+			recordResult(session, key, result);
+			noteFailure(session, node, task, key, result);
 			options.onEvent?.({
 				type: 'task-settled',
 				task,
@@ -399,29 +467,64 @@ async function settleTask(
 				outcome: done,
 				source: 'verified',
 			});
-			return done;
+			return result;
 		}
 	}
 	const attempts = graph.nodeFlags(node).includes(options.retryFlag)
 		? (options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS)
 		: 1;
-	let outcome: Outcome;
+	let report: RunnerReport;
 	try {
-		outcome = await attempt(options, task, key, attempts);
+		report = await attempt(
+			options,
+			task,
+			key,
+			attempts,
+			session.lastFailure
+		);
 	} catch (error) {
-		recordResult(session, key, 'error');
+		const result: StoredResult = {
+			outcome: 'error',
+			detail: { message: capMessage(errorText(error)) },
+		};
+		recordResult(session, key, result);
+		noteFailure(session, node, task, key, result);
 		throw new TaskFailure(`task ${task} failed: ${errorText(error)}`);
 	}
 	options.onCheckpoint?.('task-done', key);
-	recordResult(session, key, outcome);
+	const result: StoredResult =
+		report.detail === undefined
+			? { outcome: report.outcome }
+			: { outcome: report.outcome, detail: report.detail };
+	recordResult(session, key, result);
+	noteFailure(session, node, task, key, result);
 	options.onEvent?.({
 		type: 'task-settled',
 		task,
 		key,
-		outcome,
+		outcome: result.outcome,
+		detail: result.detail,
 		source: 'ran',
 	});
-	return outcome;
+	return result;
+}
+
+/** Makes `node` the run's last failure when the result is a failure. */
+function noteFailure(
+	session: Session,
+	node: string,
+	task: string,
+	key: string,
+	result: StoredResult
+): void {
+	if (result.outcome !== 'fail' && result.outcome !== 'error') return;
+	session.lastFailure = {
+		node,
+		task,
+		key,
+		outcome: result.outcome,
+		...(result.detail === undefined ? {} : { detail: result.detail }),
+	};
 }
 
 /** Reads the status without narrowing: a step can change it, which the compiler cannot see. */
@@ -442,9 +545,15 @@ function errorResult(session: Session, key: string): Result {
 	};
 }
 
-/** Saves the run's position. Results are written by recordResult, so this stays small. */
+/**
+ * Saves the run's position and the run's last failure. Results are written by recordResult, so
+ * this stays small.
+ */
 function saveSnapshot(session: Session, label: Checkpoint, key: string): void {
-	session.store.saveSnapshot(session.run.snapshot());
+	session.store.saveSnapshot({
+		run: session.run.snapshot(),
+		lastFailure: session.lastFailure ?? null,
+	});
 	session.options.onCheckpoint?.(label, key);
 }
 
@@ -452,11 +561,53 @@ function saveSnapshot(session: Session, label: Checkpoint, key: string): void {
 function recordResult(
 	session: Session,
 	key: string,
-	outcome: StoredOutcome
+	result: StoredResult
 ): void {
-	session.store.recordResult(key, session.run.transitions, outcome);
-	session.results.set(key, outcome);
+	session.store.recordResult(key, session.run.transitions, result);
+	session.results.set(key, result);
 	session.options.onCheckpoint?.('result-saved', key);
+}
+
+/**
+ * Reads the snapshot the host saved: `{ run, lastFailure }`. A bare run snapshot, from before
+ * failures were kept, has no `run` field and no last failure.
+ */
+function splitSnapshot(saved: unknown): {
+	runSnapshot: unknown;
+	lastFailure: StageFailure | undefined;
+} {
+	if (!isRecord(saved) || !('run' in saved)) {
+		return { runSnapshot: saved, lastFailure: undefined };
+	}
+	return {
+		runSnapshot: saved.run,
+		lastFailure: parseFailure(saved.lastFailure),
+	};
+}
+
+function parseFailure(value: unknown): StageFailure | undefined {
+	if (value === undefined || value === null) return undefined;
+	if (
+		!isRecord(value) ||
+		typeof value.node !== 'string' ||
+		typeof value.task !== 'string' ||
+		typeof value.key !== 'string' ||
+		(value.outcome !== 'fail' && value.outcome !== 'error')
+	) {
+		throw new Error('state file is malformed: lastFailure');
+	}
+	const detail = isDetail(value.detail) ? value.detail : undefined;
+	return {
+		node: value.node,
+		task: value.task,
+		key: value.key,
+		outcome: value.outcome,
+		...(detail === undefined ? {} : { detail }),
+	};
+}
+
+function isDetail(value: unknown): value is Detail {
+	return isRecord(value) && typeof value.message === 'string';
 }
 
 function sequenceOf(key: string): number {
@@ -477,8 +628,9 @@ async function attempt(
 	options: DurableOptions,
 	task: string,
 	key: string,
-	attempts: number
-): Promise<Outcome> {
+	attempts: number,
+	failure: StageFailure | undefined
+): Promise<RunnerReport> {
 	const timeoutMs = options.taskTimeoutMs ?? DEFAULT_TASK_TIMEOUT_MS;
 	let lastError: unknown = new Error('no attempts');
 	for (let number = 1; number <= attempts; number++) {
@@ -486,7 +638,7 @@ async function attempt(
 			return await runOnce(
 				options.runner,
 				task,
-				{ key, attempt: number },
+				{ key, attempt: number, failure },
 				timeoutMs
 			);
 		} catch (error) {
@@ -506,9 +658,9 @@ async function attempt(
 async function runOnce(
 	runner: Runner,
 	task: string,
-	ids: { key: string; attempt: number },
+	ids: { key: string; attempt: number; failure: StageFailure | undefined },
 	timeoutMs: number
-): Promise<Outcome> {
+): Promise<RunnerReport> {
 	const controller = new AbortController();
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	const timeout = new Promise<never>((_, reject) => {
@@ -518,17 +670,68 @@ async function runOnce(
 		}, timeoutMs);
 	});
 	try {
-		const outcome: unknown = await Promise.race([
+		const value: unknown = await Promise.race([
 			runner(task, { ...ids, signal: controller.signal }),
 			timeout,
 		]);
-		if (!isOutcome(outcome)) {
-			throw new Error(`runner returned "${String(outcome)}"`);
-		}
-		return outcome;
+		return normalizeReport(value);
 	} finally {
 		clearTimeout(timer);
 	}
+}
+
+/** Checks what a runner returned, and returns it as a report. Throws when it is not valid. */
+function normalizeReport(value: unknown): RunnerReport {
+	if (isOutcome(value)) return { outcome: value };
+	if (!isRecord(value)) {
+		throw new Error(`runner returned "${String(value)}"`);
+	}
+	if (!isOutcome(value.outcome)) {
+		throw new Error(
+			`runner returned an object whose outcome is "${String(value.outcome)}"`
+		);
+	}
+	return value.detail === undefined
+		? { outcome: value.outcome }
+		: { outcome: value.outcome, detail: normalizeDetail(value.detail) };
+}
+
+/** Checks a runner's detail against the limits, and returns a copy the host can store. */
+function normalizeDetail(value: unknown): Detail {
+	if (!isRecord(value) || typeof value.message !== 'string') {
+		throw new Error('runner detail needs a string message');
+	}
+	const detail: { message: string; code?: string; data?: unknown } = {
+		message: capMessage(value.message),
+	};
+	if (value.code !== undefined) {
+		if (
+			typeof value.code !== 'string' ||
+			value.code.length > MAX_DETAIL_CODE
+		) {
+			throw new Error(
+				`runner detail code must be a string of at most ${MAX_DETAIL_CODE} characters`
+			);
+		}
+		detail.code = value.code;
+	}
+	if (value.data !== undefined) {
+		const text = JSON.stringify(value.data);
+		if (text === undefined || Buffer.byteLength(text) > MAX_DETAIL_DATA_BYTES) {
+			throw new Error(
+				`runner detail data must be JSON of at most ${MAX_DETAIL_DATA_BYTES} bytes`
+			);
+		}
+		detail.data = JSON.parse(text) as unknown;
+	}
+	return detail;
+}
+
+/** The message, cut to `MAX_DETAIL_MESSAGE` characters with an ellipsis when it is longer. */
+function capMessage(text: string): string {
+	return text.length <= MAX_DETAIL_MESSAGE
+		? text
+		: `${text.slice(0, MAX_DETAIL_MESSAGE - 1)}…`;
 }
 
 function isOutcome(value: unknown): value is Outcome {
@@ -562,6 +765,7 @@ interface ResultRecord {
 	readonly key: string;
 	readonly sequence: number;
 	readonly outcome: StoredOutcome | null;
+	readonly detail?: Detail | undefined;
 }
 
 function parseRecord(line: string): ResultRecord | undefined {
@@ -578,20 +782,28 @@ function parseRecord(line: string): ResultRecord | undefined {
 		if (outcome !== null && !isStoredOutcome(outcome)) {
 			return undefined;
 		}
-		return { key: value.key, sequence: value.sequence, outcome };
+		if (value.detail !== undefined && !isDetail(value.detail)) {
+			return undefined;
+		}
+		return {
+			key: value.key,
+			sequence: value.sequence,
+			outcome,
+			detail: value.detail,
+		};
 	} catch {
 		return undefined;
 	}
 }
 
 /**
- * Reads the records at `since` or later, in order, keeping the last outcome for each key. The
+ * Reads the records at `since` or later, in order, keeping the last result for each key. The
  * file is read in chunks, so only those records are held in memory. A last line cut short by a
  * crash is dropped, and the file is cut back to the end of the last complete line, so later
  * appends start on a clean line. A bad complete line means the file is damaged.
  */
-function readRecords(file: string, since: number): Map<string, StoredOutcome> {
-	const latest = new Map<string, StoredOutcome | null>();
+function readRecords(file: string, since: number): Map<string, StoredResult> {
+	const latest = new Map<string, StoredResult | null>();
 	if (!existsSync(file)) return new Map();
 	const fd = openSync(file, 'r+');
 	try {
@@ -602,8 +814,16 @@ function readRecords(file: string, since: number): Map<string, StoredOutcome> {
 			if (record === undefined) {
 				throw new Error(`results file ${file} is malformed`);
 			}
-			if (record.sequence >= since)
-				latest.set(record.key, record.outcome);
+			if (record.sequence >= since) {
+				latest.set(
+					record.key,
+					record.outcome === null
+						? null
+						: record.detail === undefined
+							? { outcome: record.outcome }
+							: { outcome: record.outcome, detail: record.detail }
+				);
+			}
 		});
 		if (completeEnd < size) {
 			ftruncateSync(fd, completeEnd);
@@ -612,9 +832,9 @@ function readRecords(file: string, since: number): Map<string, StoredOutcome> {
 	} finally {
 		closeSync(fd);
 	}
-	const recovered = new Map<string, StoredOutcome>();
-	for (const [key, outcome] of latest) {
-		if (outcome !== null) recovered.set(key, outcome);
+	const recovered = new Map<string, StoredResult>();
+	for (const [key, result] of latest) {
+		if (result !== null) recovered.set(key, result);
 	}
 	return recovered;
 }

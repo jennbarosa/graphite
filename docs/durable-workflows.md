@@ -64,6 +64,28 @@ graphite run examples/workflow/workflow.dsl \
 The run log goes to stderr. The final line is JSON, for example `{"status":"ended","transitions":2}`.
 The exit status is 0 when the run ends.
 
+## Failure details
+
+A runner can say why a stage failed. It returns an object instead of a bare outcome:
+
+```ts
+return { outcome: "fail", detail: { message: "2 checks failed", code: "lint", data: { checks: ["max-len"] } } };
+```
+
+- `message` is required. It is cut to 1,000 characters.
+- `code` is optional, a short label to match on. At most 64 characters.
+- `data` is optional JSON for a later task. At most 4,096 bytes when serialized.
+- A runner that returns a detail outside these limits fails that attempt, as if it had thrown.
+
+The host keeps the most recent failed stage of the run, which is a `fail` or an `error` (a task
+that threw on every attempt, whose detail is the thrown message). Later tasks see it as
+`context.failure`, with the stage's `node`, `task`, `key`, `outcome` and `detail`. A later stage
+that passes does not clear it. `context.failure` is `undefined` until a stage fails. The failure is
+saved with the run's position, so a resumed run gives the same value.
+
+The run log prints the detail after the outcome, for example
+`[task] lint fail (ran, key 1:check) — lint: 2 checks failed`.
+
 ## What the host guarantees
 
 - **Checkpoints.** The state is saved after every result, in `<state>` and the results in

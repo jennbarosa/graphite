@@ -15,7 +15,10 @@ import {
 	type Outcome,
 	type Runner,
 	type StateStore,
-	type StoredOutcome,
+	MAX_DETAIL_DATA_BYTES,
+	MAX_DETAIL_MESSAGE,
+	type StageFailure,
+	type StoredResult,
 	fileStore,
 	retryFailedTask,
 	runDurable,
@@ -89,6 +92,26 @@ function recorder(script: Array<Outcome | 'throw'> = []) {
 		return next;
 	};
 	return { runner, calls };
+}
+
+/** Runs the review workflow until its `fix` stage errors, so the run stops after a lint failure. */
+async function stopAtFix(files: Files) {
+	let lints = 0;
+	const result = await runDurable({
+		modulePath: graphModule,
+		...workflowNames,
+		stateFile: files.state,
+		maxAttempts: 1,
+		runner: async (task) => {
+			if (task === 'fix') throw new Error('fixer is down');
+			if (task !== 'lint') return 'none';
+			return lints++ === 0
+				? { outcome: 'fail', detail: { message: 'lint: 3 errors' } }
+				: 'pass';
+		},
+	});
+	if (result.status !== 'error') throw new Error('expected the run to stop at fix');
+	return result;
 }
 
 describe('durable host', () => {
@@ -230,33 +253,27 @@ describe('durable host', () => {
 		const records: {
 			key: string;
 			sequence: number;
-			outcome: StoredOutcome | null;
+			result: StoredResult | null;
 		}[] = [];
 		const memory: StateStore = {
 			loadSnapshot: () => snapshot,
 			loadRecords: (since) => {
-				const latest = new Map<string, StoredOutcome | null>();
+				const latest = new Map<string, StoredResult | null>();
 				for (const record of records) {
 					if (record.sequence >= since)
-						latest.set(record.key, record.outcome);
+						latest.set(record.key, record.result);
 				}
 				return new Map(
-					[...latest].flatMap(([key, outcome]) =>
-						outcome === null
-							? []
-							: [[key, outcome] as const]
+					[...latest].flatMap(([key, result]) =>
+						result === null ? [] : [[key, result] as const]
 					)
 				);
 			},
 			saveSnapshot: (value) => {
 				snapshot = JSON.parse(JSON.stringify(value));
 			},
-			recordResult: (key, sequence, outcome) => {
-				records.push({
-					key,
-					sequence,
-					outcome: outcome ?? null,
-				});
+			recordResult: (key, sequence, result) => {
+				records.push({ key, sequence, result: result ?? null });
 			},
 			withLock: async (body) => body(),
 		};
@@ -742,5 +759,168 @@ describe('durable host', () => {
 		expect(lines.length).toBeGreaterThan(0);
 		for (const line of lines)
 			expect(line.startsWith('12:00:00 [')).toBe(true);
+	});
+
+	test('a failed stage passes its detail to later tasks as context.failure, and a later pass keeps it', async () => {
+		const files = scratch();
+		const seen: { task: string; failure: StageFailure | undefined }[] = [];
+		let lints = 0;
+		const runner: Runner = async (task, context) => {
+			seen.push({ task, failure: context.failure });
+			if (task !== 'lint') return 'none';
+			return lints++ === 0
+				? {
+						outcome: 'fail',
+						detail: {
+							message: 'two checks failed',
+							code: 'lint',
+							data: { checks: ['no-unused', 'max-len'] },
+						},
+					}
+				: 'pass';
+		};
+		const result = await runDurable({
+			modulePath: graphModule,
+			...workflowNames,
+			stateFile: files.state,
+			runner,
+		});
+		expect(result.status).toBe('ended');
+		const failure: StageFailure = {
+			node: 'check',
+			task: 'lint',
+			key: '1:check',
+			outcome: 'fail',
+			detail: {
+				message: 'two checks failed',
+				code: 'lint',
+				data: { checks: ['no-unused', 'max-len'] },
+			},
+		};
+		expect(seen.find((call) => call.task === 'write')?.failure).toBeUndefined();
+		expect(seen.find((call) => call.task === 'fix')?.failure).toEqual(failure);
+		// The second lint passed, and deploy still sees the earlier failure.
+		expect(seen.filter((call) => call.task === 'deploy')[0]?.failure).toEqual(failure);
+	});
+
+	test('a resumed run gives the next task the failure from before the stop', async () => {
+		const files = scratch();
+		const stopped = await stopAtFix(files);
+		await retryFailedTask(fileStore(files.state), stopped.key);
+		const seen: (StageFailure | undefined)[] = [];
+		const resumed = await runDurable({
+			modulePath: graphModule,
+			...workflowNames,
+			stateFile: files.state,
+			runner: async (task, context) => {
+				if (task === 'fix') seen.push(context.failure);
+				return task === 'lint' ? 'pass' : 'none';
+			},
+		});
+		expect(resumed.status).toBe('ended');
+		expect(seen).toEqual([
+			{
+				node: 'check',
+				task: 'lint',
+				key: '1:check',
+				outcome: 'fail',
+				detail: { message: 'lint: 3 errors' },
+			},
+		]);
+	});
+
+	test('a state file saved before failures were kept still resumes, with no failure', async () => {
+		const files = scratch();
+		const stopped = await stopAtFix(files);
+		await retryFailedTask(fileStore(files.state), stopped.key);
+		// Rewrite the snapshot in the older shape: the run's own snapshot, with no wrapper.
+		const saved = JSON.parse(readFileSync(files.state, 'utf8'));
+		writeFileSync(
+			files.state,
+			JSON.stringify({ snapshot: saved.snapshot.run })
+		);
+		const seen: (StageFailure | undefined)[] = [];
+		const resumed = await runDurable({
+			modulePath: graphModule,
+			...workflowNames,
+			stateFile: files.state,
+			runner: async (task, context) => {
+				if (task === 'fix') seen.push(context.failure);
+				return task === 'lint' ? 'pass' : 'none';
+			},
+		});
+		expect(resumed.status).toBe('ended');
+		expect(seen).toEqual([undefined]);
+	});
+
+	test('a message over the limit is cut with an ellipsis, and data over the limit stops the attempt', async () => {
+		const files = scratch();
+		const seen: (StageFailure | undefined)[] = [];
+		let lintsRun = 0;
+		const result = await runDurable({
+			modulePath: graphModule,
+			...workflowNames,
+			stateFile: files.state,
+			maxAttempts: 1,
+			runner: async (task, context) => {
+				if (task === 'fix') seen.push(context.failure);
+				if (task !== 'lint') return 'none';
+				return lintsRun++ === 0
+					? {
+							outcome: 'fail',
+							detail: { message: 'x'.repeat(MAX_DETAIL_MESSAGE + 500) },
+						}
+					: 'pass';
+			},
+		});
+		expect(result.status).toBe('ended');
+		const message = seen[0]?.detail?.message ?? '';
+		expect(message.length).toBe(MAX_DETAIL_MESSAGE);
+		expect(message.endsWith('…')).toBe(true);
+
+		const oversized = scratch();
+		const refused = await runDurable({
+			modulePath: graphModule,
+			...workflowNames,
+			stateFile: oversized.state,
+			maxAttempts: 1,
+			runner: async (task) =>
+				task === 'lint'
+					? {
+							outcome: 'fail',
+							detail: {
+								message: 'too much data',
+								data: 'y'.repeat(MAX_DETAIL_DATA_BYTES + 1),
+							},
+						}
+					: 'none',
+		});
+		expect(refused.status).toBe('error');
+		if (refused.status !== 'error') throw new Error('unreachable');
+		expect(refused.error).toContain(`at most ${MAX_DETAIL_DATA_BYTES} bytes`);
+	});
+
+	test('runLog prints the detail a runner gave with its outcome', async () => {
+		const files = scratch();
+		const lines: string[] = [];
+		let lints = 0;
+		await runDurable({
+			modulePath: graphModule,
+			...workflowNames,
+			stateFile: files.state,
+			runner: async (task) => {
+				if (task !== 'lint') return 'none';
+				return lints++ === 0
+					? {
+							outcome: 'fail',
+							detail: { message: 'two checks failed', code: 'lint' },
+						}
+					: 'pass';
+			},
+			onEvent: runLog((line) => lines.push(line), { timestamps: false }),
+		});
+		expect(lines).toContain(
+			'[task] lint fail (ran, key 1:check) — lint: two checks failed'
+		);
 	});
 });

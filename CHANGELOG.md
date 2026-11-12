@@ -5,6 +5,21 @@ All notable changes to Graphite are recorded here. The format follows
 [Semantic Versioning](https://semver.org/). While the version starts with `0.`, any release may
 change the interface.
 
+## [Unreleased]
+
+### Added
+
+- Durable runners can report a detail with an outcome (`{ outcome, detail }`). The host stores it,
+  logs it, and passes the most recent failed stage to later tasks as `context.failure`, including
+  after a resume.
+
+### Changed
+
+- The state file's snapshot is now `{ run, lastFailure }`. Snapshots written by earlier versions still
+  load, but a state file written by this version cannot be resumed by an earlier one.
+- `StateStore` records and loads results with their detail, so custom stores must store the result
+  object rather than the bare outcome.
+
 ## [0.1.0] - 2026-11-12
 
 The first release. Graphite is an early proof of concept, so expect the interface to change.

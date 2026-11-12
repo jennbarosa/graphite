@@ -49,12 +49,18 @@ export function runLog(
 					`[attempt] ${event.task} attempt ${event.attempt} failed (key ${event.key}): ${event.error}`
 				);
 				return;
-			case 'task-settled':
+			case 'task-settled': {
 				count(settled, event.task);
+				const detail = event.detail;
+				const note =
+					detail === undefined
+						? ''
+						: ` — ${detail.code === undefined ? '' : `${detail.code}: `}${detail.message}`;
 				write(
-					`[task] ${event.task} ${event.outcome} (${event.source}, key ${event.key})`
+					`[task] ${event.task} ${event.outcome} (${event.source}, key ${event.key})${note}`
 				);
 				return;
+			}
 			case 'step-taken':
 				write(
 					`[step] ${event.taken} edge(s), now at ${event.node}`
