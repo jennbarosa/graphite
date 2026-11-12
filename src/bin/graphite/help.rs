@@ -9,8 +9,33 @@ pub const OVERVIEW: &str = "usage:
   graphite debug <file.dsl> [command...]                 step through a graph in the terminal
   graphite inspect <file.dsl> [--json]                   print the compiled graph
   graphite doctor [--json]                               report this build, its front ends, and what works here
+  graphite completions <bash|zsh|fish>                  print a shell completion script
+  graphite man                                          print the manual page
 
 Run `graphite help <command>` for a command's options.";
+
+/// Every command, and the options it takes. Completions and the manual page are built from this
+/// table; a unit test checks each option against the command's help text.
+pub const COMMANDS: &[(&str, &[&str])] = &[
+    ("init", &[]),
+    ("check", &["--frontend", "--allow", "--json"]),
+    ("compile", &["--out", "--frontend", "--allow"]),
+    ("inspect", &["--json"]),
+    ("debug", &["--frontend", "--graph", "--out", "--allow"]),
+    ("run", &["--state", "--runner", "--allow", "--durable"]),
+    ("doctor", &["--json"]),
+    ("help", &[]),
+    ("completions", &[]),
+    ("man", &[]),
+];
+
+/// Options that take a value on the next argument.
+pub fn takes_value(option: &str) -> bool {
+    matches!(
+        option,
+        "--out" | "--frontend" | "--graph" | "--allow" | "--state" | "--runner"
+    )
+}
 
 /// The help for one command, or `None` for an unknown name.
 pub fn for_command(name: &str) -> Option<&'static str> {
@@ -46,7 +71,7 @@ command again resumes where it stopped.
 The runner is code that runs with your permissions. Use only runners you wrote or reviewed."
         }
         "debug" => {
-            "usage: graphite debug <file.dsl> [--graph <name>] [--out <dir>] [--allow <list.toml>] [command...]
+            "usage: graphite debug <file.dsl> [--frontend typescript] [--graph <name>] [--out <dir>] [--allow <list.toml>] [command...]
 
 Opens a debugger on the first graph, or on --graph. Each argument after the file is one
 command. Without commands, the debugger reads them from standard input.
@@ -65,6 +90,42 @@ Reports the graphite version and platform, the commands that need no outside too
 registered front end: whether it compiles, and whether its debug and run have the runtime they
 need. Each blocked command says how to fix it. Exits with an error when any command is blocked. --json prints the same report as one JSON object."
         }
+        "help" => {
+            "usage: graphite help [command]
+
+Prints the overview, or the help for one command. The same as `graphite <command> --help`."
+        }
+        "completions" => {
+            "usage: graphite completions <bash|zsh|fish>
+
+Prints a completion script for the shell. Install it where your shell looks for completions, for
+example `graphite completions bash > ~/.local/share/bash-completion/completions/graphite`."
+        }
+        "man" => {
+            "usage: graphite man
+
+Prints the manual page in roff. Install it on your MANPATH, for example
+`graphite man > ~/.local/share/man/man1/graphite.1`, then run `man graphite`."
+        }
         _ => return None,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{COMMANDS, for_command};
+
+    /// Each command has help text, and the help text names every option the table lists for it.
+    #[test]
+    fn the_command_table_matches_the_help_text() {
+        for (name, options) in COMMANDS {
+            let text = for_command(name).unwrap_or_else(|| panic!("no help for {name}"));
+            for option in *options {
+                assert!(
+                    text.contains(option),
+                    "{name}'s help does not mention {option}"
+                );
+            }
+        }
+    }
 }

@@ -4,6 +4,7 @@ mod allow;
 mod args;
 mod check;
 mod compile;
+mod completions;
 mod debug;
 mod debugger;
 mod doctor;
@@ -14,6 +15,7 @@ mod inspect;
 mod js;
 mod json;
 mod load;
+mod man;
 mod run;
 mod scratch;
 
@@ -42,6 +44,10 @@ impl From<String> for Failure {
 fn main() -> ExitCode {
     let command = match args::parse(std::env::args().skip(1)) {
         Ok(command) => command,
+        Err(message) if message == help::OVERVIEW => {
+            eprintln!("{message}");
+            return ExitCode::from(2);
+        }
         Err(message) => {
             eprintln!("graphite: {message}");
             return ExitCode::from(2);
@@ -96,6 +102,16 @@ fn dispatch(command: Command) -> Result<(), String> {
         }
         Command::Version => {
             println!("graphite {}", env!("CARGO_PKG_VERSION"));
+            Ok(())
+        }
+        Command::Completions { shell } => {
+            let script =
+                completions::script(&shell).ok_or_else(|| format!("unknown shell \"{shell}\""))?;
+            print!("{script}");
+            Ok(())
+        }
+        Command::Man => {
+            print!("{}", man::page());
             Ok(())
         }
         Command::Init { input } => init::run(&input),

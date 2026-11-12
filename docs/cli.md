@@ -67,6 +67,25 @@ On failure, `error` holds the same text the command prints to stderr without `--
 In `inspect`, a choice arm's `condition` is `null` for `else`, and an annotation's `value` is `null`
 for a bare annotation such as `@flip`. Lists keep the order the text form prints.
 
+## Shell completions and the manual page
+
+`graphite completions <bash|zsh|fish>` prints a completion script for the shell. The script is built
+from the same command table as the parser, so it lists the commands and options the binary accepts.
+
+```sh
+graphite completions bash > ~/.local/share/bash-completion/completions/graphite
+graphite completions zsh > "${fpath[1]}/_graphite"
+graphite completions fish > ~/.config/fish/completions/graphite.fish
+```
+
+`graphite man` prints the manual page in roff. The command sections come from the same help text as
+`graphite help`:
+
+```sh
+graphite man > ~/.local/share/man/man1/graphite.1
+man graphite
+```
+
 ## Environment variables
 
 | Variable | Effect |

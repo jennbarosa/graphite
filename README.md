@@ -32,6 +32,9 @@ cargo install --path .
 graphite doctor
 ```
 
+Shell completions and a manual page come from the binary too: `graphite completions bash`
+and `graphite man`. See the [CLI reference](docs/cli.md#shell-completions-and-the-manual-page).
+
 `graphite doctor` reports this build's version, each front end, and whether `debug` and `run` can
 work here. The TypeScript front end needs a JavaScript runtime for `run` and `debug`. [Bun](https://bun.sh) is the default; `npx tsx` also
 works. Compiling needs nothing else.

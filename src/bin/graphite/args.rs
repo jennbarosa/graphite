@@ -50,6 +50,12 @@ pub enum Command {
     Doctor {
         json: bool,
     },
+    /// `graphite completions <shell>`: the shell is `bash`, `zsh` or `fish`.
+    Completions {
+        shell: String,
+    },
+    /// `graphite man`: the manual page, in roff.
+    Man,
     /// `graphite help [command]`, or `--help` after any command.
     Help {
         topic: Option<String>,
@@ -92,6 +98,27 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
                 return Err(format!("no help for \"{name}\"\n\n{}", help::OVERVIEW));
             }
             return Ok(Command::Help { topic });
+        }
+        "completions" => {
+            return match args.get(1).map(String::as_str) {
+                Some("--help" | "-h") => Ok(Command::Help { topic: Some(verb) }),
+                Some(shell @ ("bash" | "zsh" | "fish")) if args.len() == 2 => {
+                    Ok(Command::Completions {
+                        shell: shell.to_string(),
+                    })
+                }
+                Some(other) if args.len() == 2 => Err(format!(
+                    "unknown shell \"{other}\"; expected bash, zsh or fish"
+                )),
+                _ => Err("completions needs a shell: bash, zsh or fish".into()),
+            };
+        }
+        "man" => {
+            return match args.get(1).map(String::as_str) {
+                None => Ok(Command::Man),
+                Some("--help" | "-h") => Ok(Command::Help { topic: Some(verb) }),
+                Some(_) => Err(format!("man takes no arguments, got \"{}\"", args[1])),
+            };
         }
         "doctor" => {
             return match args.get(1).map(String::as_str) {
