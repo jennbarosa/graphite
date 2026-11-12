@@ -9,6 +9,8 @@ change the interface.
 
 ### Added
 
+- Fan-out: `graphite run list.dsl --each item.dsl --key domain` runs the item graph once per item the list graph
+  produces, with a seen file to skip items already started and `--until-passed N` to stop after N pass.
 - Stage outputs: a task returns `output`, and later tasks read it with `context.outputs.read(node)`. The end node's
   output appears in the run result, with the node's name.
 - Error routing: a graph that declares `errored` routes a task that throws, instead of stopping the run.

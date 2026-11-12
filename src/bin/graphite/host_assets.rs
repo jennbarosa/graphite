@@ -17,6 +17,7 @@ pub const FILES: &[(&str, &str)] = &[
         "host/commands.ts",
         include_str!("../../../host/commands.ts"),
     ),
+    ("host/fanout.ts", include_str!("../../../host/fanout.ts")),
     ("host/durable.ts", include_str!("../../../host/durable.ts")),
     ("host/run-log.ts", include_str!("../../../host/run-log.ts")),
     ("cli/debug.ts", include_str!("../../../cli/debug.ts")),

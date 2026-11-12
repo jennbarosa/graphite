@@ -37,6 +37,10 @@ graphite --version                                     print the version
 | `--runner <tasks.ts>` | `run` | Module whose default export runs tasks. Runs as code with your permissions. |
 | `--tasks <tasks.toml>` | `run` | Runs each task as a command, from a manifest. Cannot be combined with `--runner`. See [command tasks](durable-workflows.md#command-tasks). |
 | `--input <input.json>` | `run` | A JSON value every task receives as `context.input`. See [input](durable-workflows.md#input). |
+| `--each <item.dsl>` | `run` | Runs the item graph once per item the graph produces. Needs `--key`. See [fan-out](durable-workflows.md#fan-out). |
+| `--key <field>` | `run` | The item field that identifies each item. |
+| `--seen <file.json>` | `run` | Item keys already started, so a run skips them. Defaults beside the state file. |
+| `--until-passed <N>` | `run` | Stops starting items once N have passed. |
 | `--durable` | `run` | Accepted and ignored: `run` is always durable. |
 | `--frontend <key>` | `check`, `compile`, `debug` | The front end to use. `typescript` is the only one shipped, and the default. See [front ends](front-ends.md). |
 

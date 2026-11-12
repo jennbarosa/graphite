@@ -145,6 +145,7 @@ describe('durable host', () => {
 			status: 'ended',
 			transitions: 4,
 			node: 'ship',
+			outcome: 'none',
 		});
 		expect(calls.map((call) => call.task)).toEqual([
 			'write',
@@ -171,6 +172,7 @@ describe('durable host', () => {
 			status: 'ended',
 			transitions: 2,
 			node: 'ship',
+			outcome: 'none',
 		});
 		expect(calls.map((call) => call.task)).toEqual([
 			'write',
@@ -247,6 +249,7 @@ describe('durable host', () => {
 			status: 'ended',
 			transitions: 2,
 			node: 'ship',
+			outcome: 'none',
 		});
 		expect(calls.filter((call) => call.task === 'lint')).toHaveLength(
 			4
@@ -1108,6 +1111,7 @@ describe('durable host', () => {
 			status: 'ended',
 			transitions: 2,
 			node: 'ship',
+			outcome: 'none',
 			output: { shipped: true },
 		});
 		expect(readFileSync(join(`${files.state}.outputs`, 'draft.json'), 'utf8')).toBe(

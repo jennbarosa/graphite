@@ -227,6 +227,8 @@ export type Result =
 			node: string;
 			/** The output that end node's task saved, when it saved one. */
 			output?: unknown;
+			/** The outcome of the end node's own stage: `none` when it has no task. */
+			outcome: StoredOutcome;
 	  }
 	| { status: 'stalled'; transitions: number; node: string }
 	| { status: 'error'; transitions: number; key: string; error: string };
@@ -479,6 +481,7 @@ async function runStage(session: Session): Promise<Result | undefined> {
 			status: 'ended',
 			transitions: run.transitions,
 			node,
+			outcome,
 			...(output === undefined ? {} : { output }),
 		};
 	}

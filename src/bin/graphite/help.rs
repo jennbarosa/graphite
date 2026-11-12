@@ -29,6 +29,10 @@ pub const COMMANDS: &[(&str, &[&str])] = &[
             "--runner",
             "--tasks",
             "--input",
+            "--each",
+            "--key",
+            "--seen",
+            "--until-passed",
             "--allow",
             "--durable",
         ],
@@ -51,6 +55,10 @@ pub fn takes_value(option: &str) -> bool {
             | "--runner"
             | "--tasks"
             | "--input"
+            | "--each"
+            | "--key"
+            | "--seen"
+            | "--until-passed"
     )
 }
 
@@ -79,12 +87,16 @@ It never overwrites: remove the directory, or pass another --out, to compile aga
         }
         "run" => {
             "usage: graphite run <file.dsl> [--state <file.json>] [--tasks <tasks.toml> | --runner <tasks.ts>] [--input <data.json>] [--allow <list.toml>]
+                   [--each <item.dsl> --key <field> [--seen <file.json>] [--until-passed <N>]]
 
 Runs the file's first graph as a durable workflow. Each node with a @task:NAME annotation runs
 that task through --runner, or through the command --tasks names for it, and state is checkpointed
 after every result, so running the same command again resumes where it stopped.
 --input <data.json> is a JSON value every task receives as context.input. A resume must give the
 same input.
+--each <item.dsl> runs that graph once per item the file's graph ends with, as an array. --key names
+the item field that identifies it. --seen keeps the keys already started, so a second run skips them.
+--until-passed <N> stops starting items once N have ended on a passing stage.
 --state defaults to <file stem>.state.json beside the file.
 --durable is accepted for compatibility and does nothing: `run` is always durable.
 The runner is code that runs with your permissions. Use only runners you wrote or reviewed."

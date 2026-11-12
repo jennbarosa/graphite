@@ -129,13 +129,28 @@ fn dispatch(command: Command) -> Result<(), String> {
             allow,
             input_data,
             tasks,
+            each,
+            key,
+            seen,
+            until_passed,
         } => run::run(
             &input,
             state.as_deref(),
-            runner.as_deref(),
-            allow.as_deref(),
-            input_data.as_deref(),
-            tasks.as_deref(),
+            &run::Options {
+                runner: runner.as_deref(),
+                tasks: tasks.as_deref(),
+                input_data: input_data.as_deref(),
+                allow: allow.as_deref(),
+                fan_out: each
+                    .as_deref()
+                    .zip(key.as_deref())
+                    .map(|(each, key)| run::FanOut {
+                        each,
+                        key,
+                        seen: seen.as_deref(),
+                        until_passed,
+                    }),
+            },
         ),
         Command::Debug {
             input,

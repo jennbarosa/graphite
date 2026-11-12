@@ -75,7 +75,7 @@ fn every_task_runs_its_command_and_the_input_reaches_it() {
     assert!(output.status.success(), "{}", stderr(&output));
     assert_eq!(
         stdout(&output).trim(),
-        r#"{"status":"ended","transitions":2,"node":"ship","output":{"shipped":true}}"#
+        r#"{"status":"ended","transitions":2,"node":"ship","outcome":"pass","output":{"shipped":true}}"#
     );
 
     let log = std::fs::read_to_string(dir.join("log.txt")).unwrap();

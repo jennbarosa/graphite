@@ -135,6 +135,28 @@ edge check -> fix when errored
 The stage's result is `error`, with the thrown message as its detail, and it becomes the run's failure.
 Without an `errored` condition, a thrown task stops the run, as before.
 
+## Fan-out
+
+A list graph can run another graph once per item it produces:
+
+```sh
+graphite run discover.dsl --each prospect.dsl --key domain --tasks tasks.toml \
+  --seen seen.json --until-passed 10 --state today.state.json
+```
+
+The list graph must end with an array as its output, one object per item. Each item runs the
+`--each` graph once, with the item as its input and its own state file under `<state>.items/`. Two
+things keep the host from doing the same work twice:
+
+- **Dedupe.** `--key` names the item field that identifies it. The key of each item started is written
+  to the seen file, which defaults to `<state>.seen.json`. A key already there is skipped. Keys must be
+  letters, digits, dots, dashes or underscores, since each one is also a file name.
+- **Counter.** `--until-passed N` stops starting items once N have ended on a passing stage. An item
+  ends on a passing stage when its end node's own task returns `pass`.
+
+An item that stops or errors does not count as passed, and its key stays in the seen file, so it is
+not retried on the next run. Pass the same `--seen` file on each run to keep the list across days.
+
 ## Failure details
 
 A runner can say why a stage failed. It returns an object instead of a bare outcome:
