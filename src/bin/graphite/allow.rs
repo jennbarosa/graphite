@@ -38,7 +38,9 @@ impl Allowlist {
     }
 
     /// This allowlist with the allowed values for `key` replaced.
-    pub fn restrict(mut self, key: &str, values: Vec<String>) -> Self {
+    pub fn restrict(mut self, key: &str, mut values: Vec<String>) -> Self {
+        values.sort();
+        values.dedup();
         self.values.insert(key.to_string(), values);
         self
     }
@@ -78,6 +80,9 @@ impl Allowlist {
                     path.display()
                 )
             })?;
+            let mut allowed = allowed;
+            allowed.sort();
+            allowed.dedup();
             values.insert(key.clone(), allowed);
         }
         Ok(Self { values, node_flags })
@@ -128,20 +133,25 @@ impl Allowlist {
             let Some(allowed) = self.values.get(key) else {
                 continue;
             };
-            let listed = allowed.join(", ");
             match value {
                 None => {
                     return Err(format!(
-                        "{}: @{key} needs a value; allowed: {listed}",
-                        place()
+                        "{}: @{key} needs a value; allowed: {}",
+                        place(),
+                        allowed.join(", ")
                     ));
                 }
                 Some(value) => {
                     let value = graph.text(*value);
-                    if !allowed.iter().any(|allowed| allowed == value) {
+                    // The values are kept sorted, so membership is a binary search.
+                    if allowed
+                        .binary_search_by(|allowed| allowed.as_str().cmp(value))
+                        .is_err()
+                    {
                         return Err(format!(
-                            "{}: @{key}:{value} is not allowed; allowed: {listed}",
-                            place()
+                            "{}: @{key}:{value} is not allowed; allowed: {}",
+                            place(),
+                            allowed.join(", ")
                         ));
                     }
                 }

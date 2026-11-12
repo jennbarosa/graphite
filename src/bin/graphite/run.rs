@@ -50,15 +50,19 @@ pub fn run(input: &Path, state: Option<&Path>, options: &Options<'_>) -> Result<
         );
     }
     // Read before anything is locked or written, so a bad manifest changes nothing.
-    let task_table = options.tasks.map(tasks::table_json).transpose()?;
+    let manifest = options.tasks.map(tasks::Manifest::load).transpose()?;
+    let task_table = manifest
+        .as_ref()
+        .map(tasks::Manifest::table_json)
+        .transpose()?;
     // With a manifest, its task names are the only ones a graph may use, so the allowlist need not
     // list tasks itself. Without one, the allowlist's own task list applies.
-    let allowlist = match (options.allow, options.tasks) {
-        (allow, Some(tasks_path)) => {
+    let allowlist = match (options.allow, &manifest) {
+        (allow, Some(manifest)) => {
             let base = allow.map(Allowlist::load).transpose()?;
             Some(
                 base.unwrap_or_else(Allowlist::unrestricted)
-                    .restrict("task", tasks::names(tasks_path)?),
+                    .restrict("task", manifest.names()),
             )
         }
         (allow, None) => allow.map(Allowlist::load).transpose()?,

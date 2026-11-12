@@ -2,63 +2,74 @@
 //! and writes the JSON table the durable host reads. Commands run in the directory that holds the
 //! manifest, so relative paths in it are relative to the manifest.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::json;
 
-/// The task names the manifest at `path` declares: its `[tasks]` keys. A run given this manifest
-/// accepts only these tasks in its graphs.
-pub fn names(path: &Path) -> Result<Vec<String>, String> {
-    Ok(tasks_table(path)?.keys().cloned().collect())
+/// A manifest read once: its `[tasks]` table, and where it is.
+pub struct Manifest {
+    path: PathBuf,
+    tasks: toml::Table,
 }
 
-/// The `[tasks]` table of the manifest at `path`.
-fn tasks_table(path: &Path) -> Result<toml::Table, String> {
-    let text =
-        std::fs::read_to_string(path).map_err(|error| format!("{}: {error}", path.display()))?;
-    let manifest: toml::Table =
-        toml::from_str(&text).map_err(|error| format!("{}: {error}", path.display()))?;
-    manifest
-        .get("tasks")
-        .and_then(toml::Value::as_table)
-        .cloned()
-        .ok_or_else(|| format!("{}: expected a [tasks] table of commands", path.display()))
-}
-
-/// The JSON table for the manifest at `path`: `{"cwd": ..., "commands": {task: [argv...]}}`.
-pub fn table_json(path: &Path) -> Result<String, String> {
-    let tasks = tasks_table(path)?;
-    let mut commands = Vec::new();
-    for (name, value) in &tasks {
-        commands.push((name.as_str(), json::array(&argv_json(path, name, value)?)));
+impl Manifest {
+    /// Reads and parses the manifest at `path`.
+    pub fn load(path: &Path) -> Result<Self, String> {
+        let text = std::fs::read_to_string(path)
+            .map_err(|error| format!("{}: {error}", path.display()))?;
+        let manifest: toml::Table =
+            toml::from_str(&text).map_err(|error| format!("{}: {error}", path.display()))?;
+        let tasks = manifest
+            .get("tasks")
+            .and_then(toml::Value::as_table)
+            .cloned()
+            .ok_or_else(|| format!("{}: expected a [tasks] table of commands", path.display()))?;
+        Ok(Self {
+            path: path.to_path_buf(),
+            tasks,
+        })
     }
-    let manifest_path =
-        std::fs::canonicalize(path).map_err(|error| format!("{}: {error}", path.display()))?;
-    let directory = manifest_path
-        .parent()
-        .map(Path::to_path_buf)
-        .unwrap_or_default();
-    Ok(json::object(&[
-        ("source", json::quote(&manifest_path.to_string_lossy())),
-        ("cwd", json::quote(&directory.to_string_lossy())),
-        ("commands", json::object(&commands)),
-    ]))
-}
 
-/// One task's argv, as JSON strings. It must be a non-empty list of strings.
-fn argv_json(path: &Path, name: &str, value: &toml::Value) -> Result<Vec<String>, String> {
-    let invalid = || {
-        format!(
-            "{}: task {name} must be a non-empty list of strings, such as [\"npm\", \"run\", \"test\"]",
-            path.display()
-        )
-    };
-    let items = value.as_array().ok_or_else(invalid)?;
-    if items.is_empty() {
-        return Err(invalid());
+    /// The task names the manifest declares: its `[tasks]` keys. A run given this manifest accepts
+    /// only these tasks in its graphs.
+    pub fn names(&self) -> Vec<String> {
+        self.tasks.keys().cloned().collect()
     }
-    items
-        .iter()
-        .map(|item| item.as_str().map(json::quote).ok_or_else(invalid))
-        .collect()
+
+    /// The JSON table for the host: `{"source", "cwd", "commands": {task: [argv...]}}`.
+    pub fn table_json(&self) -> Result<String, String> {
+        let mut commands = Vec::with_capacity(self.tasks.len());
+        for (name, value) in &self.tasks {
+            commands.push((name.as_str(), json::array(&self.argv_json(name, value)?)));
+        }
+        let manifest_path = std::fs::canonicalize(&self.path)
+            .map_err(|error| format!("{}: {error}", self.path.display()))?;
+        let directory = manifest_path
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_default();
+        Ok(json::object(&[
+            ("source", json::quote(&manifest_path.to_string_lossy())),
+            ("cwd", json::quote(&directory.to_string_lossy())),
+            ("commands", json::object(&commands)),
+        ]))
+    }
+
+    /// One task's argv, as JSON strings. It must be a non-empty list of strings.
+    fn argv_json(&self, name: &str, value: &toml::Value) -> Result<Vec<String>, String> {
+        let invalid = || {
+            format!(
+                "{}: task {name} must be a non-empty list of strings, such as [\"npm\", \"run\", \"test\"]",
+                self.path.display()
+            )
+        };
+        let items = value.as_array().ok_or_else(invalid)?;
+        if items.is_empty() {
+            return Err(invalid());
+        }
+        items
+            .iter()
+            .map(|item| item.as_str().map(json::quote).ok_or_else(invalid))
+            .collect()
+    }
 }
