@@ -39,7 +39,7 @@ pub enum Command {
         /// Each entry is one debugger command line, run in order.
         commands: Vec<String>,
     },
-    /// Runs the first graph under the durable host. `runner` names a module whose default
+    /// Runs the first graph under the durable engine. `runner` names a module whose default
     /// export is the task runner; without it, every task settles as `none`.
     Run {
         input: PathBuf,

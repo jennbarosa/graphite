@@ -1,6 +1,6 @@
 use super::{Frontend, typescript};
 
-/// A host runtime that a front end's `debug` and `run` need on the machine.
+/// A runtime that a front end's `debug` and `run` need on the machine.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Runtime {
     /// A JavaScript runtime: Bun, or `npx tsx`, or `GRAPHITE_JS_RUNNER`.
@@ -23,7 +23,7 @@ pub static TARGETS: &[Target] = &[typescript::TARGET];
 /// The front end used when `--frontend` is not given.
 pub const DEFAULT_FRONT_END: &str = "typescript";
 
-/// The front end whose host runs `graphite run`. The durable host is written for it alone.
+/// The front end whose runtime runs `graphite run`. The durable engine is written for it alone.
 pub const DURABLE_FRONT_END: &str = "typescript";
 
 pub fn lookup(key: &str) -> Option<&'static Target> {

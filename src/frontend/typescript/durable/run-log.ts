@@ -1,7 +1,7 @@
-// A readable log of one run, built on the host's `onEvent`. Pass `runLog(console.error)` as
+// A readable log of one run, built on the engine's `onEvent`. Pass `runLog(console.error)` as
 // `onEvent` to turn logging on. Each line names a stage, a task, or an attempt by the graph's own
-// names and the host's keys, and the last line summarizes how often each stage and task ran.
-import type { HostEvent } from './durable';
+// names and the engine's keys, and the last line summarizes how often each stage and task ran.
+import type { RunEvent } from './engine';
 
 export type LogSink = (line: string) => void;
 
@@ -16,7 +16,7 @@ export interface RunLogOptions {
 export function runLog(
 	sink: LogSink,
 	options: RunLogOptions = {}
-): (event: HostEvent) => void {
+): (event: RunEvent) => void {
 	const visits = new Map<string, number>();
 	const settled = new Map<string, number>();
 	const clock = options.clock ?? (() => new Date().toISOString());

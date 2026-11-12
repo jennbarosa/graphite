@@ -142,7 +142,7 @@ fn build() -> Report {
             runtime_state(target, &mut probes)
         } else {
             State::Unavailable(format!(
-                "the durable host is written for {}",
+                "the durable engine is written for {}",
                 registry::DURABLE_FRONT_END
             ))
         };

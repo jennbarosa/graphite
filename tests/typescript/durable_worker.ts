@@ -7,7 +7,7 @@
 // appends its name and key to `<log>`, so a test can count real runs. With GRAPHITE_CRASH set to
 // `<checkpoint>:<node>`, the process exits with CRASH_EXIT at that checkpoint and prints nothing.
 import { appendFileSync } from 'node:fs';
-import { type Checkpoint, type Outcome, runDurable } from '../../host/durable';
+import { type Checkpoint, type Outcome, runDurable } from '../../src/frontend/typescript/durable/engine';
 
 const CRASH_EXIT = 7;
 const LINT_TASK = 'lint';

@@ -101,6 +101,6 @@ man graphite
 
 ## Where the TypeScript comes from
 
-The durable host and the debugger are compiled into the `graphite` binary. Each run writes them
+The durable engine and the debugger are compiled into the `graphite` binary. Each run writes them
 to a private temporary directory and removes it afterwards. An installed binary therefore works
 anywhere; it does not need a checkout.

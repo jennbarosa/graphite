@@ -16,7 +16,7 @@ What Graphite does not do yet, and known limits. Items are roughly in priority o
 ## Known limits
 
 - **Durable takeover is not atomic.** Two operators recovering the same run at the same moment can
-  race. See the note in [`host/durable.ts`](host/durable.ts).
+  race. See the note in [`engine.ts`](src/frontend/typescript/durable/engine.ts).
 - **The index holds every node name in one union.** TypeScript gives up on very large unions, so a
   huge graph may need its vocabulary split per chunk. See
   [`src/frontend/typescript/index.rs`](src/frontend/typescript/index.rs).
@@ -27,6 +27,6 @@ What Graphite does not do yet, and known limits. Items are roughly in priority o
 
 ## Done recently
 
-- The durable host and debugger are compiled into the binary, so `graphite` works after install.
+- The durable engine and debugger are compiled into the binary, so `graphite` works after install.
 - `graphite init`, `graphite doctor` (which reports every front end), and per-command help.
 - `compile` defaults its output directory, and reports collisions with a location.

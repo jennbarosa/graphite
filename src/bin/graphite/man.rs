@@ -21,7 +21,7 @@ pub fn page() -> String {
     section(&mut out, "DESCRIPTION");
     out += &paragraph(
         "Graphite reads a state graph written in a small DSL and checks it when you build it. \
-         Front ends generate code for host languages, and the durable host and debugger step the \
+         Front ends generate code for host languages, and the durable engine and debugger step the \
          graph one step at a time. The documentation is in the docs directory of the source \
          repository.",
     );

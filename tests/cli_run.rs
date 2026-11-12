@@ -1,4 +1,4 @@
-//! `graphite run --durable`: runs a graph under the durable host, and resumes from saved state.
+//! `graphite run --durable`: runs a graph under the durable engine, and resumes from saved state.
 
 #[allow(dead_code)]
 #[path = "support/bun.rs"]

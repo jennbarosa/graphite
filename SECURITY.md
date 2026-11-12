@@ -28,9 +28,9 @@ Some behavior is risky by design. These are documented, not vulnerabilities:
 - **`graphite run --runner`** runs the given program as code with your full user
   permissions. It can read files, use the network, and see secrets. Run only runners
   you wrote or have reviewed. The CLI prints a warning when you use it.
-- **Generated TypeScript and the durable host** execute the graphs and tasks you
+- **Generated TypeScript and the durable engine** execute the graphs and tasks you
   write. A graph that calls a task runs that task's code.
-- **The durable host's state store** is a plain file. Do not put secrets in it, and
+- **The durable engine's state store** is a plain file. Do not put secrets in it, and
   restrict its file permissions if the data is sensitive.
 
 Reports about the following are in scope: the parser or compiler crashing, hanging, or

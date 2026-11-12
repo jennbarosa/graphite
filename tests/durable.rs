@@ -1,6 +1,6 @@
-//! The durable host: retries, timeouts, locking and crash recovery. Compiles the review workflow
+//! The durable engine: retries, timeouts, locking and crash recovery. Compiles the review workflow
 //! with the `graphite` binary, as production does, then runs
-//! `tests/typescript/durable_host.test.ts` on that output.
+//! `tests/typescript/durable_engine.test.ts` on that output.
 
 #[allow(dead_code)]
 #[path = "support/bun.rs"]
@@ -20,7 +20,7 @@ fn the_workflow_needs_its_allowlist_for_the_retry_flag() {
 }
 
 #[test]
-fn the_durable_host_retries_recovers_and_never_reruns_a_task_it_recorded() {
+fn the_durable_engine_retries_recovers_and_never_reruns_a_task_it_recorded() {
     let fixtures = cli::manifest().join("tests/fixtures/runtime");
     let out = scratch("durable-review");
     let output = graphite([
@@ -34,7 +34,7 @@ fn the_durable_host_retries_recovers_and_never_reruns_a_task_it_recorded() {
     assert!(output.status.success(), "{}", stderr(&output));
     bun::assert_bun_test_passes_with(
         cli::manifest(),
-        "tests/typescript/durable_host.test.ts",
+        "tests/typescript/durable_engine.test.ts",
         &[
             ("GRAPHITE_WORKFLOW", out.join("review.ts")),
             ("GRAPHITE_STATE_DIR", out.clone()),

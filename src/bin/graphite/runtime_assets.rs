@@ -1,4 +1,4 @@
-//! The TypeScript durable host and debugger, compiled into the binary. They are written to a
+//! The TypeScript durable engine and debugger, compiled into the binary. They are written to a
 //! private scratch directory before each run, so `graphite` works after `cargo install`, not only
 //! from a checkout.
 
@@ -6,36 +6,57 @@ use std::path::{Path, PathBuf};
 
 use crate::scratch;
 
-/// Each file's path inside the bundle, and its contents. The bundle is the host's whole import
+/// Each file's path inside the bundle, and its contents. The bundle is the engine's whole import
 /// graph: every relative import in these files must name another entry here.
 pub const FILES: &[(&str, &str)] = &[
-    // Without `"type": "module"`, `tsx` would treat the host as CommonJS and reject its top-level
+    // Without `"type": "module"`, `tsx` would treat the engine as CommonJS and reject its top-level
     // `await`. Bun reads ESM either way.
     ("package.json", "{\"type\": \"module\"}\n"),
-    ("host/cli.ts", include_str!("../../../host/cli.ts")),
     (
-        "host/commands.ts",
-        include_str!("../../../host/commands.ts"),
+        "durable/cli.ts",
+        include_str!("../../../src/frontend/typescript/durable/cli.ts"),
     ),
-    ("host/fanout.ts", include_str!("../../../host/fanout.ts")),
-    ("host/contract.ts", include_str!("../../../host/contract.ts")),
-    ("host/durable.ts", include_str!("../../../host/durable.ts")),
-    ("host/report.ts", include_str!("../../../host/report.ts")),
-    ("host/store.ts", include_str!("../../../host/store.ts")),
-    ("host/run-log.ts", include_str!("../../../host/run-log.ts")),
+    (
+        "durable/commands.ts",
+        include_str!("../../../src/frontend/typescript/durable/commands.ts"),
+    ),
+    (
+        "durable/fanout.ts",
+        include_str!("../../../src/frontend/typescript/durable/fanout.ts"),
+    ),
+    (
+        "durable/contract.ts",
+        include_str!("../../../src/frontend/typescript/durable/contract.ts"),
+    ),
+    (
+        "durable/engine.ts",
+        include_str!("../../../src/frontend/typescript/durable/engine.ts"),
+    ),
+    (
+        "durable/report.ts",
+        include_str!("../../../src/frontend/typescript/durable/report.ts"),
+    ),
+    (
+        "durable/store.ts",
+        include_str!("../../../src/frontend/typescript/durable/store.ts"),
+    ),
+    (
+        "durable/run-log.ts",
+        include_str!("../../../src/frontend/typescript/durable/run-log.ts"),
+    ),
     ("cli/debug.ts", include_str!("../../../cli/debug.ts")),
     ("cli/format.ts", include_str!("../../../cli/format.ts")),
     ("cli/session.ts", include_str!("../../../cli/session.ts")),
     ("cli/types.ts", include_str!("../../../cli/types.ts")),
 ];
 
-/// The durable host's entry point, relative to the bundle root.
-pub const HOST_ENTRY: &str = "host/cli.ts";
+/// The durable engine's entry point, relative to the bundle root.
+pub const RUN_ENTRY: &str = "durable/cli.ts";
 
 /// Writes the bundle into a new private scratch directory and returns its root. The caller removes
 /// the directory when the run is over.
 pub fn materialize() -> Result<PathBuf, String> {
-    let root = scratch::create("graphite-host")?;
+    let root = scratch::create("graphite-engine")?;
     for (path, text) in FILES {
         let file = root.join(path);
         if let Some(parent) = file.parent() {

@@ -121,7 +121,7 @@ anything is recorded, and the error names the task. The commands run with your p
 stdin for a command task. Use it for the target a graph runs against, so the same graph can run
 against different targets without changing it.
 
-A resumed run must be given the same input. The host keeps a fingerprint of the input in the state
+A resumed run must be given the same input. The engine keeps a fingerprint of the input in the state
 file, and refuses a resume with a different one, so no task sees a mix of two inputs.
 
 ## Stage outputs
@@ -163,7 +163,7 @@ graphite run discover.dsl --each prospect.dsl --key domain --tasks tasks.toml \
 
 The list graph must end with an array as its output, one object per item. Each item runs the
 `--each` graph once, with the item as its input and its own state file under `<state>.items/`. Two
-things keep the host from doing the same work twice:
+things keep the engine from doing the same work twice:
 
 - **Dedupe.** `--key` names the item field that identifies it. The key of each item started is written
   to the seen file, which defaults to `<state>.seen.json`. The file holds one key per line, appended and
@@ -189,7 +189,7 @@ return { outcome: "fail", detail: { message: "2 checks failed", code: "lint", da
 - `data` is optional JSON for a later task. At most 4,096 bytes when serialized.
 - A runner that returns a detail outside these limits fails that attempt, as if it had thrown.
 
-The host keeps the most recent failed stage of the run, which is a `fail` or an `error` (a task
+The engine keeps the most recent failed stage of the run, which is a `fail` or an `error` (a task
 that threw on every attempt, whose detail is the thrown message). Later tasks see it as
 `context.failure`, with the stage's `node`, `task`, `key`, `outcome` and `detail`. A later stage
 that passes does not clear it. `context.failure` is `undefined` until a stage fails. The failure is
@@ -198,7 +198,7 @@ saved with the run's position, so a resumed run gives the same value.
 The run log prints the detail after the outcome, for example
 `[task] lint fail (ran, key 1:check) — lint: 2 checks failed`.
 
-## What the host guarantees
+## What the engine guarantees
 
 - **Checkpoints.** The state is saved after every result, in `<state>` and the results in
   `<state>.results`. Running the same command again resumes where it stopped.
@@ -209,14 +209,14 @@ The run log prints the detail after the outcome, for example
 - **At least once.** A task that was running when the process died runs again on resume, with the
   same `key`. Tasks with external effects must dedupe on `key`.
 - **Timeouts.** A task that exceeds `taskTimeoutMs` (default 60 s) counts as a failed attempt. The
-  host cannot stop a runner that ignores its `AbortSignal`.
+  engine cannot stop a runner that ignores its `AbortSignal`.
 
 ## When a run stalls
 
 A run stops with `"status":"stalled"` when no edge can be taken and no task is running. The usual
-cause is a gate on a condition that no task sets. A gate such as `when keyup` waits for the host;
+cause is a gate on a condition that no task sets. A gate such as `when keyup` waits for the engine;
 in a durable run, only `passed` and `failed` are set for you. If your graph needs other
-conditions, use the [TypeScript host API](typescript.md) rather than `run`.
+conditions, use the [TypeScript API](typescript.md) rather than `run`.
 
-The TypeScript host API (`runDurable`, `fileStore`, `runLog`) is documented in
-[`host/durable.ts`](../host/durable.ts) and [`host/run-log.ts`](../host/run-log.ts).
+The durable engine API (`runDurable`, `fileStore`, `runLog`) is documented in
+[`engine.ts`](../src/frontend/typescript/durable/engine.ts) and [`run-log.ts`](../src/frontend/typescript/durable/run-log.ts).

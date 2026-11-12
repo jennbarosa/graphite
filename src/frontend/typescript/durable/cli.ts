@@ -1,4 +1,4 @@
-// Command-line entry for `graphite run`. It runs one generated graph under the durable host and
+// Command-line entry for `graphite run`. It runs one generated graph under the durable engine and
 // prints the result as JSON. Usage:
 //   bun run cli.ts <graph.ts> <state.json> [--runner <tasks.ts> | --tasks <tasks.json>]
 //                  [--input <input.json>]
@@ -11,7 +11,7 @@
 import { mkdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { type CommandTable, commandRunner } from './commands';
-import { type DurableOptions, type Runner, runDurable } from './durable';
+import { type DurableOptions, type Runner, runDurable } from './engine';
 import { fanOut } from './fanout';
 import { runLog } from './run-log';
 

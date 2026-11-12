@@ -7,7 +7,7 @@ use graphite::frontend::{Frontend, Module};
 use graphite::graph::CompiledGraph;
 use graphite::pipeline::write_modules;
 
-use crate::{debugger, host_assets, load, scratch};
+use crate::{debugger, load, runtime_assets, scratch};
 
 pub fn run(
     input: &Path,
@@ -28,7 +28,7 @@ pub fn run(
         Some(out) => out.to_path_buf(),
         None => scratch::create("graphite-debug")?,
     };
-    let bundle = host_assets::materialize()?;
+    let bundle = runtime_assets::materialize()?;
     let result = debug_in(
         front_end.frontend,
         &graphs,
@@ -37,7 +37,7 @@ pub fn run(
         &bundle.join(script),
         commands,
     );
-    host_assets::discard(&bundle);
+    runtime_assets::discard(&bundle);
     if scratch {
         let _ = std::fs::remove_dir_all(&directory);
     }

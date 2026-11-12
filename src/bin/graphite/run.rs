@@ -1,16 +1,16 @@
-//! `graphite run`: compiles the graph and runs it under the durable host. With `--each`, the item
+//! `graphite run`: compiles the graph and runs it under the durable engine. With `--each`, the item
 //! graph runs once per item the first graph produces. State is saved after each checkpoint, so
 //! running the same command again resumes where it stopped.
 
 use std::ffi::OsString;
 use std::path::Path;
 
-use graphite::frontend::Module;
 use graphite::frontend::registry;
+use graphite::frontend::Module;
 use graphite::pipeline::write_modules;
 
 use crate::allow::Allowlist;
-use crate::{host_assets, js, load, scratch, tasks};
+use crate::{js, load, runtime_assets, scratch, tasks};
 
 /// What one `graphite run` takes, besides the graph and its state file.
 pub struct Options<'a> {
@@ -76,7 +76,7 @@ pub fn run(input: &Path, state: Option<&Path>, options: &Options<'_>) -> Result<
         .transpose()?;
     let frontend = load::front_end(registry::DURABLE_FRONT_END)?.frontend;
     let state = state.map_or_else(|| input.with_extension("state.json"), Path::to_path_buf);
-    // The host locks the state file beside itself, so its directory must exist.
+    // The engine locks the state file beside itself, so its directory must exist.
     if let Some(parent) = state
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
@@ -86,8 +86,8 @@ pub fn run(input: &Path, state: Option<&Path>, options: &Options<'_>) -> Result<
     }
     // The generated modules are only needed while the run is active. The state is kept apart.
     let directory = scratch::create("graphite-run")?;
-    let bundle = host_assets::materialize()?;
-    let host = bundle.join(host_assets::HOST_ENTRY);
+    let bundle = runtime_assets::materialize()?;
+    let engine = bundle.join(runtime_assets::RUN_ENTRY);
 
     let mut args: Vec<OsString> = vec![];
     let result = write_run_modules(frontend, &graphs, entry, &directory, &mut args, &state)
@@ -118,19 +118,19 @@ pub fn run(input: &Path, state: Option<&Path>, options: &Options<'_>) -> Result<
                     .map_err(|error| format!("{}: {error}", file.display()))?;
                 push_flag(&mut args, "--tasks", Some(file.as_os_str()));
             }
-            let status = js::launch(&host, &args)?;
+            let status = js::launch(&engine, &args)?;
             if status.success() {
                 Ok(())
             } else {
                 Err(format!("durable run did not end ({status})"))
             }
         });
-    host_assets::discard(&bundle);
+    runtime_assets::discard(&bundle);
     let _ = std::fs::remove_dir_all(&directory);
     result
 }
 
-/// Writes the graph's modules, and starts the host's argument list with the module and state path.
+/// Writes the graph's modules, and starts the engine's argument list with the module and state path.
 fn write_run_modules(
     frontend: &dyn graphite::frontend::Frontend,
     graphs: &[graphite::graph::CompiledGraph],
@@ -146,7 +146,7 @@ fn write_run_modules(
     Ok(())
 }
 
-/// Appends `flag value` to the host's arguments, when there is a value.
+/// Appends `flag value` to the engine's arguments, when there is a value.
 fn push_flag(args: &mut Vec<OsString>, flag: &str, value: Option<&std::ffi::OsStr>) {
     if let Some(value) = value {
         args.push(flag.into());

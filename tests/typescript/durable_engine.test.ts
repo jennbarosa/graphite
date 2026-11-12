@@ -1,4 +1,4 @@
-// The durable host on the review workflow: retries, timeouts, locking, and recovery after a crash
+// The durable engine on the review workflow: retries, timeouts, locking, and recovery after a crash
 // at each checkpoint, with each crash in its own process. Compiled and run by `tests/durable.rs`.
 import { describe, expect, test } from 'bun:test';
 import {
@@ -9,9 +9,9 @@ import {
 	writeFileSync,
 } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { runLog } from '../../host/run-log';
+import { runLog } from '../../src/frontend/typescript/durable/run-log';
 import {
-	type HostEvent,
+	type RunEvent,
 	type Outcome,
 	type Runner,
 	type StateStore,
@@ -23,7 +23,7 @@ import {
 	fileStore,
 	retryFailedTask,
 	runDurable,
-} from '../../host/durable';
+} from '../../src/frontend/typescript/durable/engine';
 
 const graphModule = process.env.GRAPHITE_WORKFLOW;
 const stateDirVariable = process.env.GRAPHITE_STATE_DIR;
@@ -131,7 +131,7 @@ async function stopAtFix(files: Files, input?: unknown) {
 	return result;
 }
 
-describe('durable host', () => {
+describe('durable engine', () => {
 	test('a failing lint goes through fix and back, then ships, and every task runs once', async () => {
 		const files = scratch();
 		const { runner, calls } = recorder(['fail', 'pass']);
@@ -644,7 +644,7 @@ describe('durable host', () => {
 	});
 	test('onEvent reports each stage, each task outcome with its source, failed attempts, and the stop', async () => {
 		const files = scratch();
-		const events: HostEvent[] = [];
+		const events: RunEvent[] = [];
 		const { runner } = recorder(['throw', 'pass']);
 		const result = await runDurable({
 			modulePath: graphModule,
@@ -681,7 +681,7 @@ describe('durable host', () => {
 
 	test('a task settled by verify reports source verified, and no attempt runs', async () => {
 		const files = scratch();
-		const events: HostEvent[] = [];
+		const events: RunEvent[] = [];
 		const { runner, calls } = recorder();
 		await runDurable({
 			modulePath: graphModule,

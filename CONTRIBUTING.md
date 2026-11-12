@@ -110,8 +110,8 @@ src/
   interner.rs
   frontend/                output front ends: typescript/ (index, chunks, runtime.ts)
   pipeline.rs              compile and write_modules
-  bin/graphite/            the CLI; host_assets.rs bundles the TypeScript host
-host/                      durable host, run log, and the run CLI (TypeScript)
+  bin/graphite/            the CLI; runtime_assets.rs bundles the TypeScript durable engine
+src/frontend/typescript/durable/  durable engine, run log, and the run CLI (TypeScript)
 cli/                       debugger session (TypeScript)
 docs/                      user documentation
 examples/                  DSL files, a TypeScript driver, a durable workflow, a Rust program

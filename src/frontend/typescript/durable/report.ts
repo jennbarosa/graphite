@@ -1,4 +1,4 @@
-// Checks what a runner reports against the limits in contract.ts, and returns a copy the host can
+// Checks what a runner reports against the limits in contract.ts, and returns a copy the engine can
 // store. Anything invalid throws, which fails that attempt.
 
 import {
@@ -51,7 +51,7 @@ function normalizeOutput(value: unknown): unknown {
 	return JSON.parse(text) as unknown;
 }
 
-/** Checks a runner's detail against the limits, and returns a copy the host can store. */
+/** Checks a runner's detail against the limits, and returns a copy the engine can store. */
 function normalizeDetail(value: unknown): Detail {
 	if (!isRecord(value) || typeof value.message !== 'string') {
 		throw new Error('runner detail needs a string message');

@@ -1,4 +1,4 @@
-// Durable host for a compiled graph. It runs each stage's task through a runner, saves state
+// Durable engine for a compiled graph. It runs each stage's task through a runner, saves state
 // after every checkpoint, and resumes after a crash with the same path through the graph.
 //
 // Guarantees, for trusted DSL and internal use:
@@ -81,8 +81,8 @@ export type Checkpoint =
 	| 'result-saved' // the result is recorded; the step has not run
 	| 'step-saved'; // the step ran and the snapshot is saved
 
-/** What the host did. Each event names only the graph's own node names and the caller's keys. */
-export type HostEvent =
+/** What the engine did. Each event names only the graph's own node names and the caller's keys. */
+export type RunEvent =
 	| {
 			readonly type: 'stage-entered';
 			readonly node: string;
@@ -147,16 +147,16 @@ export interface DurableOptions {
 	readonly maxTransitions?: number;
 	readonly onCheckpoint?: (label: Checkpoint, key: string) => void;
 	/**
-	 * Told what the host does, as it happens. Use it for logs, metrics or traces. The handler must
+	 * Told what the engine does, as it happens. Use it for logs, metrics or traces. The handler must
 	 * not throw: an exception stops the run.
 	 */
-	readonly onEvent?: (event: HostEvent) => void;
+	readonly onEvent?: (event: RunEvent) => void;
 	/** Annotation whose value names a stage's task. */
 	readonly taskAnnotation: string;
 	/** Node flag that allows retries. */
 	readonly retryFlag: string;
 	/**
-	 * Conditions the host sets from a task's outcome. Required when the graph has tasks; the graph
+	 * Conditions the engine sets from a task's outcome. Required when the graph has tasks; the graph
 	 * must declare both. A graph without tasks may leave this out.
 	 */
 	readonly outcomeConditions?:
@@ -186,7 +186,7 @@ export type Result =
 	| { status: 'stalled'; transitions: number; node: string }
 	| { status: 'error'; transitions: number; key: string; error: string };
 
-/** A task that failed, after all its attempts. The run stops; host errors are not wrapped in this. */
+/** A task that failed, after all its attempts. The run stops; engine errors are not wrapped in this. */
 class TaskFailure extends Error {}
 
 /** Clears a recorded error, so the next run runs that task again. */
@@ -203,7 +203,7 @@ export async function retryFailedTask(
 	});
 }
 
-/** The parts of the generated graph module this host uses. */
+/** The parts of the generated graph module this engine uses. */
 interface GraphLike {
 	readonly data: { readonly nodeCount: number };
 	nodeName(id: number): string;
@@ -212,7 +212,7 @@ interface GraphLike {
 	conditionId(name: string): number;
 }
 
-/** The parts of the generated run this host uses. */
+/** The parts of the generated run this engine uses. */
 interface RunLike {
 	readonly node: string;
 	readonly status: 'running' | 'ended' | 'error';
@@ -593,7 +593,7 @@ function recordResult(
 }
 
 /**
- * Reads the snapshot the host saved: `{ run, lastFailure }`. A bare run snapshot, from before
+ * Reads the snapshot the engine saved: `{ run, lastFailure }`. A bare run snapshot, from before
  * failures were kept, has no `run` field and no last failure.
  */
 function splitSnapshot(saved: unknown): {
@@ -643,10 +643,6 @@ function parseFailure(value: unknown): StageFailure | undefined {
 		outcome: value.outcome,
 		...(detail === undefined ? {} : { detail }),
 	};
-}
-
-function isDetail(value: unknown): value is Detail {
-	return isRecord(value) && typeof value.message === 'string';
 }
 
 function sequenceOf(key: string): number {

@@ -1,6 +1,6 @@
 // Fan-out: a list graph produces a list of items, and an item graph runs once per item. Each item
 // has its own state file, so a crash or a stop resumes that item where it was. Two things keep the
-// host from re-running items:
+// engine from re-running items:
 // - a seen file holds the key of every item already started, so a key is never started twice;
 // - `untilPassed` stops starting items once that many have ended on a passing stage.
 // The list graph must end with an array as its output. Each item is a JSON object with a string
@@ -13,7 +13,7 @@ import {
 	openSync,
 	readFileSync,
 } from 'node:fs';
-import { type DurableOptions, type Result, runDurable } from './durable';
+import { type DurableOptions, type Result, runDurable } from './engine';
 import { appendLine } from './store';
 
 export interface FanOutOptions {

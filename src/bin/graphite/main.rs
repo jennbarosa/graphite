@@ -9,7 +9,6 @@ mod debug;
 mod debugger;
 mod doctor;
 mod help;
-mod host_assets;
 mod init;
 mod inspect;
 mod js;
@@ -17,6 +16,7 @@ mod json;
 mod load;
 mod man;
 mod run;
+mod runtime_assets;
 mod scratch;
 mod tasks;
 

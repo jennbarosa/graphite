@@ -2,8 +2,8 @@
 // command. Runs the fixture in tests/fixtures/commands/report.ts through `commandRunner`.
 import { describe, expect, test } from 'bun:test';
 import { resolve } from 'node:path';
-import { commandRunner } from '../../host/commands';
-import type { TaskContext } from '../../host/durable';
+import { commandRunner } from '../../src/frontend/typescript/durable/commands';
+import type { TaskContext } from '../../src/frontend/typescript/durable/engine';
 
 const fixtures = resolve(import.meta.dir, '../fixtures/commands');
 const script = resolve(fixtures, 'report.ts');

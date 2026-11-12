@@ -1,4 +1,4 @@
-// The contract the durable host shares with its runners and state stores: outcomes, the detail a
+// The contract the durable engine shares with its runners and state stores: outcomes, the detail a
 // runner may report, a stored result, the state store interface, and the detail limits. Types and
 // constants only.
 
@@ -15,7 +15,7 @@ export type Outcome = (typeof OUTCOMES)[number];
 export type StoredOutcome = Outcome | 'error';
 
 /**
- * Optional context a runner reports with its outcome. The host stores it with the result, writes it
+ * Optional context a runner reports with its outcome. The engine stores it with the result, writes it
  * to the run log, and passes it to later tasks as `context.failure` when the stage failed.
  */
 export interface Detail {

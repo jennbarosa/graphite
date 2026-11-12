@@ -1,5 +1,5 @@
 //! `graphite run --tasks`: reads a `tasks.toml` that maps each task to the command that runs it,
-//! and writes the JSON table the durable host reads. Commands run in the directory that holds the
+//! and writes the JSON table the durable engine reads. Commands run in the directory that holds the
 //! manifest, so relative paths in it are relative to the manifest.
 
 use std::path::{Path, PathBuf};
@@ -36,7 +36,7 @@ impl Manifest {
         self.tasks.keys().cloned().collect()
     }
 
-    /// The JSON table for the host: `{"source", "cwd", "commands": {task: [argv...]}}`.
+    /// The JSON table for the engine: `{"source", "cwd", "commands": {task: [argv...]}}`.
     pub fn table_json(&self) -> Result<String, String> {
         let mut commands = Vec::with_capacity(self.tasks.len());
         for (name, value) in &self.tasks {

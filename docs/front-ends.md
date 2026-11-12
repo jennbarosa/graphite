@@ -61,5 +61,5 @@ The new front end then works with `--frontend <key>` and with the Rust API.
 - **The language's runtime behavior.** A front end emits code that drives the graph. The step
   rules come from the core, but each host language's runtime is written by that front end, so keep
   it faithful to the rules in the [DSL reference](dsl.md).
-- **Durable runs.** `graphite run` uses the TypeScript host today. A new front end does not get
-  durable runs unless someone writes a host for its language.
+- **Durable runs.** `graphite run` uses the TypeScript durable engine today. A new front end does not get
+  durable runs unless someone writes a durable engine for its language.

@@ -4,7 +4,7 @@
 import { describe, expect, test } from 'bun:test';
 import { mkdtempSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { runDurable } from '../../host/durable';
+import { runDurable } from '../../src/frontend/typescript/durable/engine';
 
 const graphModule = process.env.GRAPHITE_STAGE_ORDER;
 const stateDir = process.env.GRAPHITE_STATE_DIR;
@@ -55,7 +55,7 @@ describe('advance takes one transition per call', () => {
 	});
 });
 
-describe('the durable host runs every stage it reaches', () => {
+describe('the durable engine runs every stage it reaches', () => {
 	test('a, b and c each run their task once, in order', async () => {
 		const seen: string[] = [];
 		const dir = mkdtempSync(join(stateDir, 'pass-'));

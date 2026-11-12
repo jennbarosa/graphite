@@ -11,9 +11,9 @@
 // Empty stdout with exit status 0 means `pass`. A nonzero exit status is a thrown attempt, so a
 // retry node tries again. Stderr goes to this process's stderr, where the run log also writes.
 import { spawn } from 'node:child_process';
-import type { Runner, RunnerReport, TaskContext } from './durable';
+import type { Runner, RunnerReport, TaskContext } from './engine';
 
-/** The tasks the host can run as commands: each task name, and the argv that runs it. */
+/** The tasks the engine can run as commands: each task name, and the argv that runs it. */
 export interface CommandTable {
 	/** The manifest the table came from, for messages. */
 	readonly source?: string;
