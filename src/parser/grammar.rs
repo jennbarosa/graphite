@@ -59,8 +59,8 @@ pub(crate) fn parse(
     }
 }
 
-const OK: &[&str] = &["ok"];
-const FAILED: &[&str] = &["error"];
+const OK: &[&str] = &["passed"];
+const FAILED: &[&str] = &["failed"];
 
 /// What the grammar's tasks share: the tokens, the graph being built, and what the last state read.
 struct Session<'a, 's> {
