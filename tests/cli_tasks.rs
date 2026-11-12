@@ -55,12 +55,13 @@ fn tasks_flag(dir: &Path) -> [OsString; 2] {
 #[test]
 fn every_task_runs_its_command_and_the_input_reaches_it() {
     let pass = r#"{"outcome":"pass"}"#;
+    let shipped = r#"{"outcome":"pass","output":{"shipped":true}}"#;
     let tasks = format!(
         "[tasks]\nwrite = {}\nlint = {}\nfix = {}\ndeploy = {}\n",
         logged(pass),
         logged(pass),
         logged(pass),
-        logged(pass)
+        logged(shipped)
     );
     let dir = workdir(
         "cli-tasks-input",
@@ -74,7 +75,7 @@ fn every_task_runs_its_command_and_the_input_reaches_it() {
     assert!(output.status.success(), "{}", stderr(&output));
     assert_eq!(
         stdout(&output).trim(),
-        r#"{"status":"ended","transitions":2}"#
+        r#"{"status":"ended","transitions":2,"node":"ship","output":{"shipped":true}}"#
     );
 
     let log = std::fs::read_to_string(dir.join("log.txt")).unwrap();
@@ -169,4 +170,72 @@ fn input_is_refused_for_commands_that_do_not_run_tasks() {
     ]);
     assert_eq!(output.status.code(), Some(2));
     assert!(stderr(&output).contains("check does not take --input"));
+}
+
+/// A task command reads the outputs directory from its request, and reads an earlier stage's output
+/// from it by node name.
+#[test]
+fn a_command_reads_an_earlier_stages_output_from_the_outputs_directory() {
+    let read_draft = r#"input=$(cat); dir=$(printf '%s' "$input" | sed 's/.*"outputs":"\([^"]*\)".*/\1/'); cat "$dir/draft.json" >> log.txt; printf '%s\n' '{"outcome":"pass"}'
+"#;
+    let tasks = format!(
+        "[tasks]\nwrite = {}\nlint = [\"sh\", \"read.sh\"]\nfix = {}\ndeploy = {}\n",
+        logged(r#"{"outcome":"none","output":{"draft":"hi"}}"#),
+        logged(r#"{"outcome":"pass"}"#),
+        logged(r#"{"outcome":"pass"}"#),
+    );
+    let dir = workdir("cli-tasks-outputs", &tasks, &[("read.sh", read_draft)]);
+    let output = run(&dir, &tasks_flag(&dir));
+    assert!(
+        output.status.success(),
+        "{}{}",
+        stdout(&output),
+        stderr(&output)
+    );
+    let log = std::fs::read_to_string(dir.join("log.txt")).unwrap();
+    assert!(log.contains(r#"{"draft":"hi"}"#), "{log}");
+}
+
+/// A graph that declares `errored` routes a task that throws, instead of stopping the run.
+#[test]
+fn a_thrown_error_routes_to_the_errored_edge_when_the_graph_declares_it() {
+    let graph = "graph review\n  node draft @task:write\n  node check @task:lint\n  node fix @task:fix\n  node ship end @task:deploy\n\n  edge draft -> check\n  edge check -> ship when passed\n  edge check -> fix when failed\n  edge check -> fix when errored\n  edge fix -> check\n";
+    // The first lint throws; every later one passes.
+    let lint = "cat >> log.txt\nif [ -f marker ]; then printf '%s\\n' '{\"outcome\":\"pass\"}'; else touch marker; echo 'lint crashed' >&2; exit 3; fi\n";
+    let pass = r#"{"outcome":"pass"}"#;
+    let tasks = format!(
+        "[tasks]\nwrite = {}\nlint = [\"sh\", \"lint.sh\"]\nfix = {}\ndeploy = {}\n",
+        logged(r#"{"outcome":"none"}"#),
+        logged(pass),
+        logged(pass),
+    );
+    let dir = workdir(
+        "cli-tasks-errored",
+        &tasks,
+        &[("lint.sh", lint), ("errors.dsl", graph)],
+    );
+    let output = graphite([
+        "run".as_ref(),
+        dir.join("errors.dsl").as_os_str(),
+        "--allow".as_ref(),
+        dir.join("workflow.toml").as_os_str(),
+        "--state".as_ref(),
+        dir.join("state.json").as_os_str(),
+        "--tasks".as_ref(),
+        dir.join("tasks.toml").as_os_str(),
+    ]);
+    assert!(
+        output.status.success(),
+        "{}{}",
+        stdout(&output),
+        stderr(&output)
+    );
+    assert!(
+        stdout(&output).contains(r#""node":"ship""#),
+        "{}",
+        stdout(&output)
+    );
+    let log = std::fs::read_to_string(dir.join("log.txt")).unwrap();
+    assert!(log.contains(r#""outcome":"error""#), "{log}");
+    assert!(log.contains("exited with status 3"), "{log}");
 }

@@ -3,7 +3,8 @@
 // The command gets one JSON object on stdin:
 //   { "task", "key", "attempt", "input", "failure" }
 // `input` is the run's input (null when there is none). `failure` is the run's last failed stage,
-// with its node, task, key, outcome and detail, or null.
+// with its node, task, key, outcome and detail, or null. `outputs` is the directory where earlier
+// stages' outputs are kept, as `<node>.json`, or null.
 //
 // The command reports its result on stdout, as one JSON object:
 //   { "outcome": "pass" | "fail" | "none", "detail"?: { "message", "code"?, "data"? } }
@@ -35,6 +36,7 @@ export function commandRunner(table: CommandTable): Runner {
 			attempt: context.attempt,
 			input: context.input ?? null,
 			failure: context.failure ?? null,
+			outputs: context.outputs.directory ?? null,
 		};
 		return runCommand(argv, table.cwd, request, context.signal);
 	};

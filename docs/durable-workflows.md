@@ -107,6 +107,34 @@ against different targets without changing it.
 A resumed run must be given the same input. The host keeps a fingerprint of the input in the state
 file, and refuses a resume with a different one, so no task sees a mix of two inputs.
 
+## Stage outputs
+
+A task can keep a JSON output for the tasks after it. The runner returns it with its outcome:
+
+```ts
+return { outcome: "none", output: { draft: "Hi, ..." } };
+```
+
+A later task reads it by the node's name, with `context.outputs.read("draft")`, which returns `undefined`
+when the node saved none. A command task finds the directory in its request as `outputs`, and reads
+`<dir>/<node>.json`. The output is saved before the result is recorded, so a crash between the two
+reruns the task and overwrites it. At most 1 MiB of JSON per output.
+
+When the run reaches an end node, the result carries that node's name and its output:
+`{"status":"ended","transitions":2,"node":"ship","output":{"shipped":true}}`.
+
+## Error routing
+
+A graph that declares an `errored` condition routes a task that throws on every attempt, rather than
+stopping the run:
+
+```text
+edge check -> fix when errored
+```
+
+The stage's result is `error`, with the thrown message as its detail, and it becomes the run's failure.
+Without an `errored` condition, a thrown task stops the run, as before.
+
 ## Failure details
 
 A runner can say why a stage failed. It returns an object instead of a bare outcome:

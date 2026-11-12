@@ -37,7 +37,7 @@ fn runs_the_graph_to_its_end_and_resumes_from_saved_state() {
     );
     assert_eq!(
         stdout(&first).trim(),
-        r#"{"status":"ended","transitions":2}"#
+        r#"{"status":"ended","transitions":2,"node":"ship"}"#
     );
     assert!(stderr(&first).contains("[run] started fresh"));
 
@@ -89,7 +89,7 @@ fn runs_a_graph_without_tasks_or_outcome_conditions() {
     assert!(output.status.success(), "{}", stderr(&output));
     assert_eq!(
         stdout(&output).trim(),
-        r#"{"status":"ended","transitions":1}"#
+        r#"{"status":"ended","transitions":1,"node":"b"}"#
     );
 }
 
@@ -111,7 +111,7 @@ fn runs_durably_without_the_durable_flag() {
     assert!(output.status.success(), "{}", stderr(&output));
     assert_eq!(
         stdout(&output).trim(),
-        r#"{"status":"ended","transitions":2}"#
+        r#"{"status":"ended","transitions":2,"node":"ship"}"#
     );
 }
 

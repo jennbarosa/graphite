@@ -34,9 +34,14 @@ if (runnerPath !== undefined && tasksPath !== undefined) {
 const { graph } = await import(resolve(modulePath));
 // The outcome conditions are passed only when the graph declares both, so a graph without tasks
 // runs as it is. A graph with tasks that lacks them fails in runDurable with a clear message.
+// A graph that declares `errored` routes thrown errors with it, instead of stopping the run.
 const outcomeConditions =
 	declares(graph, 'passed') && declares(graph, 'failed')
-		? { pass: 'passed', fail: 'failed' }
+		? {
+				pass: 'passed',
+				fail: 'failed',
+				...(declares(graph, 'errored') ? { error: 'errored' } : {}),
+			}
 		: undefined;
 
 const tasks = taskNames(graph, 'task');

@@ -24,6 +24,7 @@ function context(over: Partial<TaskContext> = {}): TaskContext {
 		signal: new AbortController().signal,
 		failure: undefined,
 		input: undefined,
+		outputs: { directory: undefined, read: async () => undefined },
 		...over,
 	};
 }
@@ -51,6 +52,7 @@ describe('command-backed tasks', () => {
 					attempt: 2,
 					input: { target: 'prospect-42' },
 					failure,
+					outputs: null,
 				},
 			},
 		});

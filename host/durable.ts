@@ -20,6 +20,7 @@ import {
 	existsSync,
 	fstatSync,
 	fsyncSync,
+	mkdirSync,
 	ftruncateSync,
 	openSync,
 	readFileSync,
@@ -36,6 +37,8 @@ const DEFAULT_MAX_TRANSITIONS = 10_000_000;
 const DEFAULT_MAX_ATTEMPTS = 3;
 const DEFAULT_TASK_TIMEOUT_MS = 60_000;
 const READ_CHUNK_BYTES = 64 * 1024;
+/** Largest stage output, as UTF-8 JSON. */
+export const MAX_OUTPUT_BYTES = 1_048_576;
 /** Longest `detail.message` kept. A longer message is cut and ends with an ellipsis. */
 export const MAX_DETAIL_MESSAGE = 1_000;
 /** Longest `detail.code`. */
@@ -61,6 +64,8 @@ export interface TaskContext {
 	readonly failure: StageFailure | undefined;
 	/** The run's input, as given to `runDurable`. Undefined when the run has none. */
 	readonly input: unknown;
+	/** Outputs that earlier stages of this run saved. */
+	readonly outputs: OutputReader;
 }
 
 /**
@@ -80,7 +85,17 @@ export interface Detail {
 export type RunnerReport = {
 	readonly outcome: Outcome;
 	readonly detail?: Detail;
+	/** JSON a later task reads with `context.outputs.read(node)`. At most `MAX_OUTPUT_BYTES`. */
+	readonly output?: unknown;
 };
+
+/** Reads the outputs of earlier stages in this run, by node name. */
+export interface OutputReader {
+	/** The directory outputs are kept in, for commands to read. Undefined for other stores. */
+	readonly directory: string | undefined;
+	/** The latest output the node's task saved, or undefined when it saved none. */
+	read(node: string): Promise<unknown>;
+}
 
 /** A finished task's recorded result: its outcome, and the detail the runner gave, if any. */
 export interface StoredResult {
@@ -196,11 +211,23 @@ export interface DurableOptions {
 	readonly outcomeConditions?: {
 		readonly pass: string;
 		readonly fail: string;
+		/**
+		 * When given, a task that throws on every attempt sets this condition instead of stopping the
+		 * run, so the graph can route it with `when <error>`. Without it, such a task stops the run.
+		 */
+		readonly error?: string;
 	};
 }
 
 export type Result =
-	| { status: 'ended'; transitions: number }
+	| {
+			status: 'ended';
+			transitions: number;
+			/** The end node the run reached. */
+			node: string;
+			/** The output that end node's task saved, when it saved one. */
+			output?: unknown;
+	  }
 	| { status: 'stalled'; transitions: number; node: string }
 	| { status: 'error'; transitions: number; key: string; error: string };
 
@@ -215,6 +242,12 @@ class TaskFailure extends Error {}
  * same state while `body` runs.
  */
 export interface StateStore {
+	/** Where stage outputs are kept, when the store keeps them as files that commands can read. */
+	readonly outputDirectory?: string;
+	/** Keeps a stage's output, so later tasks can read it. Optional: a store without it cannot. */
+	saveOutput?(node: string, value: unknown): void;
+	/** The latest output saved for a node, or undefined. */
+	loadOutput?(node: string): unknown;
 	loadSnapshot(): unknown;
 	loadRecords(since: number): Map<string, StoredResult>;
 	saveSnapshot(snapshot: unknown): void;
@@ -233,7 +266,19 @@ export interface StateStore {
  */
 export function fileStore(stateFile: string): StateStore {
 	const resultsFile = `${stateFile}.results`;
+	const outputDir = `${stateFile}.outputs`;
 	return {
+		outputDirectory: outputDir,
+		saveOutput: (node, value) => {
+			mkdirSync(outputDir, { recursive: true });
+			writeAtomic(join(outputDir, `${node}.json`), JSON.stringify(value));
+		},
+		loadOutput: (node) => {
+			const file = join(outputDir, `${node}.json`);
+			return existsSync(file)
+				? JSON.parse(readFileSync(file, 'utf8'))
+				: undefined;
+		},
 		loadSnapshot: () =>
 			existsSync(stateFile) ? readSnapshot(stateFile) : undefined,
 		loadRecords: (since) => readRecords(resultsFile, since),
@@ -327,10 +372,14 @@ export async function runDurable(options: DurableOptions): Promise<Result> {
 			}
 		}
 	} else {
-		for (const name of [
+		const names = [
 			options.outcomeConditions.pass,
 			options.outcomeConditions.fail,
-		]) {
+		];
+		if (options.outcomeConditions.error !== undefined) {
+			names.push(options.outcomeConditions.error);
+		}
+		for (const name of names) {
 			try {
 				graph.conditionId(name);
 			} catch {
@@ -419,10 +468,19 @@ async function runStage(session: Session): Promise<Result | undefined> {
 	if (conditions !== undefined) {
 		run.set(conditions.pass, outcome === 'pass');
 		run.set(conditions.fail, outcome === 'fail');
+		if (conditions.error !== undefined) {
+			run.set(conditions.error, outcome === 'error');
+		}
 	}
 	if (run.status === 'ended') {
 		saveSnapshot(session, 'step-saved', key);
-		return { status: 'ended', transitions: run.transitions };
+		const output = session.store.loadOutput?.(node);
+		return {
+			status: 'ended',
+			transitions: run.transitions,
+			node,
+			...(output === undefined ? {} : { output }),
+		};
 	}
 	run.finish();
 	// One transition per stage: the next node's gates must not read this stage's outcome.
@@ -456,6 +514,7 @@ async function settleTask(
 	const stored = results.get(key);
 	if (stored?.outcome === 'error') {
 		noteFailure(session, node, task, key, stored);
+		if (routesErrors(session)) return stored;
 		throw new TaskFailure(`task ${task} failed in an earlier run`);
 	}
 	if (stored !== undefined) {
@@ -500,7 +559,8 @@ async function settleTask(
 			task,
 			key,
 			attempts,
-			session.lastFailure
+			session.lastFailure,
+			outputsOf(session)
 		);
 	} catch (error) {
 		const result: StoredResult = {
@@ -509,6 +569,17 @@ async function settleTask(
 		};
 		recordResult(session, key, result);
 		noteFailure(session, node, task, key, result);
+		if (routesErrors(session)) {
+			options.onEvent?.({
+				type: 'task-settled',
+				task,
+				key,
+				outcome: 'error',
+				detail: result.detail,
+				source: 'ran',
+			});
+			return result;
+		}
 		throw new TaskFailure(`task ${task} failed: ${errorText(error)}`);
 	}
 	options.onCheckpoint?.('task-done', key);
@@ -516,6 +587,15 @@ async function settleTask(
 		report.detail === undefined
 			? { outcome: report.outcome }
 			: { outcome: report.outcome, detail: report.detail };
+	if (report.output !== undefined) {
+		if (session.store.saveOutput === undefined) {
+			throw new Error(
+				`task ${task} returned an output, but the store cannot keep outputs`
+			);
+		}
+		// Saved before the result, so a crash between the two reruns the task and overwrites it.
+		session.store.saveOutput(node, report.output);
+	}
 	recordResult(session, key, result);
 	noteFailure(session, node, task, key, result);
 	options.onEvent?.({
@@ -527,6 +607,19 @@ async function settleTask(
 		source: 'ran',
 	});
 	return result;
+}
+
+/** Whether the graph routes thrown errors with its `errored` condition, rather than stopping. */
+function routesErrors(session: Session): boolean {
+	return session.options.outcomeConditions?.error !== undefined;
+}
+
+/** The outputs of earlier stages, read through the store. */
+function outputsOf(session: Session): OutputReader {
+	return {
+		directory: session.store.outputDirectory,
+		read: async (node) => session.store.loadOutput?.(node),
+	};
 }
 
 /** Makes `node` the run's last failure when the result is a failure. */
@@ -665,7 +758,8 @@ async function attempt(
 	task: string,
 	key: string,
 	attempts: number,
-	failure: StageFailure | undefined
+	failure: StageFailure | undefined,
+	outputs: OutputReader
 ): Promise<RunnerReport> {
 	const timeoutMs = options.taskTimeoutMs ?? DEFAULT_TASK_TIMEOUT_MS;
 	let lastError: unknown = new Error('no attempts');
@@ -674,7 +768,7 @@ async function attempt(
 			return await runOnce(
 				options.runner,
 				task,
-				{ key, attempt: number, failure, input: options.input },
+				{ key, attempt: number, failure, input: options.input, outputs },
 				timeoutMs
 			);
 		} catch (error) {
@@ -699,6 +793,7 @@ async function runOnce(
 		attempt: number;
 		failure: StageFailure | undefined;
 		input: unknown;
+		outputs: OutputReader;
 	},
 	timeoutMs: number
 ): Promise<RunnerReport> {
@@ -732,9 +827,23 @@ function normalizeReport(value: unknown): RunnerReport {
 			`runner returned an object whose outcome is "${String(value.outcome)}"`
 		);
 	}
-	return value.detail === undefined
-		? { outcome: value.outcome }
-		: { outcome: value.outcome, detail: normalizeDetail(value.detail) };
+	const report: { outcome: Outcome; detail?: Detail; output?: unknown } = {
+		outcome: value.outcome,
+	};
+	if (value.detail !== undefined) report.detail = normalizeDetail(value.detail);
+	if (value.output !== undefined) report.output = normalizeOutput(value.output);
+	return report;
+}
+
+/** A copy of a stage output that is JSON and within the size limit. */
+function normalizeOutput(value: unknown): unknown {
+	const text = JSON.stringify(value);
+	if (text === undefined || Buffer.byteLength(text) > MAX_OUTPUT_BYTES) {
+		throw new Error(
+			`runner output must be JSON of at most ${MAX_OUTPUT_BYTES} bytes`
+		);
+	}
+	return JSON.parse(text) as unknown;
 }
 
 /** Checks a runner's detail against the limits, and returns a copy the host can store. */

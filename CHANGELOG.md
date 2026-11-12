@@ -9,6 +9,9 @@ change the interface.
 
 ### Added
 
+- Stage outputs: a task returns `output`, and later tasks read it with `context.outputs.read(node)`. The end node's
+  output appears in the run result, with the node's name.
+- Error routing: a graph that declares `errored` routes a task that throws, instead of stopping the run.
 - Command-backed tasks: `graphite run --tasks tasks.toml` runs each task as a command. The command gets
   the task context as JSON on stdin and reports its outcome as JSON on stdout.
 - `graphite run --input data.json` gives every task the JSON value as `context.input`. A resumed run

@@ -144,6 +144,7 @@ describe('durable host', () => {
 		expect(result).toEqual({
 			status: 'ended',
 			transitions: 4,
+			node: 'ship',
 		});
 		expect(calls.map((call) => call.task)).toEqual([
 			'write',
@@ -169,6 +170,7 @@ describe('durable host', () => {
 		expect(result).toEqual({
 			status: 'ended',
 			transitions: 2,
+			node: 'ship',
 		});
 		expect(calls.map((call) => call.task)).toEqual([
 			'write',
@@ -244,6 +246,7 @@ describe('durable host', () => {
 		expect(resumed).toEqual({
 			status: 'ended',
 			transitions: 2,
+			node: 'ship',
 		});
 		expect(calls.filter((call) => call.task === 'lint')).toHaveLength(
 			4
@@ -528,6 +531,7 @@ describe('durable host', () => {
 		expect(finished).toMatchObject({
 			status: 'ended',
 			transitions: 2,
+			node: 'ship',
 		});
 		const lintRuns = runs(files, 'lint');
 		expect(lintRuns).toHaveLength(2);
@@ -1080,5 +1084,34 @@ describe('durable host', () => {
 		});
 		expect(resumed.status).toBe('ended');
 		expect(seen.every((input) => JSON.stringify(input) === '{"target":"prospect-1"}')).toBe(true);
+	});
+
+	test('a task saves an output that a later task reads by node name, and the end node reports its output', async () => {
+		const files = scratch();
+		const seen: unknown[] = [];
+		const result = await runDurable({
+			modulePath: graphModule,
+			...workflowNames,
+			stateFile: files.state,
+			runner: async (task, context) => {
+				if (task === 'write') return { outcome: 'none', output: { draft: 'hello' } };
+				if (task === 'lint') {
+					seen.push(await context.outputs.read('draft'));
+					seen.push(await context.outputs.read('nothing'));
+					return 'pass';
+				}
+				return { outcome: 'none', output: { shipped: true } };
+			},
+		});
+		expect(seen).toEqual([{ draft: 'hello' }, undefined]);
+		expect(result).toEqual({
+			status: 'ended',
+			transitions: 2,
+			node: 'ship',
+			output: { shipped: true },
+		});
+		expect(readFileSync(join(`${files.state}.outputs`, 'draft.json'), 'utf8')).toBe(
+			'{"draft":"hello"}'
+		);
 	});
 });
