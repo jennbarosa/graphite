@@ -32,16 +32,12 @@ pub fn run(request: Request<'_>) -> Result<Vec<PathBuf>, String> {
         written: Vec::new(),
         error: None,
     };
-    let graph = stage_graph();
+    let graph = bootstrap::build::graph();
     let end = stage::drive(&graph, task, |task| job.run_task(task))?;
     if end == "failed" {
         return Err(job.error.unwrap_or_else(|| "build failed".to_string()));
     }
     Ok(job.written)
-}
-
-fn stage_graph() -> CompiledGraph {
-    bootstrap::build::graph()
 }
 
 struct Job<'a> {
@@ -123,12 +119,12 @@ impl Job<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::stage_graph;
+    use crate::bootstrap;
     use crate::bootstrap::build::task;
     use crate::stage;
 
     fn visit(fail_at: Option<&str>) -> (String, Vec<String>) {
-        let graph = stage_graph();
+        let graph = bootstrap::build::graph();
         let mut seen = Vec::new();
         let end = stage::drive(&graph, task, |task| {
             let name = format!("{task:?}").to_lowercase();

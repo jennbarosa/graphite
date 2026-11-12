@@ -60,7 +60,7 @@ pub fn build_debugger(directory: &Path, stem: &str) -> Result<PathBuf, String> {
         .create_new(true)
         .open(&main)
         .map_err(|error| format!("cannot write {}: {error}", main.display()))?;
-    std::io::Write::write_all(&mut file, source.as_bytes())
+    file.write_all(source.as_bytes())
         .map_err(|error| format!("cannot write {}: {error}", main.display()))?;
     let status = Command::new("rustc")
         .args(["--edition", "2021"])
