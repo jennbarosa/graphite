@@ -6,7 +6,7 @@ TypeScript. It takes about ten minutes. You need the `graphite` command
 
 ## 1. Describe the states
 
-A graph is a list of **stages** (`node`). Create `door.dsl`:
+A graph is a list of **stages** (`node`). Create `door.graphite`:
 
 ```text
 graph door
@@ -42,7 +42,7 @@ There are two kinds of edge:
 ## 3. Check it
 
 ```sh
-graphite check door.dsl
+graphite check door.graphite
 ```
 
 ```text
@@ -61,7 +61,7 @@ one is reported with the place that caused it.
 The debugger runs a graph without any code. Each argument is one command:
 
 ```sh
-graphite debug door.dsl "set request on" step finish step show
+graphite debug door.graphite "set request on" step finish step show
 ```
 
 - `set request on` sets the condition.
@@ -75,7 +75,7 @@ After `finish` and the next `step` it is `open`, and the last `show` confirms th
 ## 5. Compile
 
 ```sh
-graphite compile door.dsl
+graphite compile door.graphite
 ```
 
 The TypeScript front end is the default, so this writes `graphite-out/door/`:

@@ -35,7 +35,7 @@ fn generated_types_accept_real_names_and_reject_typos() {
     let tsc = std::env::var_os("GRAPHITE_TSC").unwrap_or_else(|| "tsc".into());
     let directory = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("typescript-types");
     let _ = std::fs::remove_dir_all(&directory);
-    let source = include_str!("fixtures/runtime/walk_spec.dsl");
+    let source = include_str!("fixtures/runtime/walk_spec.graphite");
     let graphs = compile(source, &Schema::default()).unwrap();
     let frontend = registry::lookup("typescript").unwrap().frontend;
     write_modules(frontend, &graphs, &directory).unwrap();

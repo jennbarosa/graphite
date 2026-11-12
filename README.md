@@ -47,15 +47,15 @@ Create a starter graph, check it, and compile it. The TypeScript front end is th
 ships today:
 
 ```sh
-graphite init hello.dsl
-graphite check hello.dsl        # ok: 1 graph
-graphite compile hello.dsl      # writes graphite-out/hello/
+graphite init hello.graphite
+graphite check hello.graphite        # ok: 1 graph
+graphite compile hello.graphite      # writes graphite-out/hello/
 ```
 
 Step through it in the terminal. Each argument is one command:
 
 ```sh
-graphite debug hello.dsl "set start on" step show finish step show
+graphite debug hello.graphite "set start on" step show finish step show
 ```
 
 Drive it from a TypeScript host:
@@ -88,8 +88,8 @@ The [tutorial](docs/tutorial.md) builds a real graph from scratch and explains e
 | [FAQ](docs/faq.md) | When to use Graphite, and why TypeScript comes first. |
 | [Troubleshooting](docs/troubleshooting.md) | Fixes for the errors you are most likely to see. |
 
-Working examples are in [`examples/`](examples/): `door.dsl` and `walk.dsl` for animation,
-`order.dsl` for an order lifecycle, and `workflow/` for a durable task pipeline.
+Working examples are in [`examples/`](examples/): `door.graphite` and `walk.graphite` for animation,
+`order.graphite` for an order lifecycle, and `workflow/` for a durable task pipeline.
 
 ## Development
 

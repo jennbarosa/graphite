@@ -95,7 +95,7 @@ fn a_source_without_any_graph_line_has_no_block_bounds() {
 fn walk_cycle_runs_through_the_full_pipeline() {
     let directory = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("walk-host");
     let _ = std::fs::remove_dir_all(&directory);
-    let source = include_str!("fixtures/runtime/walk_spec.dsl");
+    let source = include_str!("fixtures/runtime/walk_spec.graphite");
     let graphs = compile(source, &Schema::default()).unwrap();
     let frontend = registry::lookup("typescript").unwrap().frontend;
     write_modules(frontend, &graphs, &directory).unwrap();

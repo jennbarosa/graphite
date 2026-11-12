@@ -6,7 +6,7 @@ them. For the general idea of a front end, see [front ends](front-ends.md).
 
 ## What gets generated
 
-For `door.dsl`, `graphite compile door.dsl` writes into `graphite-out/door/`:
+For `door.graphite`, `graphite compile door.graphite` writes into `graphite-out/door/`:
 
 | File | Contents |
 | --- | --- |

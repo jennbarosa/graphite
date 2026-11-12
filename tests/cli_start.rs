@@ -12,9 +12,9 @@ use cli::{dsl, graphite, scratch, stderr, stdout};
 fn help_goes_to_stdout_and_succeeds_in_every_form() {
     let overview = graphite(["--help"]);
     assert!(overview.status.success());
-    assert!(stdout(&overview).contains("graphite init <file.dsl>"));
+    assert!(stdout(&overview).contains("graphite init <file.graphite>"));
 
-    let per_command = graphite(["compile", "x.dsl", "--help"]);
+    let per_command = graphite(["compile", "x.graphite", "--help"]);
     assert!(per_command.status.success());
     assert!(stdout(&per_command).contains("--out defaults to graphite-out/"));
 
@@ -32,7 +32,7 @@ fn an_unknown_help_topic_fails_with_the_overview() {
 
 #[test]
 fn init_writes_a_starter_graph_that_checks_and_refuses_to_overwrite() {
-    let path = scratch("start-init").join("hello.dsl");
+    let path = scratch("start-init").join("hello.graphite");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     let _ = std::fs::remove_file(&path);
 
@@ -49,7 +49,7 @@ fn init_writes_a_starter_graph_that_checks_and_refuses_to_overwrite() {
 
 #[test]
 fn compile_without_out_writes_beside_the_working_directory() {
-    let source = dsl("start-default-out/door.dsl", "graph door\n  node a end\n");
+    let source = dsl("start-default-out/door.graphite", "graph door\n  node a end\n");
     let work = source.parent().unwrap().to_path_buf();
     let _ = std::fs::remove_dir_all(work.join("graphite-out"));
     let output = Command::new(env!("CARGO_BIN_EXE_graphite"))
@@ -93,7 +93,7 @@ fn doctor_reports_blocked_commands_when_no_runtime_is_installed() {
     assert!(!output.status.success());
     assert!(text.contains("debug    blocked"), "{text}");
     assert!(
-        text.contains("summary: blocked: typescript debug, typescript run"),
+        text.contains("summary: blocked: typescript debug, typescript run, rust debug"),
         "{text}"
     );
     assert!(stderr(&output).contains("some commands cannot run here"));
@@ -109,7 +109,7 @@ fn doctor_reports_blocked_commands_when_no_runtime_is_installed() {
     assert_eq!(json.status.code(), Some(1));
     assert!(line.starts_with(r#"{"ok":false,"#), "{line}");
     assert!(
-        line.ends_with(r#""blocked":["typescript debug","typescript run"]}"#),
+        line.ends_with(r#""blocked":["typescript debug","typescript run","rust debug"]}"#),
         "{line}"
     );
     assert!(stderr(&json).is_empty());

@@ -4,7 +4,7 @@ The words Graphite uses, in the order you meet them.
 
 | Term | Meaning |
 | --- | --- |
-| **Graph** | A named set of stages and the rules between them. A `.dsl` file holds one or more graphs. |
+| **Graph** | A named set of stages and the rules between them. A `.graphite` file holds one or more graphs. |
 | **Stage** (node) | One state the graph can be in, such as `idle` or `opening`. The DSL calls it a `node`. |
 | **Entry** | The first node in a graph. A run starts there. |
 | **End** | A node marked `end`. A run stops there, and the node may have no outgoing edges. |

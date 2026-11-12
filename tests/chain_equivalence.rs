@@ -5,7 +5,7 @@
 #[path = "support/cli.rs"]
 mod cli;
 
-use cli::{graphite, manifest, stderr, stdout};
+use cli::{debugging_front_ends, graphite, manifest, stderr, stdout};
 
 fn fixture(name: &str) -> std::path::PathBuf {
     manifest().join("tests/fixtures/runtime").join(name)
@@ -32,10 +32,12 @@ fn normalize(output: &str) -> String {
         .join("\n")
 }
 
-fn run(dsl: &str, commands: &[&str]) -> String {
+fn run(front_end: &str, dsl: &str, commands: &[&str]) -> String {
     let mut args = vec![
         "debug".to_string(),
         fixture(dsl).display().to_string(),
+        "--frontend".to_string(),
+        front_end.to_string(),
         "--allow".to_string(),
         fixture("gads_allow.toml").display().to_string(),
     ];
@@ -45,11 +47,23 @@ fn run(dsl: &str, commands: &[&str]) -> String {
     stdout(&output)
 }
 
+/// Under every debugging front end, the chained form must match the expanded form, and every
+/// front end must match the TypeScript output. Returns that output.
 fn assert_same_behavior(commands: &[&str]) -> String {
-    let expanded = normalize(&run("gads_expanded.dsl", commands));
-    let chained = normalize(&run("gads_chain.dsl", commands));
-    assert_eq!(chained, expanded, "commands: {commands:?}");
-    expanded
+    let mut reference = None;
+    for front_end in debugging_front_ends() {
+        let expanded = normalize(&run(front_end, "gads_expanded.graphite", commands));
+        let chained = normalize(&run(front_end, "gads_chain.graphite", commands));
+        assert_eq!(chained, expanded, "{front_end}: commands: {commands:?}");
+        match &reference {
+            None => reference = Some(expanded),
+            Some(spec) => assert_eq!(
+                &expanded, spec,
+                "{front_end} differs from the TypeScript output"
+            ),
+        }
+    }
+    reference.expect("a debugging front end is registered")
 }
 
 #[test]
