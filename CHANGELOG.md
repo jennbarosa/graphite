@@ -12,7 +12,7 @@ change the interface.
 - Fan-out: `graphite run list.dsl --each item.dsl --key domain` runs the item graph once per item the list graph
   produces, with a seen file to skip items already started and `--until-passed N` to stop after N pass.
 - Stage outputs: a task returns `output`, and later tasks read it with `context.outputs.read(node)`. The end node's
-  output appears in the run result, with the node's name.
+  name, its stage's `outcome`, and its output appear in the run result.
 - Error routing: a graph that declares `errored` routes a task that throws, instead of stopping the run.
 - Command-backed tasks: `graphite run --tasks tasks.toml` runs each task as a command. The command gets
   the task context as JSON on stdin and reports its outcome as JSON on stdout.

@@ -61,7 +61,9 @@ graphite run examples/workflow/workflow.dsl \
 > **Security.** `--runner` runs its file as code with your user's permissions. Use only runners
 > you wrote or have reviewed.
 
-The run log goes to stderr. The final line is JSON, for example `{"status":"ended","transitions":2}`.
+The run log goes to stderr. The final line is JSON, for example
+`{"status":"ended","transitions":2,"node":"ship","outcome":"pass"}`: the end node's name and its
+stage's outcome.
 The exit status is 0 when the run ends.
 
 ## Command tasks
@@ -121,7 +123,7 @@ when the node saved none. A command task finds the directory in its request as `
 reruns the task and overwrites it. At most 1 MiB of JSON per output.
 
 When the run reaches an end node, the result carries that node's name and its output:
-`{"status":"ended","transitions":2,"node":"ship","output":{"shipped":true}}`.
+`{"status":"ended","transitions":2,"node":"ship","outcome":"pass","output":{"shipped":true}}`.
 
 ## Error routing
 
@@ -149,7 +151,9 @@ The list graph must end with an array as its output, one object per item. Each i
 things keep the host from doing the same work twice:
 
 - **Dedupe.** `--key` names the item field that identifies it. The key of each item started is written
-  to the seen file, which defaults to `<state>.seen.json`. A key already there is skipped. Keys must be
+  to the seen file, which defaults to `<state>.seen.json`. The file holds one key per line, appended and
+fsynced as each item starts, so an old JSON-array seen file must be deleted before it is reused. A key
+already there is skipped. Keys must be
   letters, digits, dots, dashes or underscores, since each one is also a file name.
 - **Counter.** `--until-passed N` stops starting items once N have ended on a passing stage. An item
   ends on a passing stage when its end node's own task returns `pass`.
