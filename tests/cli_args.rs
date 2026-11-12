@@ -20,3 +20,33 @@ fn no_arguments_prints_usage() {
     assert!(!output.status.success());
     assert!(stderr(&output).contains("usage:"));
 }
+
+#[test]
+fn an_unknown_command_is_rejected() {
+    let spec = walk_spec();
+    let output = graphite(["frobnicate".as_ref(), spec.as_os_str()]);
+    assert!(!output.status.success());
+    assert!(stderr(&output).contains("unknown command \"frobnicate\""));
+}
+
+#[test]
+fn an_option_without_its_value_is_rejected() {
+    let spec = walk_spec();
+    let output = graphite(["check".as_ref(), spec.as_os_str(), "--allow".as_ref()]);
+    assert!(!output.status.success());
+    assert!(stderr(&output).contains("--allow needs a value"));
+}
+
+#[test]
+fn a_command_without_its_file_is_rejected() {
+    let output = graphite(["check"]);
+    assert!(!output.status.success());
+    assert!(stderr(&output).contains("check needs a file"));
+}
+
+#[test]
+fn doctor_takes_no_arguments() {
+    let output = graphite(["doctor", "extra"]);
+    assert!(!output.status.success());
+    assert!(stderr(&output).contains("doctor takes no arguments"));
+}

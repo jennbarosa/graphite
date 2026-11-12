@@ -122,3 +122,84 @@ fn a_configured_runner_that_is_missing_is_named_in_the_error() {
     assert!(!output.status.success());
     assert!(stderr(&output).contains("cannot start GRAPHITE_JS_RUNNER `graphite-no-such-runner`"));
 }
+
+/// With no command arguments, the debugger reads one command per line from standard input, and
+/// prints what the same commands print as arguments.
+#[test]
+fn reads_commands_from_standard_input_when_none_are_given() {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+
+    let spec = walk_spec();
+    let from_args = graphite([
+        "debug".as_ref(),
+        spec.as_os_str(),
+        "finish".as_ref(),
+        "step".as_ref(),
+    ]);
+    assert!(from_args.status.success(), "{}", stderr(&from_args));
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_graphite"))
+        .args(["debug".as_ref(), spec.as_os_str()])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(b"finish\nstep\n")
+        .unwrap();
+    let from_stdin = child.wait_with_output().unwrap();
+    assert!(from_stdin.status.success(), "{}", stderr(&from_stdin));
+    assert_eq!(stdout(&from_stdin), stdout(&from_args));
+}
+
+/// `--allow` applies to `debug`: the walk fixture uses no domain flags, so an allowlist that
+/// names one is accepted; the workflow's `retry` flag is refused without its allowlist.
+#[test]
+fn debug_applies_the_allowlist() {
+    let fixtures = manifest().join("tests/fixtures/runtime");
+    let dsl = fixtures.join("workflow.dsl");
+
+    let refused = graphite(["debug".as_ref(), dsl.as_os_str(), "show".as_ref()]);
+    assert!(!refused.status.success());
+    assert!(stderr(&refused).contains("unknown node flag"));
+
+    let accepted = graphite([
+        "debug".as_ref(),
+        dsl.as_os_str(),
+        "--allow".as_ref(),
+        fixtures.join("workflow.toml").as_os_str(),
+        "show".as_ref(),
+    ]);
+    assert!(accepted.status.success(), "{}", stderr(&accepted));
+}
+
+/// `GRAPHITE_JS_RUNNER` chooses the JavaScript runtime. A runtime that cannot start is named in
+/// the error, and a working one runs the debugger.
+#[test]
+fn graphite_js_runner_selects_the_runtime() {
+    use std::process::Command;
+
+    let spec = walk_spec();
+    let missing = Command::new(env!("CARGO_BIN_EXE_graphite"))
+        .args(["debug".as_ref(), spec.as_os_str(), "show".as_ref()])
+        .env("GRAPHITE_JS_RUNNER", "graphite-no-such-runtime")
+        .output()
+        .unwrap();
+    assert!(!missing.status.success());
+    assert!(
+        stderr(&missing).contains("cannot start GRAPHITE_JS_RUNNER `graphite-no-such-runtime`")
+    );
+
+    let working = Command::new(env!("CARGO_BIN_EXE_graphite"))
+        .args(["debug".as_ref(), spec.as_os_str(), "show".as_ref()])
+        .env("GRAPHITE_JS_RUNNER", "bun")
+        .output()
+        .unwrap();
+    assert!(working.status.success(), "{}", stderr(&working));
+    assert!(stdout(&working).contains("node windup"));
+}

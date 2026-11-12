@@ -114,3 +114,23 @@ fn runs_durably_without_the_durable_flag() {
         r#"{"status":"ended","transitions":2}"#
     );
 }
+
+/// Without `--state`, the checkpoint goes beside the graph file, named `<stem>.state.json`.
+#[test]
+fn the_state_file_defaults_beside_the_graph() {
+    let fixtures = manifest().join("tests/fixtures/runtime");
+    let dir = scratch("cli-run-default-state");
+    std::fs::create_dir_all(&dir).unwrap();
+    let dsl = dir.join("workflow.dsl");
+    std::fs::copy(fixtures.join("workflow.dsl"), &dsl).unwrap();
+    let output = graphite([
+        "run".as_ref(),
+        dsl.as_os_str(),
+        "--allow".as_ref(),
+        fixtures.join("workflow.toml").as_os_str(),
+        "--runner".as_ref(),
+        fixtures.join("pass_runner.ts").as_os_str(),
+    ]);
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert!(dir.join("workflow.state.json").exists());
+}

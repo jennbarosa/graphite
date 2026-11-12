@@ -4,7 +4,7 @@
 #[path = "support/cli.rs"]
 mod cli;
 
-use cli::{graphite, scratch, stderr, walk_spec};
+use cli::{graphite, manifest, scratch, stderr, walk_spec};
 
 #[test]
 fn writes_the_runtime_and_the_graph_modules() {
@@ -50,4 +50,37 @@ fn rejects_an_unknown_front_end_without_writing() {
     assert!(!output.status.success());
     assert!(stderr(&output).contains("unknown front end \"cobol\""));
     assert!(!out.exists());
+}
+
+/// `--allow` applies to `compile`: a graph that uses an unlisted flag is refused, and the same graph
+/// compiles once the allowlist names the flag. `--frontend typescript` names the default explicitly.
+#[test]
+fn compile_applies_the_allowlist_and_accepts_the_front_end_by_name() {
+    let fixtures = manifest().join("tests/fixtures/runtime");
+    let dsl = fixtures.join("workflow.dsl");
+    let allow = fixtures.join("workflow.toml");
+    let out = scratch("cli-compile-allow");
+
+    let refused = graphite([
+        "compile".as_ref(),
+        dsl.as_os_str(),
+        "--out".as_ref(),
+        out.as_os_str(),
+    ]);
+    assert!(!refused.status.success());
+    assert!(stderr(&refused).contains("unknown node flag"));
+    assert!(!out.exists());
+
+    let accepted = graphite([
+        "compile".as_ref(),
+        dsl.as_os_str(),
+        "--frontend".as_ref(),
+        "typescript".as_ref(),
+        "--allow".as_ref(),
+        allow.as_os_str(),
+        "--out".as_ref(),
+        out.as_os_str(),
+    ]);
+    assert!(accepted.status.success(), "{}", stderr(&accepted));
+    assert!(out.join("review.ts").exists());
 }

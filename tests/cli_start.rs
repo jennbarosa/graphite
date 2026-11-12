@@ -77,3 +77,24 @@ fn doctor_reports_the_version_and_each_front_end() {
     // agree with the summary: it fails exactly when a command is blocked.
     assert_eq!(output.status.success(), !text.contains("blocked"), "{text}");
 }
+
+/// On a machine with no JavaScript runtime, `doctor` names the blocked commands, fails, and says why.
+#[test]
+fn doctor_reports_blocked_commands_when_no_runtime_is_installed() {
+    let empty = scratch("start-doctor-empty-path");
+    std::fs::create_dir_all(&empty).unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_graphite"))
+        .arg("doctor")
+        .env_clear()
+        .env("PATH", &empty)
+        .output()
+        .unwrap();
+    let text = stdout(&output);
+    assert!(!output.status.success());
+    assert!(text.contains("debug    blocked"), "{text}");
+    assert!(
+        text.contains("summary: blocked: typescript debug, typescript run"),
+        "{text}"
+    );
+    assert!(stderr(&output).contains("some commands cannot run here"));
+}
