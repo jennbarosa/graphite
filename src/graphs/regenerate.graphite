@@ -1,0 +1,16 @@
+graph regenerate
+  node read   @task:read
+  node parse  @task:parse
+  node emit   @task:emit
+  node write  @task:write
+  node done   end
+  node failed end
+
+  edge read  -> parse  when passed
+  edge read  -> failed when failed
+  edge parse -> emit   when passed
+  edge parse -> failed when failed
+  edge emit  -> write  when passed
+  edge emit  -> failed when failed
+  edge write -> done   when passed
+  edge write -> failed when failed

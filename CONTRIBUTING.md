@@ -52,6 +52,10 @@ done
 Commit the changed files in `src/generated/` with the rule change. CI runs the same loop
 and fails if the committed files are stale.
 
+The regeneration steps (read, parse, emit, write) are the stage graph in
+`src/graphs/regenerate.graphite`, run by `graphite::stage`. The Rust task bodies are in
+`examples/bootstrap_dump.rs`.
+
 ## Checks before you open a pull request
 
 CI runs these on every push and pull request. Run them locally first:

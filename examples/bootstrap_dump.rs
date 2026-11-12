@@ -1,14 +1,97 @@
-//! Bootstrap tool: compiles one `.graphite` file and writes a Rust module that rebuilds the
-//! compiled graph without a parser. It writes the bundled rule files in `src/generated/`; see
-//! CONTRIBUTING.md (Bootstrap).
+//! Regeneration tool: compiles one `.graphite` file and writes a Rust module that rebuilds the
+//! compiled graph without a parser. The steps (read, parse, emit, write) are the stage graph in
+//! `src/graphs/regenerate.graphite`, run by `graphite::stage`; the task bodies are below. It
+//! writes the bundled rule files in `src/generated/`; see CONTRIBUTING.md (Bootstrap).
 //!
 //! Usage: `bootstrap_dump <input.graphite> <output.rs>`
 
+use std::path::PathBuf;
 use std::process::ExitCode;
 
 use graphite::graph::{CompiledGraph, Span, index};
 use graphite::interner::StringId;
 use graphite::parser::Schema;
+use graphite::stage;
+
+const REGENERATE: &str = include_str!("../src/graphs/regenerate.graphite");
+
+#[derive(Clone, Copy)]
+enum Task {
+    Read,
+    Parse,
+    Emit,
+    Write,
+}
+
+fn task_named(name: &str) -> Option<Task> {
+    Some(match name {
+        "read" => Task::Read,
+        "parse" => Task::Parse,
+        "emit" => Task::Emit,
+        "write" => Task::Write,
+        _ => return None,
+    })
+}
+
+/// What the stages share. `error` holds the message for the `failed` end.
+struct Job {
+    input: PathBuf,
+    output: PathBuf,
+    source: String,
+    graph: Option<CompiledGraph>,
+    text: String,
+    error: Option<String>,
+}
+
+impl Job {
+    fn run(&mut self, task: Task) -> &'static [&'static str] {
+        let result = match task {
+            Task::Read => self.read(),
+            Task::Parse => self.parse(),
+            Task::Emit => self.emit(),
+            Task::Write => self.write(),
+        };
+        match result {
+            Ok(()) => &["passed"],
+            Err(message) => {
+                self.error = Some(message);
+                &["failed"]
+            }
+        }
+    }
+
+    fn read(&mut self) -> Result<(), String> {
+        self.source = std::fs::read_to_string(&self.input)
+            .map_err(|error| format!("{}: {error}", self.input.display()))?;
+        Ok(())
+    }
+
+    fn parse(&mut self) -> Result<(), String> {
+        let graphs =
+            graphite::pipeline::compile(&self.source, &Schema::default()).map_err(|error| {
+                format!(
+                    "{}: {}",
+                    self.input.display(),
+                    error.diagnostic(&self.source)
+                )
+            })?;
+        let [graph] = <[CompiledGraph; 1]>::try_from(graphs)
+            .map_err(|_| format!("{}: expected exactly one graph", self.input.display()))?;
+        self.graph = Some(graph);
+        Ok(())
+    }
+
+    fn emit(&mut self) -> Result<(), String> {
+        let graph = self.graph.as_ref().ok_or("emit ran before parse")?;
+        self.text = emit(graph);
+        Ok(())
+    }
+
+    fn write(&mut self) -> Result<(), String> {
+        std::fs::write(&self.output, &self.text)
+            .map_err(|error| format!("{}: {error}", self.output.display()))
+    }
+}
 
 fn main() -> ExitCode {
     let mut args = std::env::args().skip(1);
@@ -16,29 +99,38 @@ fn main() -> ExitCode {
         eprintln!("usage: bootstrap_dump <input.graphite> <output.rs>");
         return ExitCode::from(2);
     };
-    let source = match std::fs::read_to_string(&input) {
-        Ok(source) => source,
+    let graph = match graphite::pipeline::compile(REGENERATE, &Schema::default()) {
+        Ok(graphs) => graphs
+            .into_iter()
+            .next()
+            .expect("regenerate.graphite holds a graph"),
         Err(error) => {
-            eprintln!("{input}: {error}");
+            eprintln!("regenerate.graphite: {}", error.diagnostic(REGENERATE));
             return ExitCode::FAILURE;
         }
     };
-    let graphs = match graphite::pipeline::compile(&source, &Schema::default()) {
-        Ok(graphs) => graphs,
-        Err(error) => {
-            eprintln!("{input}: {}", error.diagnostic(&source));
-            return ExitCode::FAILURE;
+    let mut job = Job {
+        input: input.into(),
+        output: output.into(),
+        source: String::new(),
+        graph: None,
+        text: String::new(),
+        error: None,
+    };
+    match stage::drive(&graph, task_named, |task| job.run(task)) {
+        Ok(end) if end == "done" => ExitCode::SUCCESS,
+        Ok(_) => {
+            eprintln!(
+                "{}",
+                job.error.unwrap_or_else(|| "regeneration failed".into())
+            );
+            ExitCode::FAILURE
         }
-    };
-    let [graph] = graphs.as_slice() else {
-        eprintln!("{input}: expected exactly one graph");
-        return ExitCode::FAILURE;
-    };
-    if let Err(error) = std::fs::write(&output, emit(graph)) {
-        eprintln!("{output}: {error}");
-        return ExitCode::FAILURE;
+        Err(stall) => {
+            eprintln!("{stall}");
+            ExitCode::FAILURE
+        }
     }
-    ExitCode::SUCCESS
 }
 
 /// Rust source for `fn graph()`, which rebuilds `graph` field by field.
