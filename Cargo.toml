@@ -6,6 +6,10 @@ rust-version = "1.88"
 description = "A domain-agnostic graph compiler and step executor for state graphs."
 license = "AGPL-3.0-only"
 readme = "README.md"
+repository = "https://github.com/jennbarosa/graphite"
+homepage = "https://github.com/jennbarosa/graphite"
+keywords = ["dsl", "state-machine", "graph", "compiler", "typescript"]
+categories = ["command-line-utilities", "development-tools"]
 
 [workspace]
 
