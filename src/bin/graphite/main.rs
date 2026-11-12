@@ -18,6 +18,7 @@ mod load;
 mod man;
 mod run;
 mod scratch;
+mod tasks;
 
 use std::process::ExitCode;
 
@@ -126,11 +127,15 @@ fn dispatch(command: Command) -> Result<(), String> {
             state,
             runner,
             allow,
+            input_data,
+            tasks,
         } => run::run(
             &input,
             state.as_deref(),
             runner.as_deref(),
             allow.as_deref(),
+            input_data.as_deref(),
+            tasks.as_deref(),
         ),
         Command::Debug {
             input,

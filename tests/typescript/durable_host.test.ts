@@ -111,13 +111,14 @@ function recordsOf(files: Files): RecordLine[] {
 }
 
 /** Runs the review workflow until its `fix` stage errors, so the run stops after a lint failure. */
-async function stopAtFix(files: Files) {
+async function stopAtFix(files: Files, input?: unknown) {
 	let lints = 0;
 	const result = await runDurable({
 		modulePath: graphModule,
 		...workflowNames,
 		stateFile: files.state,
 		maxAttempts: 1,
+		input,
 		runner: async (task) => {
 			if (task === 'fix') throw new Error('fixer is down');
 			if (task !== 'lint') return 'none';
@@ -1051,5 +1052,33 @@ describe('durable host', () => {
 				runner: async () => 'pass',
 			})
 		).rejects.toThrow(/results file .* is malformed/);
+	});
+
+	test('a resumed run gets the input it started with, and a different input is refused', async () => {
+		const files = scratch();
+		const stopped = await stopAtFix(files, { target: 'prospect-1' });
+		await retryFailedTask(fileStore(files.state), stopped.key);
+		const seen: unknown[] = [];
+		await expect(
+			runDurable({
+				modulePath: graphModule,
+				...workflowNames,
+				stateFile: files.state,
+				input: { target: 'prospect-2' },
+				runner: async () => 'pass',
+			})
+		).rejects.toThrow('the input does not match the input this run started with');
+		const resumed = await runDurable({
+			modulePath: graphModule,
+			...workflowNames,
+			stateFile: files.state,
+			input: { target: 'prospect-1' },
+			runner: async (task, context) => {
+				seen.push(context.input);
+				return task === 'lint' ? 'pass' : 'none';
+			},
+		});
+		expect(resumed.status).toBe('ended');
+		expect(seen.every((input) => JSON.stringify(input) === '{"target":"prospect-1"}')).toBe(true);
 	});
 });

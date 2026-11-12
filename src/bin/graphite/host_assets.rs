@@ -13,6 +13,10 @@ pub const FILES: &[(&str, &str)] = &[
     // `await`. Bun reads ESM either way.
     ("package.json", "{\"type\": \"module\"}\n"),
     ("host/cli.ts", include_str!("../../../host/cli.ts")),
+    (
+        "host/commands.ts",
+        include_str!("../../../host/commands.ts"),
+    ),
     ("host/durable.ts", include_str!("../../../host/durable.ts")),
     ("host/run-log.ts", include_str!("../../../host/run-log.ts")),
     ("cli/debug.ts", include_str!("../../../cli/debug.ts")),

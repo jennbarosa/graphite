@@ -64,3 +64,13 @@ fn a_passed_gate_on_a_middle_stage_does_not_skip_its_task() {
         ],
     );
 }
+
+/// The command-backed task runner: the request on stdin, the report on stdout, and each failure mode.
+#[test]
+fn command_tasks_send_the_request_and_read_the_report() {
+    bun::assert_bun_test_passes_with(
+        cli::manifest(),
+        "tests/typescript/command_tasks.test.ts",
+        &[],
+    );
+}

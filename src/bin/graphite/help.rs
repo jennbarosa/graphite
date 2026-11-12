@@ -5,7 +5,7 @@ pub const OVERVIEW: &str = "usage:
   graphite init <file.dsl>                               write a starter graph
   graphite check <file.dsl> [--allow <list.toml>] [--json]  validate a graph
   graphite compile <file.dsl> [--out <dir>]              generate TypeScript modules
-  graphite run <file.dsl> [--state <file.json>] [--runner <tasks.ts>] [--allow <list.toml>]
+  graphite run <file.dsl> [--state <file.json>] [--tasks <tasks.toml> | --runner <tasks.ts>] [--input <data.json>] [--allow <list.toml>]
   graphite debug <file.dsl> [command...]                 step through a graph in the terminal
   graphite inspect <file.dsl> [--json]                   print the compiled graph
   graphite doctor [--json]                               report this build, its front ends, and what works here
@@ -22,7 +22,17 @@ pub const COMMANDS: &[(&str, &[&str])] = &[
     ("compile", &["--out", "--frontend", "--allow"]),
     ("inspect", &["--json"]),
     ("debug", &["--frontend", "--graph", "--out", "--allow"]),
-    ("run", &["--state", "--runner", "--allow", "--durable"]),
+    (
+        "run",
+        &[
+            "--state",
+            "--runner",
+            "--tasks",
+            "--input",
+            "--allow",
+            "--durable",
+        ],
+    ),
     ("doctor", &["--json"]),
     ("help", &[]),
     ("completions", &[]),
@@ -33,7 +43,14 @@ pub const COMMANDS: &[(&str, &[&str])] = &[
 pub fn takes_value(option: &str) -> bool {
     matches!(
         option,
-        "--out" | "--frontend" | "--graph" | "--allow" | "--state" | "--runner"
+        "--out"
+            | "--frontend"
+            | "--graph"
+            | "--allow"
+            | "--state"
+            | "--runner"
+            | "--tasks"
+            | "--input"
     )
 }
 
@@ -61,11 +78,13 @@ Writes one index module per graph, its chunk modules, and the runtime (graphite.
 It never overwrites: remove the directory, or pass another --out, to compile again."
         }
         "run" => {
-            "usage: graphite run <file.dsl> [--state <file.json>] [--runner <tasks.ts>] [--allow <list.toml>]
+            "usage: graphite run <file.dsl> [--state <file.json>] [--tasks <tasks.toml> | --runner <tasks.ts>] [--input <data.json>] [--allow <list.toml>]
 
 Runs the file's first graph as a durable workflow. Each node with a @task:NAME annotation runs
-that task through --runner, and state is checkpointed after every result, so running the same
-command again resumes where it stopped.
+that task through --runner, or through the command --tasks names for it, and state is checkpointed
+after every result, so running the same command again resumes where it stopped.
+--input <data.json> is a JSON value every task receives as context.input. A resume must give the
+same input.
 --state defaults to <file stem>.state.json beside the file.
 --durable is accepted for compatibility and does nothing: `run` is always durable.
 The runner is code that runs with your permissions. Use only runners you wrote or reviewed."

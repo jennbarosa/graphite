@@ -35,6 +35,8 @@ graphite --version                                     print the version
 | `--graph <name>` | `debug` | Debug this graph instead of the file's first one. |
 | `--state <file.json>` | `run` | Checkpoint file. Defaults to `<stem>.state.json` beside the file. |
 | `--runner <tasks.ts>` | `run` | Module whose default export runs tasks. Runs as code with your permissions. |
+| `--tasks <tasks.toml>` | `run` | Runs each task as a command, from a manifest. Cannot be combined with `--runner`. See [command tasks](durable-workflows.md#command-tasks). |
+| `--input <input.json>` | `run` | A JSON value every task receives as `context.input`. See [input](durable-workflows.md#input). |
 | `--durable` | `run` | Accepted and ignored: `run` is always durable. |
 | `--frontend <key>` | `check`, `compile`, `debug` | The front end to use. `typescript` is the only one shipped, and the default. See [front ends](front-ends.md). |
 

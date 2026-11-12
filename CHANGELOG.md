@@ -9,6 +9,10 @@ change the interface.
 
 ### Added
 
+- Command-backed tasks: `graphite run --tasks tasks.toml` runs each task as a command. The command gets
+  the task context as JSON on stdin and reports its outcome as JSON on stdout.
+- `graphite run --input data.json` gives every task the JSON value as `context.input`. A resumed run
+  with a different input is refused.
 - Durable runners can report a detail with an outcome (`{ outcome, detail }`). The host stores it,
   logs it, and passes the most recent failed stage to later tasks as `context.failure`, including
   after a resume.

@@ -29,6 +29,7 @@ import {
 	writeFileSync,
 	writeSync,
 } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { dirname, join, resolve } from 'node:path';
 
 const DEFAULT_MAX_TRANSITIONS = 10_000_000;
@@ -58,6 +59,8 @@ export interface TaskContext {
 	 * no stage has failed.
 	 */
 	readonly failure: StageFailure | undefined;
+	/** The run's input, as given to `runDurable`. Undefined when the run has none. */
+	readonly input: unknown;
 }
 
 /**
@@ -165,6 +168,11 @@ export interface DurableOptions {
 		task: string,
 		key: string
 	) => Promise<Outcome | undefined>;
+	/**
+	 * Data every task receives as `context.input`, such as the target a graph runs against. A resumed
+	 * run must be given the same input: a different one is refused, so no task sees a mix of two.
+	 */
+	readonly input?: unknown;
 	/** Per attempt. Default 60 seconds. */
 	readonly taskTimeoutMs?: number;
 	/** Attempts for a node flagged with the retry flag. Default 3. Other nodes get one. */
@@ -289,6 +297,8 @@ interface Session {
 	readonly results: Map<string, StoredResult>;
 	/** The most recent failed stage of this run. Saved with the snapshot. */
 	lastFailure: StageFailure | undefined;
+	/** A fingerprint of the run's input, or null when the run has none. Saved with the snapshot. */
+	readonly inputDigest: string | null;
 }
 
 /** Runs the graph from its saved state, or from the entry if there is none. */
@@ -337,7 +347,16 @@ export async function runDurable(options: DurableOptions): Promise<Result> {
 	return store.withLock(async () => {
 		const saved = store.loadSnapshot();
 		const resumed = saved !== undefined;
-		const { runSnapshot, lastFailure } = splitSnapshot(saved);
+		const { runSnapshot, lastFailure, inputDigest: savedDigest } =
+			splitSnapshot(saved);
+		const inputDigest =
+			options.input === undefined ? null : digestOf(options.input);
+		// A snapshot from before inputs were kept has no digest, and is accepted as it is.
+		if (resumed && savedDigest !== undefined && savedDigest !== inputDigest) {
+			throw new Error(
+				'the input does not match the input this run started with, so the run cannot resume'
+			);
+		}
 		const run: RunLike = resumed
 			? restore(graph, runSnapshot, limits)
 			: start(graph, limits);
@@ -349,6 +368,7 @@ export async function runDurable(options: DurableOptions): Promise<Result> {
 			options,
 			results,
 			lastFailure,
+			inputDigest,
 		};
 		options.onEvent?.({
 			type: 'run-started',
@@ -553,6 +573,7 @@ function saveSnapshot(session: Session, label: Checkpoint, key: string): void {
 	session.store.saveSnapshot({
 		run: session.run.snapshot(),
 		lastFailure: session.lastFailure ?? null,
+		inputDigest: session.inputDigest,
 	});
 	session.options.onCheckpoint?.(label, key);
 }
@@ -575,14 +596,29 @@ function recordResult(
 function splitSnapshot(saved: unknown): {
 	runSnapshot: unknown;
 	lastFailure: StageFailure | undefined;
+	/** The digest the run started with. Undefined for a snapshot that predates digests. */
+	inputDigest: string | null | undefined;
 } {
 	if (!isRecord(saved) || !('run' in saved)) {
-		return { runSnapshot: saved, lastFailure: undefined };
+		return {
+			runSnapshot: saved,
+			lastFailure: undefined,
+			inputDigest: undefined,
+		};
 	}
+	const digest = saved.inputDigest;
 	return {
 		runSnapshot: saved.run,
 		lastFailure: parseFailure(saved.lastFailure),
+		inputDigest: typeof digest === 'string' ? digest : null,
 	};
+}
+
+/** A stable fingerprint of a JSON input, used to refuse a resume with a different one. */
+function digestOf(input: unknown): string {
+	return createHash('sha256')
+		.update(JSON.stringify(input) ?? 'null')
+		.digest('hex');
 }
 
 function parseFailure(value: unknown): StageFailure | undefined {
@@ -638,7 +674,7 @@ async function attempt(
 			return await runOnce(
 				options.runner,
 				task,
-				{ key, attempt: number, failure },
+				{ key, attempt: number, failure, input: options.input },
 				timeoutMs
 			);
 		} catch (error) {
@@ -658,7 +694,12 @@ async function attempt(
 async function runOnce(
 	runner: Runner,
 	task: string,
-	ids: { key: string; attempt: number; failure: StageFailure | undefined },
+	ids: {
+		key: string;
+		attempt: number;
+		failure: StageFailure | undefined;
+		input: unknown;
+	},
 	timeoutMs: number
 ): Promise<RunnerReport> {
 	const controller = new AbortController();

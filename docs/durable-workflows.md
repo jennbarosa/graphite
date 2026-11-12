@@ -64,6 +64,49 @@ graphite run examples/workflow/workflow.dsl \
 The run log goes to stderr. The final line is JSON, for example `{"status":"ended","transitions":2}`.
 The exit status is 0 when the run ends.
 
+## Command tasks
+
+Instead of a runner module, a manifest can name the command that runs each task. Commands run in
+the directory that holds the manifest, so relative paths in it are relative to the manifest:
+
+```toml
+[tasks]
+write = ["npm", "run", "write"]
+lint = ["python3", "tools/lint.py"]
+```
+
+```sh
+graphite run review.dsl --tasks tasks.toml
+```
+
+A task's command gets one JSON object on stdin, `{ "task", "key", "attempt", "input", "failure" }`.
+`input` is the run's input, or `null`. `failure` is the run's last failed stage, as
+`context.failure` would show it, or `null`. The command reports one JSON object on stdout, with the
+same shape a runner returns:
+
+```json
+{"outcome": "fail", "detail": {"message": "2 checks failed", "code": "lint"}}
+```
+
+- Empty output with exit status 0 is a `pass`.
+- A nonzero exit status is a thrown attempt, so a node flagged `retry` tries again.
+- Output that is not JSON is a thrown attempt.
+- Stderr goes to the terminal, next to the run log.
+- A command that outlives `taskTimeoutMs` is stopped.
+
+Every task in the graph needs a command. A graph whose task has no command is refused before
+anything is recorded, and the error names the task. The commands run with your permissions, like
+`--runner`: use only commands you wrote or have reviewed.
+
+## Input
+
+`--input` names a JSON file whose value every task receives as `context.input`, and as `input` on
+stdin for a command task. Use it for the target a graph runs against, so the same graph can run
+against different targets without changing it.
+
+A resumed run must be given the same input. The host keeps a fingerprint of the input in the state
+file, and refuses a resume with a different one, so no task sees a mix of two inputs.
+
 ## Failure details
 
 A runner can say why a stage failed. It returns an object instead of a bare outcome:

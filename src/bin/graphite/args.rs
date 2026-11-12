@@ -46,6 +46,10 @@ pub enum Command {
         state: Option<PathBuf>,
         runner: Option<PathBuf>,
         allow: Option<PathBuf>,
+        /// `--input`: a JSON file whose value every task receives as `context.input`.
+        input_data: Option<PathBuf>,
+        /// `--tasks`: a `tasks.toml` mapping each task to the command that runs it.
+        tasks: Option<PathBuf>,
     },
     Doctor {
         json: bool,
@@ -73,6 +77,8 @@ struct Options {
     state: Option<PathBuf>,
     runner: Option<PathBuf>,
     json: bool,
+    input_data: Option<PathBuf>,
+    tasks: Option<PathBuf>,
 }
 
 pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> {
@@ -151,6 +157,10 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
             "--runner" => options.runner = Some(PathBuf::from(value(&mut rest_args, "--runner")?)),
             "--durable" => options.durable = true,
             "--json" => options.json = true,
+            "--input" => {
+                options.input_data = Some(PathBuf::from(value(&mut rest_args, "--input")?))
+            }
+            "--tasks" => options.tasks = Some(PathBuf::from(value(&mut rest_args, "--tasks")?)),
             flag if flag.starts_with("--") => return Err(format!("unknown option {flag}")),
             _ => positionals.push(arg),
         }
@@ -171,8 +181,14 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
         state,
         runner,
         json,
+        input_data,
+        tasks,
     } = options;
     let front_end_given = front_end.is_some();
+    if verb != "run" {
+        refuse(input_data.is_some(), "--input", &verb)?;
+        refuse(tasks.is_some(), "--tasks", &verb)?;
+    }
     if json && !matches!(verb.as_str(), "check" | "inspect") {
         return Err(format!("{verb} does not take --json"));
     }
@@ -224,11 +240,16 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
             refuse(out.is_some(), "--out", &verb)?;
             refuse(graph.is_some(), "--graph", &verb)?;
             refuse(front_end_given, "--frontend", &verb)?;
+            if runner.is_some() && tasks.is_some() {
+                return Err("--runner and --tasks both name the task code: pass one".into());
+            }
             Ok(Command::Run {
                 input,
                 state,
                 runner,
                 allow,
+                input_data,
+                tasks,
             })
         }
         "debug" => {
