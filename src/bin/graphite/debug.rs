@@ -1,4 +1,4 @@
-//! `graphite debug`: compiles a DSL file, then runs the target's debugger on one of its graphs.
+//! `graphite debug`: compiles a DSL file, then runs the front end's debugger on one of its graphs.
 //! Output goes to a scratch directory unless `--out` names one, and the scratch copy is removed.
 
 use std::path::Path;
@@ -11,16 +11,16 @@ use crate::{debugger, host_assets, load, scratch};
 
 pub fn run(
     input: &Path,
-    target: &str,
+    front_end: &str,
     graph: Option<&str>,
     out: Option<&Path>,
     allow: Option<&Path>,
     commands: &[String],
 ) -> Result<(), String> {
-    let target = load::target(target)?;
-    let script = target
+    let front_end = load::front_end(front_end)?;
+    let script = front_end
         .debugger
-        .ok_or_else(|| format!("no debugger for target \"{}\"", target.key))?;
+        .ok_or_else(|| format!("no debugger for front end \"{}\"", front_end.key))?;
     let (_, graphs) = load::graphs(input, allow)?;
     let entry = load::select(&graphs, graph)?;
     let scratch = out.is_none();
@@ -30,7 +30,7 @@ pub fn run(
     };
     let bundle = host_assets::materialize()?;
     let result = debug_in(
-        target.frontend,
+        front_end.frontend,
         &graphs,
         entry,
         &directory,

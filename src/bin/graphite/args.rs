@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use crate::help;
 
-const DEFAULT_TARGET: &str = "typescript";
+const DEFAULT_FRONTEND: &str = "typescript";
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Command {
@@ -15,12 +15,12 @@ pub enum Command {
         input: PathBuf,
         /// `None` means `graphite-out/<file stem>`, resolved by the command.
         out: Option<PathBuf>,
-        target: String,
+        front_end: String,
         allow: Option<PathBuf>,
     },
     Check {
         input: PathBuf,
-        target: String,
+        front_end: String,
         allow: Option<PathBuf>,
     },
     Inspect {
@@ -28,7 +28,7 @@ pub enum Command {
     },
     Debug {
         input: PathBuf,
-        target: String,
+        front_end: String,
         graph: Option<String>,
         out: Option<PathBuf>,
         allow: Option<PathBuf>,
@@ -54,7 +54,7 @@ pub enum Command {
 #[derive(Default)]
 struct Options {
     out: Option<PathBuf>,
-    target: Option<String>,
+    front_end: Option<String>,
     graph: Option<String>,
     allow: Option<PathBuf>,
     durable: bool,
@@ -100,7 +100,7 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
     while let Some(arg) = rest_args.next() {
         match arg.as_str() {
             "--out" => options.out = Some(PathBuf::from(value(&mut rest_args, "--out")?)),
-            "--target" => options.target = Some(value(&mut rest_args, "--target")?),
+            "--frontend" => options.front_end = Some(value(&mut rest_args, "--frontend")?),
             "--graph" => options.graph = Some(value(&mut rest_args, "--graph")?),
             "--allow" => options.allow = Some(PathBuf::from(value(&mut rest_args, "--allow")?)),
             "--state" => options.state = Some(PathBuf::from(value(&mut rest_args, "--state")?)),
@@ -119,21 +119,21 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
     let rest: Vec<String> = positionals.collect();
     let Options {
         out,
-        target,
+        front_end,
         graph,
         allow,
         durable,
         state,
         runner,
     } = options;
-    let target_given = target.is_some();
-    let target = target.unwrap_or_else(|| DEFAULT_TARGET.to_string());
+    let front_end_given = front_end.is_some();
+    let front_end = front_end.unwrap_or_else(|| DEFAULT_FRONTEND.to_string());
     match verb.as_str() {
         "init" => {
             only_file(&rest, &verb)?;
             refuse(out.is_some(), "--out", &verb)?;
             refuse(graph.is_some(), "--graph", &verb)?;
-            refuse(target_given, "--target", &verb)?;
+            refuse(front_end_given, "--frontend", &verb)?;
             refuse(allow.is_some(), "--allow", &verb)?;
             refuse_run_flags(durable, &state, &runner, &verb)?;
             Ok(Command::Init { input })
@@ -145,7 +145,7 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
             Ok(Command::Compile {
                 input,
                 out,
-                target,
+                front_end,
                 allow,
             })
         }
@@ -156,7 +156,7 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
             refuse_run_flags(durable, &state, &runner, &verb)?;
             Ok(Command::Check {
                 input,
-                target,
+                front_end,
                 allow,
             })
         }
@@ -164,7 +164,7 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
             only_file(&rest, &verb)?;
             refuse(out.is_some(), "--out", &verb)?;
             refuse(graph.is_some(), "--graph", &verb)?;
-            refuse(target_given, "--target", &verb)?;
+            refuse(front_end_given, "--frontend", &verb)?;
             refuse(allow.is_some(), "--allow", &verb)?;
             refuse_run_flags(durable, &state, &runner, &verb)?;
             Ok(Command::Inspect { input })
@@ -173,7 +173,7 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
             only_file(&rest, &verb)?;
             refuse(out.is_some(), "--out", &verb)?;
             refuse(graph.is_some(), "--graph", &verb)?;
-            refuse(target_given, "--target", &verb)?;
+            refuse(front_end_given, "--frontend", &verb)?;
             Ok(Command::Run {
                 input,
                 state,
@@ -185,7 +185,7 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
             refuse_run_flags(durable, &state, &runner, &verb)?;
             Ok(Command::Debug {
                 input,
-                target,
+                front_end,
                 graph,
                 out,
                 allow,

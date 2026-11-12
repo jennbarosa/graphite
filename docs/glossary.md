@@ -25,4 +25,4 @@ The words Graphite uses, in the order you meet them.
 | **Runner** | The TypeScript file that performs tasks and reports each `pass`, `fail` or `none`. |
 | **Outcome** | The result a task reports. `pass` sets the `passed` condition and `fail` sets `failed`. |
 | **Checkpoint** | The saved state a durable run writes after each result, so it can resume. |
-| **Front end** | The part that turns a checked graph into code for one host language, selected with `--target`. TypeScript is the only one shipped today. See [front ends](front-ends.md). |
+| **Front end** | The part that turns a checked graph into code for one host language, selected with `--frontend`. TypeScript is the only one shipped today. See [front ends](front-ends.md). |

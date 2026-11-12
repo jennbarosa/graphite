@@ -35,7 +35,7 @@ graphite doctor                                        check the JavaScript runt
 | `--state <file.json>` | `run` | Checkpoint file. Defaults to `<stem>.state.json` beside the file. |
 | `--runner <tasks.ts>` | `run` | Module whose default export runs tasks. Runs as code with your permissions. |
 | `--durable` | `run` | Accepted and ignored: `run` is always durable. |
-| `--target <key>` | `check`, `compile`, `debug` | The front end to use. `typescript` is the only one shipped, and the default. See [front ends](front-ends.md). |
+| `--frontend <key>` | `check`, `compile`, `debug` | The front end to use. `typescript` is the only one shipped, and the default. See [front ends](front-ends.md). |
 
 ## Exit status
 

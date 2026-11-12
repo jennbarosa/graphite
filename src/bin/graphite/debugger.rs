@@ -1,4 +1,4 @@
-//! Runs a target's debugger script with a JavaScript runtime, on one generated module.
+//! Runs a front end's debugger script with a JavaScript runtime, on one generated module.
 
 use std::ffi::OsString;
 use std::path::Path;

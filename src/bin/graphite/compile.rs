@@ -17,27 +17,25 @@ pub fn default_out(input: &Path) -> Result<PathBuf, String> {
 pub fn run(
     input: &Path,
     out: Option<&Path>,
-    target: &str,
+    front_end: &str,
     allow: Option<&Path>,
 ) -> Result<(), String> {
-    let target = load::target(target)?;
+    let front_end = load::front_end(front_end)?;
     let (source, graphs) = load::graphs(input, allow)?;
     let out = match out {
         Some(out) => out.to_path_buf(),
         None => default_out(input)?,
     };
-    let written = write_modules(target.frontend, &graphs, &out).map_err(|error| {
-        match error
-            .get_ref()
-            .and_then(|inner| inner.downcast_ref::<Collision>())
-        {
-            Some(collision) => format!(
-                "{}\nhint: remove {} or pass another --out to compile again",
-                collision.diagnostic(&source),
-                out.display()
-            ),
-            None => error.to_string(),
-        }
+    let written = write_modules(front_end.frontend, &graphs, &out).map_err(|error| match error
+        .get_ref()
+        .and_then(|inner| inner.downcast_ref::<Collision>())
+    {
+        Some(collision) => format!(
+            "{}\nhint: remove {} or pass another --out to compile again",
+            collision.diagnostic(&source),
+            out.display()
+        ),
+        None => error.to_string(),
     })?;
     for path in written {
         println!("{}", path.display());

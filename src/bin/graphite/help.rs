@@ -21,13 +21,13 @@ Writes a starter graph to <file.dsl>. It refuses to overwrite an existing file.
 Next: `graphite check <file.dsl>`, then `graphite compile <file.dsl>`."
         }
         "check" => {
-            "usage: graphite check <file.dsl> [--target typescript] [--allow <list.toml>]
+            "usage: graphite check <file.dsl> [--frontend typescript] [--allow <list.toml>]
 
 Parses and validates the graph, and checks that the generated file names do not collide.
 Prints `ok: N graphs` when the file is valid. Writes nothing."
         }
         "compile" => {
-            "usage: graphite compile <file.dsl> [--out <dir>] [--target typescript] [--allow <list.toml>]
+            "usage: graphite compile <file.dsl> [--out <dir>] [--frontend typescript] [--allow <list.toml>]
 
 Writes one index module per graph, its chunk modules, and the runtime (graphite.ts).
 --out defaults to graphite-out/<file name without extension>.

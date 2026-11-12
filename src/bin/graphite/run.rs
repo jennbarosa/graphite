@@ -24,7 +24,7 @@ pub fn run(
     }
     let (_, graphs) = load::graphs(input, allow)?;
     let entry = load::select(&graphs, None)?;
-    let frontend = load::target("typescript")?.frontend;
+    let frontend = load::front_end("typescript")?.frontend;
     let state = state.map_or_else(|| input.with_extension("state.json"), Path::to_path_buf);
     // The host locks the state file beside itself, so its directory must exist.
     if let Some(parent) = state

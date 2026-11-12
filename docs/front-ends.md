@@ -7,7 +7,7 @@ Graphite ships one front end today: **TypeScript**, the default for every comman
 interface is general, so supporting another language means writing one front end, not changing
 the graph language.
 
-| Key (`--target`) | Language | Status |
+| Key (`--frontend`) | Language | Status |
 | --- | --- | --- |
 | `typescript` | TypeScript | Shipped. The default. |
 
@@ -26,14 +26,13 @@ anything, for every front end.
 
 ## Choosing a front end
 
-Commands take `--target <key>`:
+`check`, `compile` and `debug` take `--frontend <key>`:
 
 ```sh
-graphite compile door.dsl --target typescript
+graphite compile door.dsl --frontend typescript
 ```
 
-`--target` is the name the CLI uses for a front end. In Rust, `graphite::frontend::registry::lookup`
-finds a front end by its key.
+In Rust, `graphite::frontend::registry::lookup` finds a front end by its key.
 
 ## Adding a front end
 
@@ -55,7 +54,7 @@ Then register the front end:
    is a script the CLI runs with `graphite debug`; leave it out if the language has none.
 2. Add the `Target` to `TARGETS` in [`src/frontend/registry.rs`](../src/frontend/registry.rs).
 
-The new front end then works with `--target <key>` and with the Rust API.
+The new front end then works with `--frontend <key>` and with the Rust API.
 
 ## What a front end does not decide
 

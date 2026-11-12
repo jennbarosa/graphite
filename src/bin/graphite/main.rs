@@ -44,14 +44,14 @@ fn run(command: Command) -> Result<(), String> {
         Command::Compile {
             input,
             out,
-            target,
+            front_end,
             allow,
-        } => compile::run(&input, out.as_deref(), &target, allow.as_deref()),
+        } => compile::run(&input, out.as_deref(), &front_end, allow.as_deref()),
         Command::Check {
             input,
-            target,
+            front_end,
             allow,
-        } => check::run(&input, &target, allow.as_deref()),
+        } => check::run(&input, &front_end, allow.as_deref()),
         Command::Inspect { input } => inspect::run(&input),
         Command::Run {
             input,
@@ -66,14 +66,14 @@ fn run(command: Command) -> Result<(), String> {
         ),
         Command::Debug {
             input,
-            target,
+            front_end,
             graph,
             out,
             allow,
             commands,
         } => debug::run(
             &input,
-            &target,
+            &front_end,
             graph.as_deref(),
             out.as_deref(),
             allow.as_deref(),

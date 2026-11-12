@@ -42,14 +42,14 @@ fn refuses_out() {
 }
 
 #[test]
-fn refuses_target_even_when_it_is_the_default() {
+fn refuses_frontend_even_when_it_is_the_default() {
     let spec = walk_spec();
     let output = graphite([
         "inspect".as_ref(),
         spec.as_os_str(),
-        "--target".as_ref(),
+        "--frontend".as_ref(),
         "typescript".as_ref(),
     ]);
     assert!(!output.status.success());
-    assert!(stderr(&output).contains("inspect does not take --target"));
+    assert!(stderr(&output).contains("inspect does not take --frontend"));
 }

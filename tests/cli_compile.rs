@@ -36,18 +36,18 @@ fn refuses_to_overwrite_an_existing_output() {
 }
 
 #[test]
-fn rejects_an_unknown_target_without_writing() {
-    let out = scratch("cli-unknown-target");
+fn rejects_an_unknown_front_end_without_writing() {
+    let out = scratch("cli-unknown-front-end");
     let spec = walk_spec();
     let output = graphite([
         "compile".as_ref(),
         spec.as_os_str(),
-        "--target".as_ref(),
+        "--frontend".as_ref(),
         "cobol".as_ref(),
         "--out".as_ref(),
         out.as_os_str(),
     ]);
     assert!(!output.status.success());
-    assert!(stderr(&output).contains("unknown target \"cobol\""));
+    assert!(stderr(&output).contains("unknown front end \"cobol\""));
     assert!(!out.exists());
 }

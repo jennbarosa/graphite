@@ -1,4 +1,4 @@
-//! Reads a DSL file into compiled graphs, and picks graphs, targets and string IDs out of them.
+//! Reads a DSL file into compiled graphs, and picks graphs, front ends and string IDs out of them.
 
 use std::path::Path;
 
@@ -27,8 +27,8 @@ pub fn graphs(path: &Path, allow: Option<&Path>) -> Result<(String, Vec<Compiled
     Ok((source, graphs))
 }
 
-pub fn target(key: &str) -> Result<&'static Target, String> {
-    registry::lookup(key).ok_or(format!("unknown target \"{key}\""))
+pub fn front_end(key: &str) -> Result<&'static Target, String> {
+    registry::lookup(key).ok_or(format!("unknown front end \"{key}\""))
 }
 
 /// The named graph, or the file's first graph when no name is given.

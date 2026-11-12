@@ -47,16 +47,16 @@ fn selects_a_graph_by_name_and_names_the_choices_when_it_is_missing() {
 }
 
 #[test]
-fn refuses_an_unknown_target() {
+fn refuses_an_unknown_front_end() {
     let spec = walk_spec();
     let output = graphite([
         "debug".as_ref(),
         spec.as_os_str(),
-        "--target".as_ref(),
+        "--frontend".as_ref(),
         "cobol".as_ref(),
     ]);
     assert!(!output.status.success());
-    assert!(stderr(&output).contains("unknown target \"cobol\""));
+    assert!(stderr(&output).contains("unknown front end \"cobol\""));
 }
 
 #[test]
