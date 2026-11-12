@@ -63,14 +63,17 @@ fn compile_without_out_writes_beside_the_working_directory() {
 }
 
 #[test]
-fn doctor_reports_the_runtime_and_fails_only_without_one() {
+fn doctor_reports_the_version_and_each_front_end() {
     let output = graphite(["doctor"]);
     let text = stdout(&output);
-    assert!(text.contains("JavaScript runtime:"), "{text}");
-    assert!(text.contains("TypeScript:"), "{text}");
-    // The result depends on this machine's runtimes; the wording is what this checks.
-    assert_eq!(
-        output.status.success(),
-        text.contains("ok       JavaScript runtime")
+    assert!(
+        text.starts_with(&format!("graphite {}", env!("CARGO_PKG_VERSION"))),
+        "{text}"
     );
+    assert!(text.contains("front ends:"), "{text}");
+    assert!(text.contains("typescript (default)"), "{text}");
+    assert!(text.contains("compile  ok"), "{text}");
+    // Whether `debug` and `run` work depends on this machine's runtimes. The exit status must
+    // agree with the summary: it fails exactly when a command is blocked.
+    assert_eq!(output.status.success(), !text.contains("blocked"), "{text}");
 }

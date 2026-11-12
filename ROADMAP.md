@@ -28,5 +28,5 @@ What Graphite does not do yet, and known limits. Items are roughly in priority o
 ## Done recently
 
 - The durable host and debugger are compiled into the binary, so `graphite` works after install.
-- `graphite init`, `graphite doctor`, and per-command help.
+- `graphite init`, `graphite doctor` (which reports every front end), and per-command help.
 - `compile` defaults its output directory, and reports collisions with a location.

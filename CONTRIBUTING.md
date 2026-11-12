@@ -28,7 +28,7 @@ cargo test --no-default-features   # without the SIMD lexer
 ```
 
 Several tests run TypeScript with Bun and fail with a clear message when Bun or `tsc`
-is missing. `graphite doctor` reports which runtime and compiler it finds:
+is missing. `graphite doctor` reports which front ends can run here, and whether `tsc` is found:
 
 ```sh
 cargo run -- doctor

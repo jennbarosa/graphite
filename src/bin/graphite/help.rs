@@ -7,7 +7,7 @@ pub const OVERVIEW: &str = "usage:
   graphite run <file.dsl> [--state <file.json>] [--runner <tasks.ts>] [--allow <list.toml>]
   graphite debug <file.dsl> [command...]                 step through a graph in the terminal
   graphite inspect <file.dsl>                            print the compiled graph
-  graphite doctor                                        check the JavaScript runtime and tsc
+  graphite doctor                                        report this build, its front ends, and what works here
 
 Run `graphite help <command>` for a command's options.";
 
@@ -59,8 +59,9 @@ parser understood."
         "doctor" => {
             "usage: graphite doctor
 
-Reports which JavaScript runtime and TypeScript compiler graphite will use, and why a command
-might fail. Exits with an error when no JavaScript runtime is found."
+Reports the graphite version and platform, the commands that need no outside tools, and each
+registered front end: whether it compiles, and whether its debug and run have the runtime they
+need. Each blocked command says how to fix it. Exits with an error when any command is blocked."
         }
         _ => return None,
     })

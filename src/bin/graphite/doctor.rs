@@ -1,60 +1,111 @@
-//! `graphite doctor`: reports the JavaScript runtime and TypeScript compiler that commands will use.
+//! `graphite doctor`: reports this build's version, what works without outside tools, each
+//! registered front end, and the runtime that each front end's `debug` and `run` need here.
 
-use std::process::Command;
+use graphite::frontend::registry::{self, Runtime, Target};
 
-/// Runs `program args` and returns the first line it prints, or `None` when it cannot run.
-fn version(program: &str, args: &[&str]) -> Option<String> {
-    let output = Command::new(program).args(args).output().ok()?;
-    if !output.status.success() {
-        return None;
+use crate::js;
+
+/// The result of checking one runtime: its name and version, or the fix when it is missing.
+type Probe = Result<String, String>;
+
+fn probe(runtime: Runtime) -> Probe {
+    match runtime {
+        Runtime::JavaScript => match js::detect() {
+            Some((name, version)) => Ok(format!("{name} {version}")),
+            None => Err(js::MISSING_HINT.to_string()),
+        },
     }
-    let text = String::from_utf8_lossy(&output.stdout);
-    text.lines().next().map(|line| line.trim().to_string())
 }
 
-/// The JavaScript runtime commands will use, in the order `js.rs` tries them.
-fn runtime() -> Option<(String, String)> {
-    if let Ok(configured) = std::env::var("GRAPHITE_JS_RUNNER") {
-        let mut words = configured.split_whitespace();
-        let program = words.next()?;
-        let mut args: Vec<&str> = words.collect();
-        args.push("--version");
-        return version(program, &args)
-            .map(|found| (format!("GRAPHITE_JS_RUNNER ({configured})"), found));
+/// Checks one runtime, once per run, and reports the result for `command` of `target`.
+fn report(
+    command: &str,
+    target: &Target,
+    cache: &mut Vec<(Runtime, Probe)>,
+    blocked: &mut Vec<String>,
+) {
+    let Some(runtime) = target.runtime else {
+        println!("    {command:<8} ok");
+        return;
+    };
+    let result = match cache.iter().find(|(known, _)| *known == runtime) {
+        Some((_, result)) => result.clone(),
+        None => {
+            let result = probe(runtime);
+            cache.push((runtime, result.clone()));
+            result
+        }
+    };
+    match result {
+        Ok(found) => println!("    {command:<8} ok       runtime: {found}"),
+        Err(hint) => {
+            println!("    {command:<8} blocked  needs a {runtime:?} runtime: {hint}");
+            blocked.push(format!("{} {command}", target.key));
+        }
     }
-    if let Some(found) = version("bun", &["--version"]) {
-        return Some(("bun".into(), found));
-    }
-    // `--no-install` keeps `npx` from downloading tsx during a check.
-    version("npx", &["--no-install", "tsx", "--version"]).map(|found| ("npx tsx".into(), found))
 }
 
-/// The TypeScript compiler the tests use: `GRAPHITE_TSC`, or `tsc` on the path.
-fn typescript() -> Option<(String, String)> {
+fn test_tools() {
+    println!("test tools (only `cargo test` uses these):");
     let program = std::env::var("GRAPHITE_TSC").unwrap_or_else(|_| "tsc".into());
-    version(&program, &["--version"]).map(|found| (program, found))
+    match js::version(&program, &["--version"]) {
+        Some(found) => {
+            println!("  ok       tsc for the TypeScript type-check test: {program} {found}")
+        }
+        None => println!(
+            "  missing  tsc for the TypeScript type-check test: install TypeScript 5 or later, or set GRAPHITE_TSC"
+        ),
+    }
 }
 
 pub fn run() -> Result<(), String> {
-    let mut missing_runtime = false;
-    match runtime() {
-        Some((name, found)) => println!("ok       JavaScript runtime: {name} {found}"),
-        None => {
-            missing_runtime = true;
+    println!(
+        "graphite {} ({} {})",
+        env!("CARGO_PKG_VERSION"),
+        std::env::consts::OS,
+        std::env::consts::ARCH
+    );
+    println!();
+    println!(
+        "ok       core: check, inspect, init, compile, and the Rust API need no outside tools"
+    );
+    println!();
+
+    println!("front ends:");
+    let mut cache: Vec<(Runtime, Probe)> = Vec::new();
+    let mut blocked: Vec<String> = Vec::new();
+    for target in registry::TARGETS {
+        let default = if target.key == registry::DEFAULT_FRONT_END {
+            " (default)"
+        } else {
+            ""
+        };
+        println!("  {}{default}", target.key);
+        println!("    compile  ok");
+        if target.debugger.is_some() {
+            report("debug", target, &mut cache, &mut blocked);
+        } else {
+            println!("    debug    not available: this front end has no debugger");
+        }
+        if target.key == registry::DURABLE_FRONT_END {
+            report("run", target, &mut cache, &mut blocked);
+        } else {
             println!(
-                "missing  JavaScript runtime: install bun (https://bun.sh), or npm and tsx, or set GRAPHITE_JS_RUNNER"
+                "    run      not available: the durable host is written for {}",
+                registry::DURABLE_FRONT_END
             );
         }
     }
-    match typescript() {
-        Some((program, found)) => println!("ok       TypeScript: {program} {found}"),
-        None => println!(
-            "missing  TypeScript: optional; only the test suite needs tsc 5 or later. Set GRAPHITE_TSC or put tsc on PATH"
-        ),
-    }
-    if missing_runtime {
-        Err("no JavaScript runtime found; `run`, `debug` and the tests need one".into())
-    } else {
+    println!();
+
+    test_tools();
+    println!();
+
+    if blocked.is_empty() {
+        println!("summary: everything graphite offers works on this machine");
         Ok(())
+    } else {
+        println!("summary: blocked: {}", blocked.join(", "));
+        Err("some commands cannot run here; fix the lines marked blocked".into())
     }
 }

@@ -2,9 +2,9 @@
 
 use std::path::PathBuf;
 
-use crate::help;
+use graphite::frontend::registry;
 
-const DEFAULT_FRONTEND: &str = "typescript";
+use crate::help;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Command {
@@ -127,7 +127,7 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
         runner,
     } = options;
     let front_end_given = front_end.is_some();
-    let front_end = front_end.unwrap_or_else(|| DEFAULT_FRONTEND.to_string());
+    let front_end = front_end.unwrap_or_else(|| registry::DEFAULT_FRONT_END.to_string());
     match verb.as_str() {
         "init" => {
             only_file(&rest, &verb)?;

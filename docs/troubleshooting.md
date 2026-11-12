@@ -40,7 +40,7 @@ together, and import from the directory it is in.
 
 **`no JavaScript runtime found: install bun, or npm and tsx, or set GRAPHITE_JS_RUNNER`**
 Install [Bun](https://bun.sh), or install `tsx` through npm, or set `GRAPHITE_JS_RUNNER` to a
-command that runs TypeScript. Run `graphite doctor` to see what Graphite found.
+command that runs TypeScript. Run `graphite doctor`: it names each blocked command and what it needs.
 
 **`cannot start GRAPHITE_JS_RUNNER ...`**
 The command in `GRAPHITE_JS_RUNNER` does not exist or cannot start. Check the spelling, and check
@@ -70,4 +70,4 @@ That option belongs to another command. The message names both.
 
 **`cannot run "tsc"`**
 The type-check test needs TypeScript 5 or later. Install it, or set `GRAPHITE_TSC` to its path.
-`graphite doctor` reports the path it found.
+`graphite doctor` reports whether it found `tsc`, and where.

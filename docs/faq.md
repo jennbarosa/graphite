@@ -33,7 +33,7 @@ language, and new front ends can be added without changing the graph language. S
 
 `run` and `debug` execute TypeScript, and Bun is the default runtime for it. `npx tsx` also works.
 Set `GRAPHITE_JS_RUNNER` to choose another. The generated TypeScript needs no runtime to be
-compiled, only to be executed. [`graphite doctor`](cli.md) reports what you have.
+compiled, only to be executed. [`graphite doctor`](cli.md) reports which front ends can run here.
 
 ## Do I have to use TypeScript?
 

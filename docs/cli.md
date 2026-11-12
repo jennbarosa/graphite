@@ -10,7 +10,7 @@ graphite compile <file.dsl> [--out <dir>]              generate modules with a f
 graphite run <file.dsl> [--state <file.json>] [--runner <tasks.ts>] [--allow <list.toml>]
 graphite debug <file.dsl> [command...]                 step through a graph in the terminal
 graphite inspect <file.dsl>                            print the compiled graph
-graphite doctor                                        check the JavaScript runtime and tsc
+graphite doctor                                        report this build, its front ends, and what works here
 ```
 
 ## Commands
@@ -23,7 +23,7 @@ graphite doctor                                        check the JavaScript runt
 | `run <file>` | Runs the first graph as a durable workflow. See [durable workflows](durable-workflows.md). | State file only |
 | `debug <file>` | Runs the debugger with the given commands, or reads them from stdin. | No |
 | `inspect <file>` | Prints the compiled nodes, edges, conditions, choices and annotations. | No |
-| `doctor` | Reports the JavaScript runtime and TypeScript compiler, and whether they work. | No |
+| `doctor` | Reports the graphite version, each front end, and whether `debug` and `run` can work here. | No |
 
 ## Options
 
@@ -47,7 +47,7 @@ stalls, or a missing runtime. Errors go to stderr. Help goes to stdout.
 | Variable | Effect |
 | --- | --- |
 | `GRAPHITE_JS_RUNNER` | The command used to run TypeScript, such as `bun` or `npx tsx`. Takes precedence over the default search. |
-| `GRAPHITE_TSC` | The path to `tsc`, used by the test suite and `doctor`. |
+| `GRAPHITE_TSC` | The path to `tsc`, used by the TypeScript type-check test. `doctor` reports it. |
 
 ## Where the TypeScript comes from
 

@@ -32,8 +32,8 @@ cargo install --path .
 graphite doctor
 ```
 
-`graphite doctor` reports whether a JavaScript runtime is available. The runtime is needed
-for `run`, `debug`, and TypeScript hosts. [Bun](https://bun.sh) is the default; `npx tsx` also
+`graphite doctor` reports this build's version, each front end, and whether `debug` and `run` can
+work here. The TypeScript front end needs a JavaScript runtime for `run` and `debug`. [Bun](https://bun.sh) is the default; `npx tsx` also
 works. Compiling needs nothing else.
 
 ## Quick start
