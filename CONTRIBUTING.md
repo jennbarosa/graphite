@@ -67,6 +67,9 @@ cargo test
 cargo test --no-default-features
 ```
 
+CI also regenerates `src/generated/` from the `.graphite` rule files and fails if the
+committed copies differ. See [Bootstrap](#bootstrap).
+
 Clippy warnings fail the build, so fix them rather than adding `#[allow]` unless there
 is a clear reason, and say that reason in a comment.
 
@@ -131,7 +134,9 @@ src/
   parser.rs, parser/       the parser that runs grammar.graphite into compiled arrays
   bootstrap.rs             the rule files as compiled data, from generated/
   generated/               compiled rule data, written by examples/bootstrap_dump.rs
-  graphs/                  the .graphite rule files that describe graphite itself
+  graphs/                  the .graphite rule files that describe graphite itself, plus
+                           regenerate.graphite, the stage graph for regeneration
+  stage.rs                 the stage-graph runner that drives build and regeneration
   graph.rs, arena.rs,      compiled graph data, arena, and string interner
   interner.rs
   frontend/                output front ends: typescript/ (index, chunks, runtime.ts)
@@ -140,7 +145,8 @@ src/
 src/frontend/typescript/durable/  durable engine, run log, and the run CLI (TypeScript)
 cli/                       debugger session (TypeScript)
 docs/                      user documentation
-examples/                  DSL files, a TypeScript driver, a durable workflow, a Rust program
+examples/                  DSL files, a TypeScript driver, a durable workflow, a Rust program,
+                           and bootstrap_dump, the regeneration tool
 tests/                     Rust integration tests, fixtures, and Bun tests
 benches/                   Criterion benchmarks
 ```

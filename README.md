@@ -91,6 +91,36 @@ The [tutorial](docs/tutorial.md) builds a real graph from scratch and explains e
 Working examples are in [`examples/`](examples/): `door.graphite` and `walk.graphite` for animation,
 `order.graphite` for an order lifecycle, and `workflow/` for a durable task pipeline.
 
+## What Graphite catches before a run
+
+Graphite checks a graph when you compile it, so routing mistakes fail the build instead of
+a run. These are the checks you get without writing any test:
+
+- **Stalls and endless loops at build time, in durable graphs.** A durable graph is one whose
+  tasks route only on `passed` and `failed`, and whose other nodes are all `end` nodes. In it,
+  every node reachable from the entry must be able to reach an `end`. A loop with no way out is
+  rejected with the node that can never finish:
+
+  ```text
+  error: node can never reach an end, so a run that gets here never finishes
+    --> line 3, column 8
+    |
+  3 |   node b @task:b
+  ```
+
+- **Missing outcomes at build time.** In a durable graph, each task needs an edge for every
+  outcome the graph uses (`passed`, `failed`, `errored`), so no task can finish without a route.
+- **Unreachable nodes at build time.** A node that no edge leads to is an error at its declaration.
+- **Stalls in simulation.** `graphite debug --simulate` runs a graph with stubbed task outcomes,
+  and names the node a run gets stuck at. A loop that never ends stops at 10,000 transitions:
+
+  ```text
+  stalled at stuck: no edge from it is taken
+  ```
+
+See [Durable workflows](docs/durable-workflows.md#checking-routes-without-running-tasks) for
+`--simulate`, and the [DSL reference](docs/dsl.md) for the rules.
+
 ## Development
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) to build, test, and send a change. Security problems go
