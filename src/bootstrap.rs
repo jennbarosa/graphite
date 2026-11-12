@@ -1,5 +1,5 @@
-//! The bundled rule files, rebuilt from the compiled form that `build.rs` writes to `OUT_DIR`.
-//! Nothing here parses source text: the converter in `examples/bootstrap_dump.rs` already did.
+//! The bundled rule files, rebuilt from the compiled form in `src/generated/`. Nothing here parses
+//! source text: `examples/bootstrap_dump.rs` wrote those files from the `.graphite` rule files.
 
 #[expect(
     unused_imports,
@@ -13,7 +13,7 @@ pub(crate) fn id(index: u32) -> StringId {
     StringId::from_index(index)
 }
 
-/// A string table holding `strings` in order, so each string gets the ID the converter recorded.
+/// A string table holding `strings` in order, so each string gets the ID the generator recorded.
 pub(crate) fn interner(strings: &[&str], bytes: usize) -> Interner {
     const FULL: &str = "bundled string table does not fit its recorded size";
     let mut table = Interner::with_capacity(strings.len(), bytes).expect(FULL);
@@ -25,20 +25,20 @@ pub(crate) fn interner(strings: &[&str], bytes: usize) -> Interner {
 
 pub(crate) mod lex {
     use super::*;
-    include!(concat!(env!("OUT_DIR"), "/lex.rs"));
+    include!("generated/lex.rs");
 }
 
 pub(crate) mod grammar {
     use super::*;
-    include!(concat!(env!("OUT_DIR"), "/grammar.rs"));
+    include!("generated/grammar.rs");
 }
 
 pub(crate) mod structure {
     use super::*;
-    include!(concat!(env!("OUT_DIR"), "/structure.rs"));
+    include!("generated/structure.rs");
 }
 
 pub(crate) mod build {
     use super::*;
-    include!(concat!(env!("OUT_DIR"), "/build.rs"));
+    include!("generated/build.rs");
 }

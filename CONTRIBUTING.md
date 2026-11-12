@@ -36,24 +36,21 @@ cargo run -- doctor
 
 ## Bootstrap
 
-Graphite reads its own grammar from three rule files: `src/graphs/lex.graphite`,
-`src/graphs/grammar.graphite` and `src/graphs/structure.graphite`. `build.rs` compiles them
-with `examples/bootstrap_dump.rs`, and the library loads the result from `OUT_DIR`. So a
-converter binary must exist before the library can build.
+Graphite reads its own grammar from four rule files in `src/graphs/`: `lex.graphite`,
+`grammar.graphite`, `structure.graphite` and `build.graphite`. The compiled form of each is
+committed in `src/generated/`, and the library builds from those files. Nothing parses
+`.graphite` text at build time.
 
-The build expects it at `target/bootstrap/bootstrap_dump`, or at the path in
-`GRAPHITE_BOOTSTRAP`. To make one from a fresh clone:
+After you edit a `.graphite` file, regenerate its compiled form from the repository root:
 
-1. Check out a commit from before the self-hosted lexer and parser (the parser that
-   read `.graphite` files by hand). Copy `examples/bootstrap_dump.rs` into it and run
-   `cargo build --example bootstrap_dump`. The converter uses only the public API, so it
-   builds there.
-2. Copy `target/debug/examples/bootstrap_dump` to `target/bootstrap/bootstrap_dump`.
+```sh
+for rule in lex grammar structure build; do
+  cargo run --example bootstrap_dump -- "src/graphs/$rule.graphite" "src/generated/$rule.rs"
+done
+```
 
-After that, `cargo build` regenerates the rule data whenever a `.graphite` file changes.
-To check that the current build still reads the rule files to the same data, build the
-converter from the current tree and compare its output with the one you copied. They
-should match byte for byte.
+Commit the changed files in `src/generated/` with the rule change. CI runs the same loop
+and fails if the committed files are stale.
 
 ## Checks before you open a pull request
 
@@ -128,7 +125,8 @@ cargo test --test parser_fixtures walk -- --nocapture
 src/
   lexer.rs, lexer/lex.rs   token types, and the lexer that runs lex.graphite
   parser.rs, parser/       the parser that runs grammar.graphite into compiled arrays
-  bootstrap.rs, build.rs   the rule files as compiled data, built from the converter
+  bootstrap.rs             the rule files as compiled data, from generated/
+  generated/               compiled rule data, written by examples/bootstrap_dump.rs
   graphs/                  the .graphite rule files that describe graphite itself
   graph.rs, arena.rs,      compiled graph data, arena, and string interner
   interner.rs

@@ -1,5 +1,6 @@
 //! Bootstrap tool: compiles one `.graphite` file and writes a Rust module that rebuilds the
-//! compiled graph without a parser. `build.rs` runs it on the bundled rule files.
+//! compiled graph without a parser. It writes the bundled rule files in `src/generated/`; see
+//! CONTRIBUTING.md (Bootstrap).
 //!
 //! Usage: `bootstrap_dump <input.graphite> <output.rs>`
 

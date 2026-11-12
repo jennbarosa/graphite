@@ -10,9 +10,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          # The bootstrap converter is built from an older commit, so the history is needed.
-          fetch-depth: 0
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -22,15 +19,13 @@ jobs:
           bun-version: 1.4.4
       - name: Install the TypeScript compiler
         run: npm install --global typescript@6.0.3
-      # build.rs needs the converter; see CONTRIBUTING.md (Bootstrap). 2bcd4ff^ predates the
-      # self-hosted parser, so the converter there builds against the public API.
-      - name: Build the bootstrap converter
+      # src/generated/ must match what the converter writes from the .graphite rule files.
+      - name: Check the generated rule data is current
         run: |
-          git worktree add --detach "$RUNNER_TEMP/bootstrap-src" 2bcd4ff^
-          cp examples/bootstrap_dump.rs "$RUNNER_TEMP/bootstrap-src/examples/"
-          cargo build --manifest-path "$RUNNER_TEMP/bootstrap-src/Cargo.toml" --locked \
-            --example bootstrap_dump --target-dir "$RUNNER_TEMP/bootstrap-target"
-          echo "GRAPHITE_BOOTSTRAP=$RUNNER_TEMP/bootstrap-target/debug/examples/bootstrap_dump" >> "$GITHUB_ENV"
+          for rule in lex grammar structure build; do
+            cargo run --quiet --example bootstrap_dump -- "src/graphs/$rule.graphite" "src/generated/$rule.rs"
+          done
+          git diff --exit-code -- src/generated
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
