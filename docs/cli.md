@@ -11,6 +11,7 @@ graphite run <file.dsl> [--state <file.json>] [--runner <tasks.ts>] [--allow <li
 graphite debug <file.dsl> [command...]                 step through a graph in the terminal
 graphite inspect <file.dsl>                            print the compiled graph
 graphite doctor                                        report this build, its front ends, and what works here
+graphite --version                                     print the version
 ```
 
 ## Commands
@@ -39,8 +40,15 @@ graphite doctor                                        report this build, its fr
 
 ## Exit status
 
-`0` when the command succeeds. `1` on any error, including a graph that does not check, a run that
-stalls, or a missing runtime. Errors go to stderr. Help goes to stdout.
+Scripts can tell a bad invocation from a failed command:
+
+| Status | Meaning |
+| --- | --- |
+| `0` | The command succeeded. |
+| `1` | The command failed: a graph does not check, a run stalls, or a runtime is missing. |
+| `2` | A usage error: an unknown command or option, or a missing file or value. |
+
+Errors go to stderr. Help and `--version` go to stdout.
 
 ## Environment variables
 

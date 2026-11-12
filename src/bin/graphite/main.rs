@@ -20,8 +20,17 @@ use std::process::ExitCode;
 
 use args::Command;
 
+/// Exit status: 0 on success, 1 when a command fails, 2 for a usage error such as an unknown
+/// command or option. Scripts can tell a bad invocation from a failed check.
 fn main() -> ExitCode {
-    match args::parse(std::env::args().skip(1)).and_then(run) {
+    let command = match args::parse(std::env::args().skip(1)) {
+        Ok(command) => command,
+        Err(message) => {
+            eprintln!("graphite: {message}");
+            return ExitCode::from(2);
+        }
+    };
+    match run(command) {
         Ok(()) => ExitCode::SUCCESS,
         Err(message) => {
             eprintln!("graphite: {message}");
@@ -37,6 +46,10 @@ fn run(command: Command) -> Result<(), String> {
                 None => println!("{}", help::OVERVIEW),
                 Some(name) => println!("{}", help::for_command(name).unwrap_or(help::OVERVIEW)),
             }
+            Ok(())
+        }
+        Command::Version => {
+            println!("graphite {}", env!("CARGO_PKG_VERSION"));
             Ok(())
         }
         Command::Init { input } => init::run(&input),

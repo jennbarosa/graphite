@@ -8,6 +8,8 @@ use crate::help;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Command {
+    /// `--version` or `-V`.
+    Version,
     Init {
         input: PathBuf,
     },
@@ -68,6 +70,12 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
         return Err(help::OVERVIEW.to_string());
     };
     match verb.as_str() {
+        "--version" | "-V" => {
+            if args.len() > 1 {
+                return Err(format!("{verb} takes no arguments, got \"{}\"", args[1]));
+            }
+            return Ok(Command::Version);
+        }
         "help" | "--help" | "-h" => {
             if args.len() > 2 {
                 return Err("help takes at most one command name".into());

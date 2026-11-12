@@ -30,6 +30,7 @@ fn rejects_a_dead_end_with_its_source_location() {
     let source = dsl("cli-dead-end/dead.dsl", "graph bad\n  node a\n");
     let output = graphite(["check".as_ref(), source.as_os_str()]);
     assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(1));
     assert!(stderr(&output).starts_with("graphite:"));
 }
 

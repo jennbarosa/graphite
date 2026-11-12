@@ -1,6 +1,7 @@
 //! Help text. `graphite help` and `graphite <command> --help` print these; errors print the overview.
 
 pub const OVERVIEW: &str = "usage:
+  graphite --version                                     print the version
   graphite init <file.dsl>                               write a starter graph
   graphite check <file.dsl> [--allow <list.toml>]        validate a graph
   graphite compile <file.dsl> [--out <dir>]              generate TypeScript modules
