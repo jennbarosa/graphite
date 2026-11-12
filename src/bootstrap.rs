@@ -37,3 +37,8 @@ pub(crate) mod structure {
     use super::*;
     include!(concat!(env!("OUT_DIR"), "/structure.rs"));
 }
+
+pub(crate) mod build {
+    use super::*;
+    include!(concat!(env!("OUT_DIR"), "/build.rs"));
+}

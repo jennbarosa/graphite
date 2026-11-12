@@ -6,6 +6,7 @@ use std::collections::HashSet;
 use std::sync::OnceLock;
 
 use crate::bootstrap;
+use crate::bootstrap::grammar::{Task, task};
 use crate::graph::CompiledGraph;
 use crate::interner::StringId;
 use crate::lexer::{Lexer, TokenKind};
@@ -42,7 +43,7 @@ pub(crate) fn parse(
         pending_condition: None,
         error: None,
     };
-    let mut stepper = Stepper::new(grammar_graph(), GrammarTask::named)
+    let mut stepper = Stepper::new(grammar_graph(), task)
         .unwrap_or_else(|error| panic!("the bundled grammar.graphite is wrong: {error}"));
     loop {
         match stepper.step(&mut |task| session.run(task)) {
@@ -58,47 +59,8 @@ pub(crate) fn parse(
     }
 }
 
-/// The tasks of `grammar.graphite`, one per task node.
-#[derive(Clone, Copy)]
-enum GrammarTask {
-    Next,
-    Header,
-    Body,
-    NodeLine,
-    EdgeLine,
-    Choose,
-    Arms,
-    WhenArm,
-    ElseArm,
-    Arm,
-    ArmsEnd,
-    BlockEnd,
-    GraphEnd,
-}
-
-impl GrammarTask {
-    fn named(name: &str) -> Option<GrammarTask> {
-        Some(match name {
-            "next" => GrammarTask::Next,
-            "header" => GrammarTask::Header,
-            "body" => GrammarTask::Body,
-            "node_line" => GrammarTask::NodeLine,
-            "edge_line" => GrammarTask::EdgeLine,
-            "choose" => GrammarTask::Choose,
-            "arms" => GrammarTask::Arms,
-            "when_arm" => GrammarTask::WhenArm,
-            "else_arm" => GrammarTask::ElseArm,
-            "arm" => GrammarTask::Arm,
-            "arms_end" => GrammarTask::ArmsEnd,
-            "block_end" => GrammarTask::BlockEnd,
-            "graph_end" => GrammarTask::GraphEnd,
-            _ => return None,
-        })
-    }
-}
-
-const OK: &[&str] = &["ok"];
-const FAILED: &[&str] = &["error"];
+const OK: &[&str] = &["passed"];
+const FAILED: &[&str] = &["failed"];
 
 /// What the grammar's tasks share: the tokens, the graph being built, and what the last state read.
 struct Session<'a, 's> {
@@ -122,21 +84,21 @@ struct Session<'a, 's> {
 }
 
 impl<'a, 's> Session<'a, 's> {
-    fn run(&mut self, task: GrammarTask) -> &'static [&'static str] {
+    fn run(&mut self, task: Task) -> &'static [&'static str] {
         match task {
-            GrammarTask::Next => self.next(),
-            GrammarTask::Header => self.header(),
-            GrammarTask::Body => self.body(),
-            GrammarTask::NodeLine => self.node_line(),
-            GrammarTask::EdgeLine => self.edge_line(),
-            GrammarTask::Choose => self.choose(),
-            GrammarTask::Arms => self.arms(),
-            GrammarTask::WhenArm => self.when_arm(),
-            GrammarTask::ElseArm => self.else_arm(),
-            GrammarTask::Arm => self.arm(),
-            GrammarTask::ArmsEnd => self.arms_end(),
-            GrammarTask::BlockEnd => self.block_end(),
-            GrammarTask::GraphEnd => self.graph_end(),
+            Task::Next => self.next(),
+            Task::Header => self.header(),
+            Task::Body => self.body(),
+            Task::NodeLine => self.node_line(),
+            Task::EdgeLine => self.edge_line(),
+            Task::Choose => self.choose(),
+            Task::Arms => self.arms(),
+            Task::WhenArm => self.when_arm(),
+            Task::ElseArm => self.else_arm(),
+            Task::Arm => self.arm(),
+            Task::ArmsEnd => self.arms_end(),
+            Task::BlockEnd => self.block_end(),
+            Task::GraphEnd => self.graph_end(),
         }
     }
 

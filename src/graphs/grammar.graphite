@@ -17,32 +17,32 @@ graph grammar
 
   edge next -> header    when more
   edge next -> finished  when finished
-  edge next -> failed    when error
-  edge header -> body    when ok
-  edge header -> failed  when error
+  edge next -> failed    when failed
+  edge header -> body    when passed
+  edge header -> failed  when failed
   edge body -> node_line when line_node
   edge body -> edge_line when line_edge
   edge body -> choose    when line_choose
   edge body -> block_end when line_end
-  edge body -> failed    when error
-  edge node_line -> body   when ok
-  edge node_line -> failed when error
-  edge edge_line -> body   when ok
-  edge edge_line -> failed when error
-  edge choose -> arms    when ok
-  edge choose -> failed  when error
+  edge body -> failed    when failed
+  edge node_line -> body   when passed
+  edge node_line -> failed when failed
+  edge edge_line -> body   when passed
+  edge edge_line -> failed when failed
+  edge choose -> arms    when passed
+  edge choose -> failed  when failed
   edge arms -> when_arm  when arm_when
   edge arms -> else_arm  when arm_else
   edge arms -> arms_end  when arm_end
-  edge arms -> failed    when error
-  edge when_arm -> arm    when ok
-  edge when_arm -> failed when error
-  edge else_arm -> arm    when ok
-  edge arm -> arms   when ok
-  edge arm -> failed when error
-  edge arms_end -> body   when ok
-  edge arms_end -> failed when error
-  edge block_end -> graph_end when ok
-  edge block_end -> failed    when error
-  edge graph_end -> next   when ok
-  edge graph_end -> failed when error
+  edge arms -> failed    when failed
+  edge when_arm -> arm    when passed
+  edge when_arm -> failed when failed
+  edge else_arm -> arm    when passed
+  edge arm -> arms   when passed
+  edge arm -> failed when failed
+  edge arms_end -> body   when passed
+  edge arms_end -> failed when failed
+  edge block_end -> graph_end when passed
+  edge block_end -> failed    when failed
+  edge graph_end -> next   when passed
+  edge graph_end -> failed when failed
