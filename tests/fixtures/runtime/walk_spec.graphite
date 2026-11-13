@@ -1,4 +1,4 @@
-graph walk
+graph walk @choice:facing @idle:stopped
   node windup   @anim:windup
   node going    loop @anim:walk @group:locomotion
   node winddown end @anim:winddown

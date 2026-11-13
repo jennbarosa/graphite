@@ -237,6 +237,10 @@ fn emit(graph: &CompiledGraph) -> String {
         format!("        arms: vec![{arms}],"),
         format!("        annotations: vec![{annotations}],"),
         format!("        flags: vec![{flags}],"),
+        format!(
+            "        graph_annotations: {}..{},",
+            graph.graph_annotations.start, graph.graph_annotations.end
+        ),
         "    }".to_string(),
         "}".to_string(),
     ];

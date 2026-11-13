@@ -2,6 +2,7 @@ graph grammar
   node next       @task:next
   node header     @task:header
   node body       @task:body
+  node default_line @task:default_line
   node node_line  @task:node_line
   node edge_line  @task:edge_line
   node choose     @task:choose
@@ -20,11 +21,14 @@ graph grammar
   edge next -> failed    when failed
   edge header -> body    when passed
   edge header -> failed  when failed
+  edge body -> default_line when line_default
   edge body -> node_line when line_node
   edge body -> edge_line when line_edge
   edge body -> choose    when line_choose
   edge body -> block_end when line_end
   edge body -> failed    when failed
+  edge default_line -> body   when passed
+  edge default_line -> failed when failed
   edge node_line -> body   when passed
   edge node_line -> failed when failed
   edge edge_line -> body   when passed

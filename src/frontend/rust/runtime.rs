@@ -13,6 +13,8 @@ pub struct NodeId(pub u32);
 #[derive(Debug)]
 pub struct Graph {
     pub name: &'static str,
+    /// Annotations on the `graph` line, in source order.
+    pub annotations: &'static [Annotation],
     pub nodes: &'static [Node],
     /// Condition names, indexed by a condition's ID.
     pub conditions: &'static [&'static str],

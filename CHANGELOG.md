@@ -14,6 +14,10 @@ change the interface.
 
 ### Added
 
+- Annotations on the `graph` line (`graph walk @choice:facing`), read with `graph.annotations()` in TypeScript
+  and `GRAPH.annotations` in Rust.
+- `default @key:value` lines, before the first node, add annotations to every node that does not set the key.
+- `nodeLooping(name)` and `nodeEnd(name)` on the TypeScript graph, so a host need not repeat `loop` as an annotation.
 - Neovim syntax highlighting and file-type detection for `*.graphite` files, in `editors/nvim`.
 
 - With `--tasks`, the manifest's `[tasks]` keys are the allowed task names, so the allowlist can list only

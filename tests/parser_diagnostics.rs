@@ -15,7 +15,7 @@ fn parse_errors_underline_the_offending_text() {
         ),
         (
             "graph door\n  node a\n  wrong thing here\n",
-            "error: expected `node`, `edge`, or `choose` line\n --> line 3, column 3\n  |\n3 |   wrong thing here\n  |   ^^^^^ expected `node`, `edge`, or `choose` line",
+            "error: expected `default`, `node`, `edge`, or `choose` line\n --> line 3, column 3\n  |\n3 |   wrong thing here\n  |   ^^^^^ expected `default`, `node`, `edge`, or `choose` line",
         ),
         (
             "graph door\n  node a\n  edge b -> c\n",

@@ -22,7 +22,8 @@ vim.opt.runtimepath:append("/path/to/graphite/editors/nvim")
 
 | Line | Meaning |
 | --- | --- |
-| `graph NAME` | Starts a graph. |
+| `graph NAME [@key:value ...]` | Starts a graph. Its annotations belong to the graph as a whole. |
+| `default @key:value ...` | Annotations every later node gets unless it sets the same key. |
 | `node NAME [flags] [@key:value ...]` | A stage. Flags are `loop`, `end`, and any the schema allows. |
 | `edge FROM -> TO when COND` | A **gate**: taken when the host sets `COND` true. |
 | `edge FROM -> TO` | A **sequence edge**: taken after the host calls `finish()` for the stage. |
@@ -98,6 +99,23 @@ edge setup -> baseline -> plan when pass else report
   `retry` must be allowed in an allowlist (see below).
 - **Annotations** are `@key:value` pairs. They are passed to the host unchanged. Graphite never
   reads their meaning, so `@anim:walk` and `@task:deploy` mean whatever your host makes of them.
+
+Annotations on the `graph` line describe the graph itself, for example
+`graph walk @choice:facing @idle:stopped`. A host reads them with `graph.annotations()` in
+TypeScript and `GRAPH.annotations` in Rust.
+
+`default` lines come before the first node. Each node declared after one gets the default's
+annotations after its own, except for any key the node sets itself. The defaults are copied at
+compile time, so `nodeAnnotations` returns them like any other annotation:
+
+```text
+graph walk
+  default @fps:8
+  node going loop @anim:walk        # @anim:walk @fps:8
+  node winddown end @fps:12         # @fps:12
+```
+
+A host reads a node's `loop` and `end` declarations with `nodeLooping(name)` and `nodeEnd(name)`.
 
 ## Allowlists
 

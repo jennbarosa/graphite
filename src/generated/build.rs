@@ -12,6 +12,7 @@ pub(crate) fn graph() -> CompiledGraph {
         arms: vec![],
         annotations: vec![Annotation { key: id(2), value: Some(id(1)) }, Annotation { key: id(2), value: Some(id(3)) }, Annotation { key: id(2), value: Some(id(4)) }, Annotation { key: id(2), value: Some(id(5)) }],
         flags: vec![],
+        graph_annotations: 0..0,
     }
 }
 

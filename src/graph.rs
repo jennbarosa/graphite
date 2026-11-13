@@ -20,6 +20,8 @@ pub struct CompiledGraph {
     pub annotations: Vec<Annotation>,
     /// Domain flags only; core flags are represented directly on `Node`.
     pub flags: Vec<StringId>,
+    /// The annotations on the `graph` line, a range into `annotations`.
+    pub graph_annotations: Span,
 }
 
 impl CompiledGraph {
@@ -77,7 +79,7 @@ pub struct Arm {
     pub annotations: Span,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct Annotation {
     pub key: StringId,
     /// `None` distinguishes `@key` from an annotation with a value.

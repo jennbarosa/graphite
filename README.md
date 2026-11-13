@@ -88,6 +88,27 @@ The [tutorial](docs/tutorial.md) builds a real graph from scratch and explains e
 | [FAQ](docs/faq.md) | When to use Graphite, and why TypeScript comes first. |
 | [Troubleshooting](docs/troubleshooting.md) | Fixes for the errors you are most likely to see. |
 
+### Annotations
+
+Annotations are `@key:value` pairs that Graphite passes to your host unchanged. They can sit on
+the `graph` line, on nodes and edges, and on choice arms. A `default` line sets annotations for
+every node at once.
+
+```text
+graph walk @choice:facing @idle:stopped
+  default @fps:8
+  node going    loop @anim:walk
+  node winddown end  @anim:winddown @fps:12
+```
+
+- **Graph annotations** describe the graph as a whole. Read them with `graph.annotations()` in
+  TypeScript or `GRAPH.annotations` in Rust.
+- **Defaults** come before the first node. Each node gets them after its own annotations, unless
+  it sets the same key. Above, `going` has `@anim:walk @fps:8`, and `winddown` keeps its own
+  `@fps:12`. They are copied at compile time, so `nodeAnnotations` returns them like any other.
+- **Flags** are not annotations. Read a node's `loop` and `end` with `nodeLooping(name)` and
+  `nodeEnd(name)`, so you need no `@loop` annotation.
+
 Working examples are in [`examples/`](examples/): `door.graphite` and `walk.graphite` for animation,
 `order.graphite` for an order lifecycle, and `workflow/` for a durable task pipeline.
 

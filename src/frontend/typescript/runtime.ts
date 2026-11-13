@@ -178,6 +178,8 @@ export interface ChoiceChunk {
 export interface GraphData {
 	readonly name: string;
 	readonly strings: readonly string[];
+	/** The annotations on the `graph` line, as string IDs: `[key, value]`, with a null value for `@key`. */
+	readonly annotations: readonly (readonly [number, number | null])[];
 	readonly conditions: readonly number[];
 	readonly flags: readonly number[];
 	/** Nodes per chunk is `1 << nodeShift`. */
@@ -370,6 +372,8 @@ export class Graph<V extends Vocabulary> {
 
 	private computeFingerprint(): string {
 		const parts: string[] = [this.name, String(this.data.nodeCount)];
+		for (const { key, value } of this.annotations())
+			parts.push(key, value ?? '');
 		for (const id of this.data.conditions) parts.push(this.text(id));
 		parts.push('|');
 		for (let id = 0; id < this.data.nodeCount; id++) {
@@ -412,6 +416,14 @@ export class Graph<V extends Vocabulary> {
 		return fnv1a(text, 0x811c9dc5) + fnv1a(text, 0x01000193);
 	}
 
+	/** Annotations on the `graph` line, in source order. */
+	annotations(): readonly Annotation[] {
+		return this.data.annotations.map(([key, value]) => ({
+			key: this.text(key),
+			value: value === null ? null : this.text(value),
+		}));
+	}
+
 	/** The ID of node `name`. Throws for a name the graph does not have. */
 	nodeId(name: V['nodes']): number {
 		const id = this.nodeIds.get(name);
@@ -430,6 +442,16 @@ export class Graph<V extends Vocabulary> {
 			this.nodeChunk(id).annotations,
 			this.nodeRecord(id).annotations
 		);
+	}
+
+	/** Whether node `name` was declared `loop`. Throws for an unknown name. */
+	nodeLooping(name: V['nodes']): boolean {
+		return this.nodeRecord(this.nodeId(name)).looping;
+	}
+
+	/** Whether node `name` was declared `end`. Throws for an unknown name. */
+	nodeEnd(name: V['nodes']): boolean {
+		return this.nodeRecord(this.nodeId(name)).end;
 	}
 
 	/** Domain flags on node `name`, in source order. Core flags are not included. */

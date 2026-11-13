@@ -4,7 +4,7 @@
 use std::io::{self, Write};
 
 use crate::frontend::layered::{GraphPlan, choice_stem, node_stem};
-use crate::graph::CompiledGraph;
+use crate::graph::{CompiledGraph, index};
 
 use super::{escape::string, shared::runtime_import, types};
 
@@ -77,6 +77,14 @@ fn write_graph(graph: &CompiledGraph, plan: &GraphPlan, output: &mut dyn Write) 
     for value in graph.strings.strings() {
         string(value, output)?;
         output.write_all(b",")?;
+    }
+    output.write_all(b"],\nannotations: [")?;
+    for entry in &graph.annotations[index(&graph.graph_annotations)] {
+        write!(output, "[{},", entry.key.index())?;
+        match entry.value {
+            Some(value) => write!(output, "{}],", value.index())?,
+            None => output.write_all(b"null],")?,
+        }
     }
     output.write_all(b"],\nconditions: [")?;
     for id in &graph.conditions {

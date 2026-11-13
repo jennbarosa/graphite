@@ -17,7 +17,7 @@ The words Graphite uses, in the order you meet them.
 | **Finish** | The host's report that the current stage's work is done (an animation has played, a job has run). It makes a sequence edge ready. |
 | **Choice** | A `choose` block: a set of `when COND -> TAG` arms, with an optional `else`. The host asks which arm holds. |
 | **Arm** | One line of a choice. Its tag is returned to the host. |
-| **Annotation** | A `@key:value` pair on a node or edge, such as `@anim:walk`. Graphite passes it through unchanged. |
+| **Annotation** | A `@key:value` pair on the `graph` line, a node, an edge or a choice arm, such as `@anim:walk`. Graphite passes it through unchanged. A `default` line adds annotations to every node. |
 | **Flag** | A bare word on a node, such as `loop` or `end`. Your schema can allow more. |
 | **Tag** | A string an arm returns, such as `side`. Opaque to Graphite. |
 | **Allowlist** | A TOML file that lists the flags and annotation values a graph may use, checked when the file is compiled. |

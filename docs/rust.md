@@ -58,7 +58,8 @@ allocated up front, for example in a loop that must not allocate.
 
 Compiled graphs are flat arrays. Nodes, edges, choices, arms, flags and annotations are indexed
 by ID, and each node's outgoing edges are a range in one array. Treat the fields as read-only:
-changing them directly breaks the guarantees parsing established.
+changing them directly breaks the guarantees parsing established. The annotations on the `graph`
+line are the range `graph_annotations` into `annotations`.
 
 ## Documentation
 

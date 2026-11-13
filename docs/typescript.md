@@ -52,6 +52,17 @@ const arm = run.choose("facing");
 console.log(arm.tag);         // "side", "up", or "down"
 ```
 
+## Reading the graph
+
+The graph module has accessors a host can call without a run:
+
+| Method | Returns |
+| --- | --- |
+| `annotations()` | The annotations on the `graph` line. |
+| `nodeAnnotations(name)` | A node's annotations, including copied `default` ones. |
+| `nodeFlags(name)` | The node's domain flags. |
+| `nodeLooping(name)`, `nodeEnd(name)` | Whether the node was declared `loop` or `end`. |
+
 ## Passing a trace
 
 `step()` takes an optional trace buffer that records the edges it takes. Pass one when you want to

@@ -61,6 +61,7 @@ impl Capacity {
             arms: buffer(self.arms)?,
             annotations: buffer(self.annotations)?,
             flags: buffer(self.flags)?,
+            graph_annotations: 0..0,
         })
     }
 }

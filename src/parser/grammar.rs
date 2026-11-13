@@ -89,6 +89,7 @@ impl<'a, 's> Session<'a, 's> {
             Task::Next => self.next(),
             Task::Header => self.header(),
             Task::Body => self.body(),
+            Task::DefaultLine => self.default_line(),
             Task::NodeLine => self.node_line(),
             Task::EdgeLine => self.edge_line(),
             Task::Choose => self.choose(),
@@ -129,7 +130,7 @@ impl<'a, 's> Session<'a, 's> {
         }
     }
 
-    /// `graph NAME`, its newline, and the indented body.
+    /// `graph NAME [@key:value ...]`, its newline, and the indented body.
     fn header(&mut self) -> &'static [&'static str] {
         let tokens = &mut self.tokens;
         let (name, offset) = match (|| {
@@ -154,14 +155,9 @@ impl<'a, 's> Session<'a, 's> {
                 offset,
             ));
         }
-        let opened = self
-            .tokens
-            .expect(TokenKind::Newline)
-            .and_then(|()| self.tokens.expect(TokenKind::Indent));
-        if let Err(error) = opened {
-            return self.fail(error);
-        }
-        match Builder::new(capacity, name, &mut self.tokens, self.flags) {
+        let opened = Builder::new(capacity, name, &mut self.tokens, self.flags)
+            .and_then(|builder| builder.opened(&mut self.tokens));
+        match opened {
             Ok(mut builder) => {
                 builder.graph.offset = offset;
                 self.builder = Some(builder);
@@ -186,6 +182,13 @@ impl<'a, 's> Session<'a, 's> {
         };
         self.keyword_offset = offset;
         match keyword {
+            "default" if !self.linking && self.builder().graph.nodes.is_empty() => {
+                &["line_default"]
+            }
+            "default" => self.fail(ParseError::new(
+                "`default` must come before the first node",
+                offset,
+            )),
             "node" if !self.linking => &["line_node"],
             "edge" => {
                 self.linking = true;
@@ -200,6 +203,18 @@ impl<'a, 's> Session<'a, 's> {
                 offset,
             )),
             _ => self.fail(ParseError::new(GRAPH_FORM, offset)),
+        }
+    }
+
+    fn default_line(&mut self) -> &'static [&'static str] {
+        let tokens = &mut self.tokens;
+        let builder = self
+            .builder
+            .as_mut()
+            .expect("a default is read inside a graph");
+        match builder.default(tokens) {
+            Ok(()) => OK,
+            Err(error) => self.fail(error),
         }
     }
 

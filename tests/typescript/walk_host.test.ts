@@ -7,6 +7,21 @@ const { start } = await import(`${root}/graphite.ts`);
 const { graph } = await import(`${root}/walk.ts`);
 
 describe('walk cycle host', () => {
+	test('the graph line annotations are readable', () => {
+		expect(graph.annotations()).toEqual([
+			{ key: 'choice', value: 'facing' },
+			{ key: 'idle', value: 'stopped' },
+		]);
+	});
+
+	test('loop and end declarations are readable without annotations', () => {
+		expect(graph.nodeLooping('going')).toBe(true);
+		expect(graph.nodeLooping('windup')).toBe(false);
+		expect(graph.nodeEnd('stopped')).toBe(true);
+		expect(graph.nodeEnd('going')).toBe(false);
+		expect(() => graph.nodeLooping('nosuch')).toThrow(RangeError);
+	});
+
 	test('entry is windup; a finish moves into the looping walk node', () => {
 		const run = start(graph);
 		expect(run.node).toBe('windup');

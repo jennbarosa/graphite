@@ -121,6 +121,11 @@ fn write_graph(graph: &CompiledGraph, output: &mut dyn Write) -> io::Result<()> 
     write_constants(graph, output)?;
     writeln!(output, "pub static GRAPH: Graph = Graph {{")?;
     writeln!(output, "    name: {},", quote(graph.text(graph.name)))?;
+    writeln!(
+        output,
+        "    annotations: {},",
+        annotation_list(graph, &graph.graph_annotations)
+    )?;
     write_nodes(graph, output)?;
     writeln!(
         output,

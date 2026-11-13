@@ -12,7 +12,7 @@ use super::capacity::{buffer, push};
 use super::tokens::{INVALID_NAME, Tokens, valid_name};
 
 /// The line forms allowed inside a graph body, shared by the message and the fallback arm.
-pub(super) const GRAPH_FORM: &str = "expected `node`, `edge`, or `choose` line";
+pub(super) const GRAPH_FORM: &str = "expected `default`, `node`, `edge`, or `choose` line";
 /// The arms allowed inside a choose block.
 pub(super) const CHOOSE_ARM: &str = "expected `when` or a final `else` arm";
 const STRINGS_FULL: &str = "string capacity exhausted; raise the graph's `strings` hint";
@@ -24,6 +24,8 @@ pub(super) struct Builder<'s> {
     pub(super) graph: CompiledGraph,
     bindings: Vec<NameBindings>,
     flags: &'s HashSet<&'s str>,
+    /// Annotations from `default` lines, added to every node that does not set the same key.
+    defaults: Vec<Annotation>,
 }
 
 /// Independent namespaces indexed by the interner's dense string IDs.
@@ -49,6 +51,7 @@ impl<'s> Builder<'s> {
             graph,
             bindings,
             flags,
+            defaults: Vec::new(),
         })
     }
 
@@ -76,7 +79,8 @@ impl<'s> Builder<'s> {
         }
         *binding = NonZeroU32::new(id + 1);
         let (looping, end, flags) = self.node_flags(tokens)?;
-        let annotations = narrow(self.annotations(tokens)?);
+        let own = self.annotations(tokens)?;
+        let annotations = narrow(self.with_defaults(own, offset)?);
         push(
             &mut self.graph.nodes,
             Node {
@@ -91,6 +95,51 @@ impl<'s> Builder<'s> {
             },
             offset,
         )?;
+        Ok(())
+    }
+
+    /// Appends each default whose key the node's own annotations in `own` do not set. Returns the
+    /// node's whole span, which stays contiguous because nothing was pushed since `own`.
+    fn with_defaults(
+        &mut self,
+        own: Range<usize>,
+        offset: usize,
+    ) -> Result<Range<usize>, ParseError> {
+        for index in 0..self.defaults.len() {
+            let default = self.defaults[index];
+            let set = self.graph.annotations[own.clone()]
+                .iter()
+                .any(|annotation| annotation.key == default.key);
+            if !set {
+                push(&mut self.graph.annotations, default, offset)?;
+            }
+        }
+        Ok(own.start..self.graph.annotations.len())
+    }
+
+    /// Finishes the `graph` line, which may carry the graph's own annotations, and opens the body.
+    pub(super) fn opened<'a>(mut self, tokens: &mut Tokens<'a>) -> Result<Self, ParseError> {
+        // `annotations` reads through the end of the line, so it also takes the newline.
+        self.graph.graph_annotations = narrow(self.annotations(tokens)?);
+        tokens.expect(TokenKind::Indent)?;
+        Ok(self)
+    }
+
+    /// Reads `default @key:value ...`, after the `default` keyword. Each node declared later
+    /// gets these annotations unless it sets the same key itself.
+    pub(super) fn default<'a>(&mut self, tokens: &mut Tokens<'a>) -> Result<(), ParseError> {
+        let offset = tokens.offset();
+        let range = self.annotations(tokens)?;
+        if range.is_empty() {
+            return Err(ParseError::new(
+                "expected an annotation after `default`",
+                offset,
+            ));
+        }
+        self.defaults
+            .extend_from_slice(&self.graph.annotations[range.clone()]);
+        // The node lines copy these in, so the line's own entries would only be unused.
+        self.graph.annotations.truncate(range.start);
         Ok(())
     }
 
