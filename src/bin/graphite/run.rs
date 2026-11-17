@@ -75,7 +75,11 @@ pub fn run(input: &Path, state: Option<&Path>, options: &Options<'_>) -> Result<
                 fan_out_args(frontend, fan, item_graphs, &directory, &mut args)?;
             }
             push_flag(&mut args, "--runner", options.runner.map(Path::as_os_str));
-            push_flag(&mut args, "--input", options.input_data.map(Path::as_os_str));
+            push_flag(
+                &mut args,
+                "--input",
+                options.input_data.map(Path::as_os_str),
+            );
             if let Some(table) = &task_table {
                 let file = directory.join("tasks.json");
                 std::fs::write(&file, table)

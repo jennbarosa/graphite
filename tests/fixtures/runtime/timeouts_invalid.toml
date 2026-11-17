@@ -1,4 +1,0 @@
-node_flags = ["retry"]
-
-[annotations]
-task = ["write"]

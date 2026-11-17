@@ -124,10 +124,9 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
 /// The commands that take no file, each with its own argument rules. `None` for every other verb.
 fn parse_standalone(verb: &str, args: &[String]) -> Option<Result<Command, String>> {
     let command = match verb {
-        "--version" | "-V" if args.len() > 1 => Err(format!(
-            "{verb} takes no arguments, got \"{}\"",
-            args[1]
-        )),
+        "--version" | "-V" if args.len() > 1 => {
+            Err(format!("{verb} takes no arguments, got \"{}\"", args[1]))
+        }
         "--version" | "-V" => Ok(Command::Version),
         "help" | "--help" | "-h" => help_command(args),
         "completions" => completions_command(args),
@@ -202,9 +201,7 @@ fn parse_options(args: &[String]) -> Result<(Options, Vec<String>), String> {
             "--runner" => options.runner = Some(PathBuf::from(value(&mut words, "--runner")?)),
             "--durable" => options.durable = true,
             "--json" => options.json = true,
-            "--input" => {
-                options.input_data = Some(PathBuf::from(value(&mut words, "--input")?))
-            }
+            "--input" => options.input_data = Some(PathBuf::from(value(&mut words, "--input")?)),
             "--tasks" => options.tasks = Some(PathBuf::from(value(&mut words, "--tasks")?)),
             "--each" => options.each = Some(PathBuf::from(value(&mut words, "--each")?)),
             "--key" => options.key = Some(value(&mut words, "--key")?),

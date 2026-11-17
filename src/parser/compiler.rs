@@ -143,10 +143,7 @@ impl<'s> Builder<'s> {
         Ok(())
     }
 
-    pub(super) fn node_reference(
-        &mut self,
-        tokens: &mut Tokens<'_>,
-    ) -> Result<u32, ParseError> {
+    pub(super) fn node_reference(&mut self, tokens: &mut Tokens<'_>) -> Result<u32, ParseError> {
         let (name, offset) = tokens.word_or("expected a node name after `->` or `edge`")?;
         if let Some(id) = self
             .graph

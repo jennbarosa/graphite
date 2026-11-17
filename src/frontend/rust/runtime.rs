@@ -80,6 +80,28 @@ impl Graph {
     }
 }
 
+impl Node {
+    /// The time limit per attempt that the node's `@timeout:MS` annotation sets, or `None` without
+    /// one. A value must be a whole number of milliseconds with no leading zero, at most 2147483647,
+    /// the same rule the TypeScript durable engine applies. This only reads the limit; the host
+    /// enforces it on its own tasks.
+    pub fn timeout(&self) -> Result<Option<u32>, String> {
+        let Some(entry) = self.annotations.iter().find(|entry| entry.key == "timeout") else {
+            return Ok(None);
+        };
+        let value = entry.value.unwrap_or("");
+        // `parse` alone would accept a leading `+`.
+        let whole = value.bytes().all(|byte| byte.is_ascii_digit()) && !value.starts_with('0');
+        match value.parse::<u32>() {
+            Ok(ms) if whole && ms <= 2_147_483_647 => Ok(Some(ms)),
+            _ => Err(format!(
+                "node \"{}\" has timeout:{value}; a timeout is a whole number of milliseconds, such as @timeout:30000",
+                self.name
+            )),
+        }
+    }
+}
+
 /// Why a run stopped with an error. The names match the TypeScript runtime's codes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ErrorCode {
@@ -541,10 +563,7 @@ impl Session {
 }
 
 fn join_ids(ids: &[u32]) -> String {
-    ids.iter()
-        .map(u32::to_string)
-        .collect::<Vec<_>>()
-        .join(" ")
+    ids.iter().map(u32::to_string).collect::<Vec<_>>().join(" ")
 }
 
 fn annotation_text(annotations: &[Annotation]) -> String {

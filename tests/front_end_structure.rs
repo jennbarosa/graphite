@@ -49,8 +49,7 @@ fn allowlist(file: &Path) -> Option<PathBuf> {
         "workflow" | "workflow_variant" => Some(fixtures.join("workflow.toml")),
         "gads_chain" | "gads_expanded" => Some(fixtures.join("gads_allow.toml")),
         "stage_order" => Some(fixtures.join("stage_order.toml")),
-        "timeouts" => Some(fixtures.join("timeouts.toml")),
-        "timeouts_invalid" => Some(fixtures.join("timeouts_invalid.toml")),
+        "timeouts" | "timeouts_invalid" => Some(fixtures.join("timeouts.toml")),
         _ => None,
     }
 }
@@ -65,7 +64,11 @@ fn compile(file: &Path, front_end: Option<&str>, dir: &Path) {
     if let Some(front_end) = front_end {
         args.extend(["--frontend".into(), front_end.into()]);
     }
-    args.extend([file.display().to_string(), "--out".into(), dir.display().to_string()]);
+    args.extend([
+        file.display().to_string(),
+        "--out".into(),
+        dir.display().to_string(),
+    ]);
     let output = graphite(args);
     assert!(
         output.status.success(),
@@ -244,7 +247,10 @@ fn run_typescript(dir: &Path, stems: &BTreeSet<String>) -> String {
 /// Compiles the Rust dumper against the emitted modules in `dir`, runs it, and returns its output.
 fn run_rust(dir: &Path, stems: &BTreeSet<String>) -> String {
     fs::write(dir.join(RS_DUMPER), rust_dumper(stems)).expect("write Rust dumper");
-    let program = dir.join(format!("{RS_DUMPER_PROGRAM}{}", std::env::consts::EXE_SUFFIX));
+    let program = dir.join(format!(
+        "{RS_DUMPER_PROGRAM}{}",
+        std::env::consts::EXE_SUFFIX
+    ));
     let build = Command::new("rustc")
         .args(["--edition", "2021", "-A", "warnings"])
         .arg(dir.join(RS_DUMPER))
@@ -259,7 +265,11 @@ fn run_rust(dir: &Path, stems: &BTreeSet<String>) -> String {
         stderr(&build)
     );
     let output = Command::new(&program).output().expect("dumper must run");
-    assert!(output.status.success(), "the Rust dumper failed:\n{}", stderr(&output));
+    assert!(
+        output.status.success(),
+        "the Rust dumper failed:\n{}",
+        stderr(&output)
+    );
     stdout(&output)
 }
 
@@ -284,7 +294,11 @@ fn first_difference(left: &str, right: &str) -> String {
 #[test]
 fn every_front_end_describes_each_graph_the_same() {
     let files = graph_files();
-    assert!(files.len() >= 5, "expected the bundled graph files, found {}", files.len());
+    assert!(
+        files.len() >= 5,
+        "expected the bundled graph files, found {}",
+        files.len()
+    );
     let mut checked = 0;
     for file in &files {
         let name = file.file_stem().unwrap().to_string_lossy().into_owned();
@@ -301,7 +315,11 @@ fn every_front_end_describes_each_graph_the_same() {
             "{} produces different graphs in each front end",
             file.display()
         );
-        assert!(!ts_stems.is_empty(), "{} produced no graphs", file.display());
+        assert!(
+            !ts_stems.is_empty(),
+            "{} produced no graphs",
+            file.display()
+        );
 
         let typescript = run_typescript(&ts_dir, &ts_stems);
         let rust = run_rust(&rs_dir, &rs_stems);
@@ -313,5 +331,8 @@ fn every_front_end_describes_each_graph_the_same() {
         );
         checked += ts_stems.len();
     }
-    assert!(checked >= 10, "expected at least 10 graphs to be checked, got {checked}");
+    assert!(
+        checked >= 10,
+        "expected at least 10 graphs to be checked, got {checked}"
+    );
 }

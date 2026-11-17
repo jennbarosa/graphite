@@ -78,7 +78,7 @@ fn the_timeout_annotation_sets_a_node_limit_and_an_invalid_one_is_refused() {
             "--out".as_ref(),
             dir.as_os_str(),
             "--allow".as_ref(),
-            fixtures.join(format!("{name}.toml")).as_os_str(),
+            fixtures.join("timeouts.toml").as_os_str(),
         ]);
         assert!(output.status.success(), "{}", stderr(&output));
         outputs.push(dir);
@@ -88,7 +88,10 @@ fn the_timeout_annotation_sets_a_node_limit_and_an_invalid_one_is_refused() {
         "tests/typescript/durable_timeout.test.ts",
         &[
             ("GRAPHITE_TIMEOUTS", outputs[0].join("timeouts.ts")),
-            ("GRAPHITE_TIMEOUTS_INVALID", outputs[1].join("timeouts_invalid.ts")),
+            (
+                "GRAPHITE_TIMEOUTS_INVALID",
+                outputs[1].join("timeouts_invalid.ts"),
+            ),
             ("GRAPHITE_STATE_DIR", out.clone()),
         ],
     );

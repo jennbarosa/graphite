@@ -58,9 +58,13 @@ let (id, node) = door::GRAPH.node("closed").unwrap();
 The runtime has the data types, `Graph::node` and `Graph::get`, and a `Run` that steps the graph
 with the same rules as the TypeScript runtime. `graphite debug` builds a Rust debugger for the
 graph with `rustc`, so `debug` works with `--frontend rust`. The durable engine (`run`,
-`--simulate`) is still TypeScript-only. `graphite::stage::timeout_of(graph, node)` reads a node's `@timeout:MS`
-annotation with the same rule as the TypeScript engine, and returns `Err` for a value it refuses. It does not
-enforce the limit; a Rust host applies it to its own tasks.
+`--simulate`) is still TypeScript-only. `Node::timeout` reads a node's `@timeout:MS` annotation
+with the same rule as the TypeScript engine, and returns `Err` for a value it refuses. It does not
+enforce the limit; a Rust host applies it to its own tasks:
+
+```rust
+let limit = door::GRAPH.get(door::nodes::CLOSED).timeout()?; // Option<u32>, in milliseconds
+```
 
 ## Adding a front end
 
