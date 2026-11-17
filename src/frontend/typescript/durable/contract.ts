@@ -13,6 +13,8 @@ export const MAX_DETAIL_DATA_BYTES = 4_096;
 export const TASK_ANNOTATION = 'task';
 /** The node flag that allows a task to be retried. */
 export const RETRY_FLAG = 'retry';
+/** The node annotation whose value is a stage's timeout per attempt, in whole milliseconds. */
+export const TIMEOUT_ANNOTATION = 'timeout';
 
 export const OUTCOMES = ['pass', 'fail', 'none'] as const;
 export type Outcome = (typeof OUTCOMES)[number];

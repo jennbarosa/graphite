@@ -7,7 +7,14 @@ change the interface.
 
 ## [Unreleased]
 
+### Added
+
+- A `@timeout:MS` node annotation sets a per-attempt time limit, in milliseconds, for that node's task.
+
 ### Changed
+
+- Durable tasks no longer have a 60-second default limit. Without a `timeout` annotation or a
+  `taskTimeoutMs` option, a task runs until it finishes.
 
 - Graph files now end in `.graphite` instead of `.dsl`. The examples, fixtures and bundled graph
   descriptions use the new extension. The language itself is unchanged.

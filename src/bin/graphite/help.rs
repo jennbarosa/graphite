@@ -95,7 +95,8 @@ It never overwrites: remove the directory, or pass another --out, to compile aga
 
 Runs the file's first graph as a durable workflow. Each node with a @task:NAME annotation runs
 that task through --runner, or through the command --tasks names for it, and state is checkpointed
-after every result, so running the same command again resumes where it stopped.
+after every result, so running the same command again resumes where it stopped. A node may carry
+@timeout:MS, a limit in milliseconds on each attempt of its task; without it a task has no limit.
 --input <data.json> is a JSON value every task receives as context.input. A resume must give the
 same input.
 With --tasks, the manifest's [tasks] keys are the allowed task names, so --allow needs only node_flags.

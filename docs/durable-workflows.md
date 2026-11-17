@@ -112,7 +112,7 @@ same shape a runner returns:
 - A nonzero exit status is a thrown attempt, so a node flagged `retry` tries again.
 - Output that is not JSON is a thrown attempt.
 - Stderr goes to the terminal, next to the run log.
-- A command that outlives `taskTimeoutMs` is stopped.
+- A command that outlives its task's timeout (the `timeout` annotation, or `taskTimeoutMs`) is stopped.
 
 Every task in the graph needs a command. A graph whose task has no command is refused before
 anything is recorded, and the error names the task. The commands run with your permissions, like
@@ -214,8 +214,10 @@ The run log prints the detail after the outcome, for example
   it instead (see [error routing](#error-routing)).
 - **At least once.** A task that was running when the process died runs again on resume, with the
   same `key`. Tasks with external effects must dedupe on `key`.
-- **Timeouts.** A task that exceeds `taskTimeoutMs` (default 60 s) counts as a failed attempt. The
-  engine cannot stop a runner that ignores its `AbortSignal`.
+- **Timeouts.** Off by default. A node can set its own limit per attempt with a `timeout` annotation
+  in whole milliseconds, such as `node check @task:lint @timeout:30000`. A task that exceeds its
+  limit counts as a failed attempt. `taskTimeoutMs` sets the limit for every task without a
+  `timeout` annotation. The engine cannot stop a runner that ignores its `AbortSignal`.
 
 ## When a run stalls
 
