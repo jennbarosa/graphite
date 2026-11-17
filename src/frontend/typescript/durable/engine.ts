@@ -213,7 +213,9 @@ export async function retryFailedTask(
 ): Promise<void> {
 	const sequence = sequenceOf(key);
 	await store.withLock(() => {
-		if (store.loadRecords(sequence).get(key)?.outcome !== 'error') {
+		// From 0: loading from the key's own stage would drop the records of earlier stages, which
+		// a mistyped key must not do.
+		if (store.loadRecords(0).get(key)?.outcome !== 'error') {
 			throw new Error(`task "${key}" has no stored error`);
 		}
 		store.recordResult(key, sequence, undefined);

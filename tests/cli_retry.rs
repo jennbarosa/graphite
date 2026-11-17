@@ -85,6 +85,30 @@ fn a_stored_task_error_is_cleared_by_retry_and_the_run_then_ends() {
 }
 
 #[test]
+fn a_refused_retry_key_leaves_the_stored_error_in_place() {
+    let dir = workdir("cli-retry-refused");
+    let first = run(&dir, &[]);
+    assert!(!first.status.success(), "{}", stderr(&first));
+
+    // A key numbered after the failed stage is refused, and the failed task's error must survive it.
+    std::fs::write(dir.join("ok"), "").unwrap();
+    let wrong = run(&dir, &["--retry", "5:save"]);
+    assert!(!wrong.status.success());
+    assert!(
+        stderr(&wrong).contains("has no stored error"),
+        "{}",
+        stderr(&wrong)
+    );
+
+    let again = run(&dir, &[]);
+    assert!(
+        stdout(&again).contains("failed in an earlier run"),
+        "{}",
+        stdout(&again)
+    );
+}
+
+#[test]
 fn retry_does_not_apply_to_each() {
     let dir = workdir("cli-retry-each");
     let output = graphite([

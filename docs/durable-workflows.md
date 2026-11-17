@@ -170,8 +170,8 @@ things keep the engine from doing the same work twice:
 
 - **Dedupe.** `--key` names the item field that identifies it. The key of each item started is written
   to the seen file, which defaults to `<state>.seen.json`. The file holds one key per line, appended and
-  fsynced as each item starts, so an old JSON-array seen file must be deleted before it is reused. Keys must be letters, digits, dots, dashes or underscores, since each one is
-  also a file name. A line cut short by a crash is dropped, and the file is cut back to its last complete
+  fsynced as each item starts, so an old JSON-array seen file must be deleted before it is reused. Keys
+  must be letters, digits, dots, dashes or underscores, since each one is also a file name. A line cut short by a crash is dropped, and the file is cut back to its last complete
   line before the next key is appended, so a torn line never joins the next key. A key already there is
   not started again: its item is resumed from its own state file. A finished item returns its stored
   result without running a task again, and an item a crash interrupted runs on from where it stopped.
@@ -179,8 +179,10 @@ things keep the engine from doing the same work twice:
   ends on a passing stage when its end node's own task returns `pass`.
 
 An item that stops or errors does not count as passed. Its key stays in the seen file, and a later run
-does not run its tasks again: a stopped item stays stopped, and a stored error stays an error until
-`--retry` clears it (see below). Pass the same `--seen` file on each run to keep the list across days.
+does not run its tasks again: a stopped item stays stopped, and a stored error stays an error. `--retry`
+does not apply to `--each`, so change that item's state by hand to run its failed task again (see
+[retrying a failed task](#retrying-a-failed-task)). Pass the same `--seen` file on each run to keep the
+list across days.
 
 ## Failure details
 
