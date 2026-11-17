@@ -65,6 +65,35 @@ fn a_passed_gate_on_a_middle_stage_does_not_skip_its_task() {
     );
 }
 
+#[test]
+fn the_timeout_annotation_sets_a_node_limit_and_an_invalid_one_is_refused() {
+    let fixtures = cli::manifest().join("tests/fixtures/runtime");
+    let out = scratch("durable-timeout");
+    let mut outputs = Vec::new();
+    for name in ["timeouts", "timeouts_invalid"] {
+        let dir = out.join(name);
+        let output = graphite([
+            "compile".as_ref(),
+            fixtures.join(format!("{name}.graphite")).as_os_str(),
+            "--out".as_ref(),
+            dir.as_os_str(),
+            "--allow".as_ref(),
+            fixtures.join(format!("{name}.toml")).as_os_str(),
+        ]);
+        assert!(output.status.success(), "{}", stderr(&output));
+        outputs.push(dir);
+    }
+    bun::assert_bun_test_passes_with(
+        cli::manifest(),
+        "tests/typescript/durable_timeout.test.ts",
+        &[
+            ("GRAPHITE_TIMEOUTS", outputs[0].join("timeouts.ts")),
+            ("GRAPHITE_TIMEOUTS_INVALID", outputs[1].join("timeouts_invalid.ts")),
+            ("GRAPHITE_STATE_DIR", out.clone()),
+        ],
+    );
+}
+
 /// The command-backed task runner: the request on stdin, the report on stdout, and each failure mode.
 #[test]
 fn command_tasks_send_the_request_and_read_the_report() {

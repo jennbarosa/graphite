@@ -49,6 +49,8 @@ fn allowlist(file: &Path) -> Option<PathBuf> {
         "workflow" | "workflow_variant" => Some(fixtures.join("workflow.toml")),
         "gads_chain" | "gads_expanded" => Some(fixtures.join("gads_allow.toml")),
         "stage_order" => Some(fixtures.join("stage_order.toml")),
+        "timeouts" => Some(fixtures.join("timeouts.toml")),
+        "timeouts_invalid" => Some(fixtures.join("timeouts_invalid.toml")),
         _ => None,
     }
 }

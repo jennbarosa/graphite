@@ -1,0 +1,15 @@
+graph timeouts
+  node work  @task:write @timeout:5000
+  node plain @task:write
+  node flaky retry @task:write @timeout:20
+  node hang  @task:write @timeout:20
+  node done  end @task:write
+
+  edge work  -> plain when passed
+  edge work  -> done  when failed
+  edge plain -> flaky when passed
+  edge plain -> done  when failed
+  edge flaky -> hang  when passed
+  edge flaky -> done  when failed
+  edge hang  -> done  when passed
+  edge hang  -> done  when failed

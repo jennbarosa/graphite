@@ -1,0 +1,5 @@
+graph timeouts_invalid
+  node slow @task:write @timeout:soon
+  node done end @task:write
+
+  edge slow -> done

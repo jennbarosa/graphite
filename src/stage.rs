@@ -9,6 +9,9 @@ use crate::graph::{CompiledGraph, index};
 /// The node annotation whose value names a stage's task.
 pub const TASK_ANNOTATION: &str = "task";
 
+/// The node annotation whose value is a stage's time limit per attempt, in whole milliseconds.
+pub const TIMEOUT_ANNOTATION: &str = "timeout";
+
 /// Runs `graph` from its entry node. `lookup` turns each task name in the graph into the caller's
 /// task type, so a graph naming a task the caller does not know is an error. `task` gets each task
 /// node's task and returns the conditions that hold after it; every other condition is false for
@@ -112,4 +115,27 @@ pub(crate) fn task_of(graph: &CompiledGraph, node: usize) -> Option<&str> {
         .find(|entry| graph.text(entry.key) == TASK_ANNOTATION)
         .and_then(|entry| entry.value)
         .map(|value| graph.text(value))
+}
+
+/// The time limit node `node`'s `timeout` annotation sets, in milliseconds, or `None` when it has no
+/// such annotation. A value must be a whole number of milliseconds with no leading zero, at most
+/// 2147483647, the same rule the TypeScript durable engine applies.
+pub fn timeout_of(graph: &CompiledGraph, node: usize) -> Result<Option<u32>, String> {
+    let Some(entry) = graph.annotations[index(&graph.nodes[node].annotations)]
+        .iter()
+        .find(|entry| graph.text(entry.key) == TIMEOUT_ANNOTATION)
+    else {
+        return Ok(None);
+    };
+    let value = entry.value.map_or("", |value| graph.text(value));
+    let whole = !value.is_empty()
+        && value.bytes().all(|byte| byte.is_ascii_digit())
+        && !value.starts_with('0');
+    match value.parse::<u32>() {
+        Ok(ms) if whole && ms <= 2_147_483_647 => Ok(Some(ms)),
+        _ => Err(format!(
+            "node \"{}\" has {TIMEOUT_ANNOTATION}:{value}; a timeout is a whole number of milliseconds, such as @{TIMEOUT_ANNOTATION}:30000",
+            graph.text(graph.nodes[node].name)
+        )),
+    }
 }

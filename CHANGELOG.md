@@ -10,6 +10,8 @@ change the interface.
 ### Added
 
 - A `@timeout:MS` node annotation sets a per-attempt time limit, in milliseconds, for that node's task.
+- `stage::timeout_of` in Rust reads a node's `@timeout:MS` annotation with the TypeScript engine's rule for
+  valid values. The Rust front end has no durable runner, so it does not enforce the limit.
 
 ### Changed
 
