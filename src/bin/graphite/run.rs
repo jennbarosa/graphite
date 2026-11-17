@@ -8,6 +8,7 @@ use std::path::Path;
 use graphite::frontend::Module;
 use graphite::frontend::registry;
 use graphite::pipeline::write_modules;
+use graphite::stage::TASK_ANNOTATION;
 
 use crate::allow::Allowlist;
 use crate::{js, load, runtime_assets, scratch, tasks};
@@ -37,36 +38,14 @@ pub struct FanOut<'a> {
 }
 
 pub fn run(input: &Path, state: Option<&Path>, options: &Options<'_>) -> Result<(), String> {
-    if let Some(path) = options.runner {
-        warn_as_code(
-            &format!("--runner runs {} as code", path.display()),
-            "runners",
-        );
-    }
-    if let Some(path) = options.tasks {
-        warn_as_code(
-            &format!("--tasks runs the commands in {}", path.display()),
-            "commands",
-        );
-    }
+    warn_about_code(options);
     // Read before anything is locked or written, so a bad manifest changes nothing.
     let manifest = options.tasks.map(tasks::Manifest::load).transpose()?;
     let task_table = manifest
         .as_ref()
         .map(tasks::Manifest::table_json)
         .transpose()?;
-    // With a manifest, its task names are the only ones a graph may use, so the allowlist need not
-    // list tasks itself. Without one, the allowlist's own task list applies.
-    let allowlist = match (options.allow, &manifest) {
-        (allow, Some(manifest)) => {
-            let base = allow.map(Allowlist::load).transpose()?;
-            Some(
-                base.unwrap_or_else(Allowlist::unrestricted)
-                    .restrict("task", manifest.names()),
-            )
-        }
-        (allow, None) => allow.map(Allowlist::load).transpose()?,
-    };
+    let allowlist = resolve_allowlist(options.allow, manifest.as_ref())?;
     let (_, graphs) = load::graphs_with(input, allowlist.as_ref())?;
     let entry = load::select(&graphs, None)?;
     let item_graphs = options
@@ -93,41 +72,39 @@ pub fn run(input: &Path, state: Option<&Path>, options: &Options<'_>) -> Result<
     let result = write_run_modules(frontend, &graphs, entry, &directory, &mut args, &state)
         .and_then(|()| {
             if let (Some(fan), Some(item_graphs)) = (&options.fan_out, &item_graphs) {
-                let item_dir = directory.join("item");
-                write_modules(frontend, item_graphs, &item_dir)
-                    .map_err(|error| error.to_string())?;
-                let item_entry = load::select(item_graphs, None)?;
-                let item_module = item_dir.join(frontend.file_name(item_entry, Module::Index));
-                push_flag(&mut args, "--each", Some(item_module.as_os_str()));
-                push_flag(&mut args, "--key", Some(fan.key.as_ref()));
-                push_flag(&mut args, "--seen", fan.seen.map(Path::as_os_str));
-                let until = fan
-                    .until_passed
-                    .map(|count| OsString::from(count.to_string()));
-                push_flag(&mut args, "--until-passed", until.as_deref());
+                fan_out_args(frontend, fan, item_graphs, &directory, &mut args)?;
             }
             push_flag(&mut args, "--runner", options.runner.map(Path::as_os_str));
-            push_flag(
-                &mut args,
-                "--input",
-                options.input_data.map(Path::as_os_str),
-            );
+            push_flag(&mut args, "--input", options.input_data.map(Path::as_os_str));
             if let Some(table) = &task_table {
                 let file = directory.join("tasks.json");
                 std::fs::write(&file, table)
                     .map_err(|error| format!("{}: {error}", file.display()))?;
                 push_flag(&mut args, "--tasks", Some(file.as_os_str()));
             }
-            let status = js::launch(&engine, &args)?;
-            if status.success() {
-                Ok(())
-            } else {
-                Err(format!("durable run did not end ({status})"))
-            }
+            launch_engine(&engine, &args)
         });
     runtime_assets::discard(&bundle);
     let _ = std::fs::remove_dir_all(&directory);
     result
+}
+
+/// The allowlist for the run. With a manifest, its task names are the only ones a graph may use, so
+/// the allowlist need not list tasks itself. Without one, the allowlist's own task list applies.
+fn resolve_allowlist(
+    allow: Option<&Path>,
+    manifest: Option<&tasks::Manifest>,
+) -> Result<Option<Allowlist>, String> {
+    match manifest {
+        Some(manifest) => {
+            let base = allow.map(Allowlist::load).transpose()?;
+            Ok(Some(
+                base.unwrap_or_else(Allowlist::unrestricted)
+                    .restrict(TASK_ANNOTATION, manifest.names()),
+            ))
+        }
+        None => allow.map(Allowlist::load).transpose(),
+    }
 }
 
 /// Writes the graph's modules, and starts the engine's argument list with the module and state path.
@@ -146,11 +123,59 @@ fn write_run_modules(
     Ok(())
 }
 
+/// Writes the item graph's modules, and adds the flags that run the fan-out.
+fn fan_out_args(
+    frontend: &dyn graphite::frontend::Frontend,
+    fan: &FanOut<'_>,
+    item_graphs: &[graphite::graph::CompiledGraph],
+    directory: &Path,
+    args: &mut Vec<OsString>,
+) -> Result<(), String> {
+    let item_dir = directory.join("item");
+    write_modules(frontend, item_graphs, &item_dir).map_err(|error| error.to_string())?;
+    let item_entry = load::select(item_graphs, None)?;
+    let item_module = item_dir.join(frontend.file_name(item_entry, Module::Index));
+    push_flag(args, "--each", Some(item_module.as_os_str()));
+    push_flag(args, "--key", Some(fan.key.as_ref()));
+    push_flag(args, "--seen", fan.seen.map(Path::as_os_str));
+    let until = fan
+        .until_passed
+        .map(|count| OsString::from(count.to_string()));
+    push_flag(args, "--until-passed", until.as_deref());
+    Ok(())
+}
+
+/// Runs the durable engine with `args`. Fails unless the run ended.
+fn launch_engine(engine: &Path, args: &[OsString]) -> Result<(), String> {
+    let status = js::launch(engine, args)?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("durable run did not end ({status})"))
+    }
+}
+
 /// Appends `flag value` to the engine's arguments, when there is a value.
 fn push_flag(args: &mut Vec<OsString>, flag: &str, value: Option<&std::ffi::OsStr>) {
     if let Some(value) = value {
         args.push(flag.into());
         args.push(value.to_owned());
+    }
+}
+
+/// Warns before a flag that runs code. The code runs with the user's permissions, so say so.
+fn warn_about_code(options: &Options<'_>) {
+    if let Some(path) = options.runner {
+        warn_as_code(
+            &format!("--runner runs {} as code", path.display()),
+            "runners",
+        );
+    }
+    if let Some(path) = options.tasks {
+        warn_as_code(
+            &format!("--tasks runs the commands in {}", path.display()),
+            "commands",
+        );
     }
 }
 

@@ -5,16 +5,9 @@
 // - `untilPassed` stops starting items once that many have ended on a passing stage.
 // The list graph must end with an array as its output. Each item is a JSON object with a string
 // field named by `key`, which is also the item's name on disk, so it must be a plain identifier.
-import {
-	closeSync,
-	existsSync,
-	ftruncateSync,
-	fsyncSync,
-	openSync,
-	readFileSync,
-} from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { type DurableOptions, type Result, runDurable } from './engine';
-import { appendLine } from './store';
+import { appendLine, cutFile } from './store';
 
 export interface FanOutOptions {
 	/** The list graph's run. Its end output is the array of items. */
@@ -90,15 +83,7 @@ function readSeen(file: string): Set<string> {
 	if (!existsSync(file)) return new Set();
 	const bytes = readFileSync(file);
 	const completeEnd = bytes.lastIndexOf(0x0a) + 1;
-	if (completeEnd < bytes.length) {
-		const fd = openSync(file, 'r+');
-		try {
-			ftruncateSync(fd, completeEnd);
-			fsyncSync(fd);
-		} finally {
-			closeSync(fd);
-		}
-	}
+	if (completeEnd < bytes.length) cutFile(file, completeEnd);
 	const lines = bytes.subarray(0, completeEnd).toString('utf8').split('\n');
 	// The last piece is what follows the final newline, which is always empty now.
 	lines.pop();

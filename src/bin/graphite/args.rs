@@ -101,57 +101,8 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
     let Some(verb) = args.first().cloned() else {
         return Err(help::OVERVIEW.to_string());
     };
-    match verb.as_str() {
-        "--version" | "-V" => {
-            if args.len() > 1 {
-                return Err(format!("{verb} takes no arguments, got \"{}\"", args[1]));
-            }
-            return Ok(Command::Version);
-        }
-        "help" | "--help" | "-h" => {
-            if args.len() > 2 {
-                return Err("help takes at most one command name".into());
-            }
-            let topic = args.get(1).cloned();
-            if let Some(name) = &topic
-                && help::for_command(name).is_none()
-            {
-                return Err(format!("no help for \"{name}\"\n\n{}", help::OVERVIEW));
-            }
-            return Ok(Command::Help { topic });
-        }
-        "completions" => {
-            return match args.get(1).map(String::as_str) {
-                Some("--help" | "-h") => Ok(Command::Help { topic: Some(verb) }),
-                Some(shell @ ("bash" | "zsh" | "fish")) if args.len() == 2 => {
-                    Ok(Command::Completions {
-                        shell: shell.to_string(),
-                    })
-                }
-                Some(other) if args.len() == 2 => Err(format!(
-                    "unknown shell \"{other}\"; expected bash, zsh or fish"
-                )),
-                _ => Err("completions needs a shell: bash, zsh or fish".into()),
-            };
-        }
-        "man" => {
-            return match args.get(1).map(String::as_str) {
-                None => Ok(Command::Man),
-                Some("--help" | "-h") => Ok(Command::Help { topic: Some(verb) }),
-                Some(_) => Err(format!("man takes no arguments, got \"{}\"", args[1])),
-            };
-        }
-        "doctor" => {
-            return match args.get(1).map(String::as_str) {
-                None => Ok(Command::Doctor { json: false }),
-                Some("--json") if args.len() == 2 => Ok(Command::Doctor { json: true }),
-                Some(_) => Err(format!(
-                    "doctor takes no arguments except --json, got \"{}\"",
-                    args[1..].join(" ")
-                )),
-            };
-        }
-        _ => {}
+    if let Some(command) = parse_standalone(&verb, &args) {
+        return command;
     }
     if args[1..].iter().any(|arg| arg == "--help" || arg == "-h") {
         return Ok(Command::Help { topic: Some(verb) });
@@ -159,38 +110,7 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
     if help::for_command(&verb).is_none() {
         return Err(format!("unknown command \"{verb}\"\n\n{}", help::OVERVIEW));
     }
-    let mut options = Options::default();
-    let mut positionals = Vec::new();
-    let mut rest_args = args[1..].iter().cloned();
-    while let Some(arg) = rest_args.next() {
-        match arg.as_str() {
-            "--out" => options.out = Some(PathBuf::from(value(&mut rest_args, "--out")?)),
-            "--frontend" => options.front_end = Some(value(&mut rest_args, "--frontend")?),
-            "--graph" => options.graph = Some(value(&mut rest_args, "--graph")?),
-            "--allow" => options.allow = Some(PathBuf::from(value(&mut rest_args, "--allow")?)),
-            "--state" => options.state = Some(PathBuf::from(value(&mut rest_args, "--state")?)),
-            "--runner" => options.runner = Some(PathBuf::from(value(&mut rest_args, "--runner")?)),
-            "--durable" => options.durable = true,
-            "--json" => options.json = true,
-            "--input" => {
-                options.input_data = Some(PathBuf::from(value(&mut rest_args, "--input")?))
-            }
-            "--tasks" => options.tasks = Some(PathBuf::from(value(&mut rest_args, "--tasks")?)),
-            "--each" => options.each = Some(PathBuf::from(value(&mut rest_args, "--each")?)),
-            "--key" => options.key = Some(value(&mut rest_args, "--key")?),
-            "--seen" => options.seen = Some(PathBuf::from(value(&mut rest_args, "--seen")?)),
-            "--until-passed" => {
-                let text = value(&mut rest_args, "--until-passed")?;
-                let count = text
-                    .parse::<u32>()
-                    .map_err(|_| format!("--until-passed needs a whole number, got {text}"))?;
-                options.until_passed = Some(count);
-            }
-            "--simulate" => options.simulate.push(value(&mut rest_args, "--simulate")?),
-            flag if flag.starts_with("--") => return Err(format!("unknown option {flag}")),
-            _ => positionals.push(arg),
-        }
-    }
+    let (options, positionals) = parse_options(&args[1..])?;
     let mut positionals = positionals.into_iter();
     let input = PathBuf::from(
         positionals
@@ -198,119 +118,226 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
             .ok_or_else(|| format!("{verb} needs a file\n\n{}", help::OVERVIEW))?,
     );
     let rest: Vec<String> = positionals.collect();
-    let Options {
-        out,
-        front_end,
-        graph,
-        allow,
-        durable,
-        state,
-        runner,
-        json,
-        input_data,
-        tasks,
-        each,
-        key,
-        seen,
-        until_passed,
-        simulate,
-    } = options;
-    let front_end_given = front_end.is_some();
-    if verb != "debug" {
-        refuse(!simulate.is_empty(), "--simulate", &verb)?;
+    command(&verb, input, &rest, options)
+}
+
+/// The commands that take no file, each with its own argument rules. `None` for every other verb.
+fn parse_standalone(verb: &str, args: &[String]) -> Option<Result<Command, String>> {
+    let command = match verb {
+        "--version" | "-V" if args.len() > 1 => Err(format!(
+            "{verb} takes no arguments, got \"{}\"",
+            args[1]
+        )),
+        "--version" | "-V" => Ok(Command::Version),
+        "help" | "--help" | "-h" => help_command(args),
+        "completions" => completions_command(args),
+        "man" => man_command(args),
+        "doctor" => doctor_command(args),
+        _ => return None,
+    };
+    Some(command)
+}
+
+fn help_command(args: &[String]) -> Result<Command, String> {
+    if args.len() > 2 {
+        return Err("help takes at most one command name".into());
     }
-    if verb != "run" {
-        let run_only = [
-            (input_data.is_some(), "--input"),
-            (tasks.is_some(), "--tasks"),
-            (each.is_some(), "--each"),
-            (key.is_some(), "--key"),
-            (seen.is_some(), "--seen"),
-            (until_passed.is_some(), "--until-passed"),
-        ];
-        for (given, flag) in run_only {
-            refuse(given, flag, &verb)?;
+    let topic = args.get(1).cloned();
+    if let Some(name) = &topic
+        && help::for_command(name).is_none()
+    {
+        return Err(format!("no help for \"{name}\"\n\n{}", help::OVERVIEW));
+    }
+    Ok(Command::Help { topic })
+}
+
+fn completions_command(args: &[String]) -> Result<Command, String> {
+    match args.get(1).map(String::as_str) {
+        Some("--help" | "-h") => Ok(Command::Help {
+            topic: Some("completions".into()),
+        }),
+        Some(shell @ ("bash" | "zsh" | "fish")) if args.len() == 2 => Ok(Command::Completions {
+            shell: shell.to_string(),
+        }),
+        Some(other) if args.len() == 2 => Err(format!(
+            "unknown shell \"{other}\"; expected bash, zsh or fish"
+        )),
+        _ => Err("completions needs a shell: bash, zsh or fish".into()),
+    }
+}
+
+fn man_command(args: &[String]) -> Result<Command, String> {
+    match args.get(1).map(String::as_str) {
+        None => Ok(Command::Man),
+        Some("--help" | "-h") => Ok(Command::Help {
+            topic: Some("man".into()),
+        }),
+        Some(_) => Err(format!("man takes no arguments, got \"{}\"", args[1])),
+    }
+}
+
+fn doctor_command(args: &[String]) -> Result<Command, String> {
+    match args.get(1).map(String::as_str) {
+        None => Ok(Command::Doctor { json: false }),
+        Some("--json") if args.len() == 2 => Ok(Command::Doctor { json: true }),
+        Some(_) => Err(format!(
+            "doctor takes no arguments except --json, got \"{}\"",
+            args[1..].join(" ")
+        )),
+    }
+}
+
+/// Reads the options and the positional arguments. An option takes the next word as its value.
+fn parse_options(args: &[String]) -> Result<(Options, Vec<String>), String> {
+    let mut options = Options::default();
+    let mut positionals = Vec::new();
+    let mut words = args.iter().cloned();
+    while let Some(arg) = words.next() {
+        match arg.as_str() {
+            "--out" => options.out = Some(PathBuf::from(value(&mut words, "--out")?)),
+            "--frontend" => options.front_end = Some(value(&mut words, "--frontend")?),
+            "--graph" => options.graph = Some(value(&mut words, "--graph")?),
+            "--allow" => options.allow = Some(PathBuf::from(value(&mut words, "--allow")?)),
+            "--state" => options.state = Some(PathBuf::from(value(&mut words, "--state")?)),
+            "--runner" => options.runner = Some(PathBuf::from(value(&mut words, "--runner")?)),
+            "--durable" => options.durable = true,
+            "--json" => options.json = true,
+            "--input" => {
+                options.input_data = Some(PathBuf::from(value(&mut words, "--input")?))
+            }
+            "--tasks" => options.tasks = Some(PathBuf::from(value(&mut words, "--tasks")?)),
+            "--each" => options.each = Some(PathBuf::from(value(&mut words, "--each")?)),
+            "--key" => options.key = Some(value(&mut words, "--key")?),
+            "--seen" => options.seen = Some(PathBuf::from(value(&mut words, "--seen")?)),
+            "--until-passed" => {
+                let text = value(&mut words, "--until-passed")?;
+                let count = text
+                    .parse::<u32>()
+                    .map_err(|_| format!("--until-passed needs a whole number, got {text}"))?;
+                options.until_passed = Some(count);
+            }
+            "--simulate" => options.simulate.push(value(&mut words, "--simulate")?),
+            flag if flag.starts_with("--") => return Err(format!("unknown option {flag}")),
+            _ => positionals.push(arg),
         }
     }
-    if json && !matches!(verb.as_str(), "check" | "inspect") {
-        return Err(format!("{verb} does not take --json"));
+    Ok((options, positionals))
+}
+
+/// The options each command accepts. Any other option given to that command is refused.
+fn accepted_flags(verb: &str) -> &'static [&'static str] {
+    match verb {
+        "init" => &[],
+        "compile" => &["--out", "--frontend", "--allow"],
+        "check" => &["--frontend", "--allow", "--json"],
+        "inspect" => &["--json"],
+        "run" => &[
+            "--allow",
+            "--durable",
+            "--state",
+            "--runner",
+            "--input",
+            "--tasks",
+            "--each",
+            "--key",
+            "--seen",
+            "--until-passed",
+        ],
+        "debug" => &["--frontend", "--graph", "--out", "--allow", "--simulate"],
+        _ => &[],
     }
-    let front_end = front_end.unwrap_or_else(|| registry::DEFAULT_FRONT_END.to_string());
-    match verb.as_str() {
+}
+
+/// The option flags that were given, in a fixed order.
+fn given_flags(options: &Options) -> Vec<&'static str> {
+    [
+        ("--out", options.out.is_some()),
+        ("--frontend", options.front_end.is_some()),
+        ("--graph", options.graph.is_some()),
+        ("--allow", options.allow.is_some()),
+        ("--durable", options.durable),
+        ("--state", options.state.is_some()),
+        ("--runner", options.runner.is_some()),
+        ("--json", options.json),
+        ("--input", options.input_data.is_some()),
+        ("--tasks", options.tasks.is_some()),
+        ("--each", options.each.is_some()),
+        ("--key", options.key.is_some()),
+        ("--seen", options.seen.is_some()),
+        ("--until-passed", options.until_passed.is_some()),
+        ("--simulate", !options.simulate.is_empty()),
+    ]
+    .into_iter()
+    .filter_map(|(flag, given)| given.then_some(flag))
+    .collect()
+}
+
+/// Builds the command for `verb` from its file and options, refusing any option it does not accept.
+fn command(
+    verb: &str,
+    input: PathBuf,
+    rest: &[String],
+    options: Options,
+) -> Result<Command, String> {
+    let accepted = accepted_flags(verb);
+    if let Some(flag) = given_flags(&options)
+        .into_iter()
+        .find(|flag| !accepted.contains(flag))
+    {
+        return Err(format!("{verb} does not take {flag}"));
+    }
+    let front_end = options
+        .front_end
+        .clone()
+        .unwrap_or_else(|| registry::DEFAULT_FRONT_END.to_string());
+    match verb {
         "init" => {
-            only_file(&rest, &verb)?;
-            refuse(out.is_some(), "--out", &verb)?;
-            refuse(graph.is_some(), "--graph", &verb)?;
-            refuse(front_end_given, "--frontend", &verb)?;
-            refuse(allow.is_some(), "--allow", &verb)?;
-            refuse_run_flags(durable, &state, &runner, &verb)?;
+            only_file(rest, verb)?;
             Ok(Command::Init { input })
         }
         "compile" => {
-            only_file(&rest, &verb)?;
-            refuse(graph.is_some(), "--graph", &verb)?;
-            refuse_run_flags(durable, &state, &runner, &verb)?;
+            only_file(rest, verb)?;
             Ok(Command::Compile {
                 input,
-                out,
+                out: options.out,
                 front_end,
-                allow,
+                allow: options.allow,
             })
         }
         "check" => {
-            only_file(&rest, &verb)?;
-            refuse(out.is_some(), "--out", &verb)?;
-            refuse(graph.is_some(), "--graph", &verb)?;
-            refuse_run_flags(durable, &state, &runner, &verb)?;
+            only_file(rest, verb)?;
             Ok(Command::Check {
                 input,
                 front_end,
-                allow,
-                json,
+                allow: options.allow,
+                json: options.json,
             })
         }
         "inspect" => {
-            only_file(&rest, &verb)?;
-            refuse(out.is_some(), "--out", &verb)?;
-            refuse(graph.is_some(), "--graph", &verb)?;
-            refuse(front_end_given, "--frontend", &verb)?;
-            refuse(allow.is_some(), "--allow", &verb)?;
-            refuse_run_flags(durable, &state, &runner, &verb)?;
-            Ok(Command::Inspect { input, json })
+            only_file(rest, verb)?;
+            Ok(Command::Inspect {
+                input,
+                json: options.json,
+            })
         }
         "run" => {
-            only_file(&rest, &verb)?;
-            refuse(out.is_some(), "--out", &verb)?;
-            refuse(graph.is_some(), "--graph", &verb)?;
-            refuse(front_end_given, "--frontend", &verb)?;
-            if runner.is_some() && tasks.is_some() {
-                return Err("--runner and --tasks both name the task code: pass one".into());
-            }
-            if each.is_some() != key.is_some() {
-                return Err(
-                    "--each and --key go together: each item is run by --each, named by --key"
-                        .into(),
-                );
-            }
-            if each.is_none() && (seen.is_some() || until_passed.is_some()) {
-                return Err("--seen and --until-passed apply to --each only".into());
-            }
+            only_file(rest, verb)?;
+            check_run_options(&options)?;
             Ok(Command::Run {
                 input,
-                state,
-                runner,
-                allow,
-                input_data,
-                tasks,
-                each,
-                key,
-                seen,
-                until_passed,
+                state: options.state,
+                runner: options.runner,
+                allow: options.allow,
+                input_data: options.input_data,
+                tasks: options.tasks,
+                each: options.each,
+                key: options.key,
+                seen: options.seen,
+                until_passed: options.until_passed,
             })
         }
         "debug" => {
-            refuse_run_flags(durable, &state, &runner, &verb)?;
-            if !simulate.is_empty() && !rest.is_empty() {
+            if !options.simulate.is_empty() && !rest.is_empty() {
                 return Err(
                     "debug --simulate takes no commands: each stub decides its task's outcome"
                         .into(),
@@ -319,15 +346,31 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
             Ok(Command::Debug {
                 input,
                 front_end,
-                graph,
-                out,
-                allow,
-                commands: rest,
-                simulate,
+                graph: options.graph,
+                out: options.out,
+                allow: options.allow,
+                commands: rest.to_vec(),
+                simulate: options.simulate,
             })
         }
         _ => Err(help::OVERVIEW.to_string()),
     }
+}
+
+/// The rules among `run`'s own options: one source of task code, and the fan-out flags together.
+fn check_run_options(options: &Options) -> Result<(), String> {
+    if options.runner.is_some() && options.tasks.is_some() {
+        return Err("--runner and --tasks both name the task code: pass one".into());
+    }
+    if options.each.is_some() != options.key.is_some() {
+        return Err(
+            "--each and --key go together: each item is run by --each, named by --key".into(),
+        );
+    }
+    if options.each.is_none() && (options.seen.is_some() || options.until_passed.is_some()) {
+        return Err("--seen and --until-passed apply to --each only".into());
+    }
+    Ok(())
 }
 
 fn value(args: &mut impl Iterator<Item = String>, flag: &str) -> Result<String, String> {
@@ -342,25 +385,5 @@ fn only_file(rest: &[String], verb: &str) -> Result<(), String> {
             "{verb} takes one file, got extra argument \"{}\"",
             rest[0]
         ))
-    }
-}
-
-/// `--durable`, `--state` and `--runner` belong to `run` alone (`--durable` is accepted there).
-fn refuse_run_flags(
-    durable: bool,
-    state: &Option<PathBuf>,
-    runner: &Option<PathBuf>,
-    verb: &str,
-) -> Result<(), String> {
-    refuse(durable, "--durable", verb)?;
-    refuse(state.is_some(), "--state", verb)?;
-    refuse(runner.is_some(), "--runner", verb)
-}
-
-fn refuse(given: bool, flag: &str, verb: &str) -> Result<(), String> {
-    if given {
-        Err(format!("{verb} does not take {flag}"))
-    } else {
-        Ok(())
     }
 }

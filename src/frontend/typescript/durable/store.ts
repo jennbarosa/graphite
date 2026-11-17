@@ -113,10 +113,12 @@ function parseRecord(line: string): ResultRecord | undefined {
 function readRecords(file: string, since: number): Map<string, StoredResult> {
 	const latest = new Map<string, StoredResult | null>();
 	if (!existsSync(file)) return new Map();
-	const fd = openSync(file, 'r+');
+	let size = 0;
+	let completeEnd = 0;
+	const fd = openSync(file, 'r');
 	try {
-		const size = fstatSync(fd).size;
-		const completeEnd = forEachLine(fd, (line) => {
+		size = fstatSync(fd).size;
+		completeEnd = forEachLine(fd, (line) => {
 			if (line === '') return;
 			const record = parseRecord(line);
 			if (record === undefined) {
@@ -133,13 +135,10 @@ function readRecords(file: string, since: number): Map<string, StoredResult> {
 				);
 			}
 		});
-		if (completeEnd < size) {
-			ftruncateSync(fd, completeEnd);
-			fsyncSync(fd);
-		}
 	} finally {
 		closeSync(fd);
 	}
+	if (completeEnd < size) cutFile(file, completeEnd);
 	const recovered = new Map<string, StoredResult>();
 	for (const [key, result] of latest) {
 		if (result !== null) recovered.set(key, result);
@@ -173,6 +172,17 @@ function forEachLine(fd: number, visit: (line: string) => void): number {
 		carry = Buffer.from(data.subarray(start));
 	}
 	return completeEnd;
+}
+
+/** Cuts `file` back to `length` bytes, durably. Drops a last line that a crash cut short. */
+export function cutFile(file: string, length: number): void {
+	const fd = openSync(file, 'r+');
+	try {
+		ftruncateSync(fd, length);
+		fsyncSync(fd);
+	} finally {
+		closeSync(fd);
+	}
 }
 
 /** Appends one line and makes it durable before returning. */

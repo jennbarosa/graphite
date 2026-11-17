@@ -9,6 +9,11 @@ export const MAX_DETAIL_CODE = 64;
 /** Largest `detail.data`, as UTF-8 JSON. */
 export const MAX_DETAIL_DATA_BYTES = 4_096;
 
+/** The node annotation whose value names a stage's task. */
+export const TASK_ANNOTATION = 'task';
+/** The node flag that allows a task to be retried. */
+export const RETRY_FLAG = 'retry';
+
 export const OUTCOMES = ['pass', 'fail', 'none'] as const;
 export type Outcome = (typeof OUTCOMES)[number];
 /** A finished task's recorded result: its outcome, or `error` when every attempt threw. */

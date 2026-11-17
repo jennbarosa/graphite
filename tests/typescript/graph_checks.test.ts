@@ -41,8 +41,8 @@ describe('taskNames', () => {
 	test('lists each node that has a task, with its label', () => {
 		const graph = graphWith([['draft', 'write'], ['end'], ['check', 'lint']], []);
 		expect(taskNames(graph, 'task')).toEqual([
-			{ name: 'write', label: 'draft (write)' },
-			{ name: 'lint', label: 'check (lint)' },
+			{ node: 'draft', name: 'write', label: 'draft (write)' },
+			{ node: 'check', name: 'lint', label: 'check (lint)' },
 		]);
 	});
 });

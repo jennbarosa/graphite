@@ -36,17 +36,16 @@ export function normalizeReport(value: unknown): RunnerReport {
 		outcome: value.outcome,
 	};
 	if (value.detail !== undefined) report.detail = normalizeDetail(value.detail);
-	if (value.output !== undefined) report.output = normalizeOutput(value.output);
+	if (value.output !== undefined)
+		report.output = jsonCopy(value.output, MAX_OUTPUT_BYTES, 'output');
 	return report;
 }
 
-/** A copy of a stage output that is JSON and within the size limit. */
-function normalizeOutput(value: unknown): unknown {
+/** A copy of `value` as JSON, which must fit in `limit` bytes. Throws, naming `what`, when it does not. */
+function jsonCopy(value: unknown, limit: number, what: string): unknown {
 	const text = JSON.stringify(value);
-	if (text === undefined || Buffer.byteLength(text) > MAX_OUTPUT_BYTES) {
-		throw new Error(
-			`runner output must be JSON of at most ${MAX_OUTPUT_BYTES} bytes`
-		);
+	if (text === undefined || Buffer.byteLength(text) > limit) {
+		throw new Error(`runner ${what} must be JSON of at most ${limit} bytes`);
 	}
 	return JSON.parse(text) as unknown;
 }
@@ -71,13 +70,7 @@ function normalizeDetail(value: unknown): Detail {
 		detail.code = value.code;
 	}
 	if (value.data !== undefined) {
-		const text = JSON.stringify(value.data);
-		if (text === undefined || Buffer.byteLength(text) > MAX_DETAIL_DATA_BYTES) {
-			throw new Error(
-				`runner detail data must be JSON of at most ${MAX_DETAIL_DATA_BYTES} bytes`
-			);
-		}
-		detail.data = JSON.parse(text) as unknown;
+		detail.data = jsonCopy(value.data, MAX_DETAIL_DATA_BYTES, 'detail data');
 	}
 	return detail;
 }

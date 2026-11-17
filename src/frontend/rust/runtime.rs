@@ -98,6 +98,25 @@ impl ErrorCode {
     }
 }
 
+/// Where a run stands: still going, ended at an end node, or errored (see `Run::error`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Status {
+    Running,
+    Ended,
+    Error,
+}
+
+impl Status {
+    /// The status's name, as the TypeScript runtime reports it.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Status::Running => "running",
+            Status::Ended => "ended",
+            Status::Error => "error",
+        }
+    }
+}
+
 /// The outcome of one `Run::step`.
 #[derive(Debug)]
 pub struct Step {
@@ -106,7 +125,7 @@ pub struct Step {
     pub transitions: usize,
     /// Transitions applied by this call.
     pub taken: usize,
-    pub status: &'static str,
+    pub status: Status,
     pub error: Option<ErrorCode>,
 }
 
@@ -141,7 +160,7 @@ impl Run {
             finished: false,
             transitions: 0,
             max_transitions,
-            cycle: Cycle::default(),
+            cycle: Cycle::new(),
         }
     }
 
@@ -149,14 +168,14 @@ impl Run {
         self.graph.nodes[self.node].name
     }
 
-    /// `error` when the run failed, else `ended` or `running`.
-    pub fn status(&self) -> &'static str {
+    /// `Error` when the run failed, else `Ended` or `Running`.
+    pub fn status(&self) -> Status {
         if self.failure.is_some() {
-            "error"
+            Status::Error
         } else if self.ended {
-            "ended"
+            Status::Ended
         } else {
-            "running"
+            Status::Running
         }
     }
 
@@ -298,7 +317,6 @@ impl Run {
 }
 
 /// Brent's cycle detection over the nodes a run enters, as the TypeScript runtime does it.
-#[derive(Default)]
 struct Cycle {
     checkpoint: u32,
     window: u32,
@@ -307,13 +325,18 @@ struct Cycle {
 }
 
 impl Cycle {
-    fn reset(&mut self) {
-        *self = Cycle {
+    /// A fresh walk. The window starts at 1, as Brent's algorithm needs.
+    fn new() -> Self {
+        Cycle {
             checkpoint: 0,
             window: 1,
             steps: 0,
             visits: 0,
-        };
+        }
+    }
+
+    fn reset(&mut self) {
+        *self = Cycle::new();
     }
 
     /// Returns true when the walk returns to the current checkpoint, which means it cycles.
@@ -451,7 +474,7 @@ impl Session {
         format!(
             "node {}  status {}{}  transitions {}  true: {}",
             self.run.node(),
-            self.run.status(),
+            self.run.status().as_str(),
             error,
             self.run.transitions(),
             list

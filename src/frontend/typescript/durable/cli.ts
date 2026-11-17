@@ -14,7 +14,7 @@ import { type CommandTable, commandRunner } from './commands';
 import { type DurableOptions, type Runner, runDurable } from './engine';
 import { fanOut } from './fanout';
 import { runLog } from './run-log';
-import type { GraphLike } from './contract';
+import { RETRY_FLAG, TASK_ANNOTATION, type GraphLike } from './contract';
 import { outcomeConditionsOf, taskNames } from './graph-checks';
 
 const USAGE =
@@ -56,7 +56,7 @@ const table = tasksPath === undefined ? undefined : await loadTable(tasksPath);
 // A graph with tasks needs a runner or a command for each task. Checked before the run starts,
 // so nothing is locked or recorded.
 for (const g of itemGraph === undefined ? [graph] : [graph, itemGraph]) {
-	const tasks = taskNames(g, 'task');
+	const tasks = taskNames(g, TASK_ANNOTATION);
 	if (tasks.length > 0 && runnerPath === undefined && table === undefined) {
 		console.error(
 			`the graph has tasks (${tasks.map((t) => t.label).join(', ')}) but no runner or commands: pass --runner <tasks.ts> or --tasks <tasks.json>`
@@ -92,8 +92,8 @@ const optionsFor = (
 	stateFile,
 	runner,
 	input: runInput,
-	taskAnnotation: 'task',
-	retryFlag: 'retry',
+	taskAnnotation: TASK_ANNOTATION,
+	retryFlag: RETRY_FLAG,
 	outcomeConditions: outcomeConditionsOf(g),
 	onEvent: log,
 });

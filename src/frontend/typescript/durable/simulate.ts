@@ -7,7 +7,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import type { GraphLike } from './contract';
+import { RETRY_FLAG, TASK_ANNOTATION, type GraphLike } from './contract';
 import { runDurable } from './engine';
 import { outcomeConditionsOf, taskNames } from './graph-checks';
 import {
@@ -41,8 +41,8 @@ async function simulate(
 			modulePath,
 			stateFile: join(dir, 'state.json'),
 			runner: stubRunner(stubs),
-			taskAnnotation: 'task',
-			retryFlag: 'retry',
+			taskAnnotation: TASK_ANNOTATION,
+			retryFlag: RETRY_FLAG,
 			outcomeConditions: outcomeConditionsOf(graph),
 			maxTransitions: SIMULATED_TRANSITIONS,
 			onEvent: (event) => {
@@ -68,7 +68,7 @@ async function main(argv: string[]): Promise<number> {
 		return 2;
 	}
 	const { graph } = await import(resolve(modulePath));
-	const tasks = taskNames(graph, 'task').map((task) => task.name);
+	const tasks = taskNames(graph, TASK_ANNOTATION).map((task) => task.name);
 	let stubs: Map<string, StubOutcome[]>;
 	try {
 		stubs = parseStubs(specs, tasks);
