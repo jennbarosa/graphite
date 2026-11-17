@@ -64,6 +64,11 @@ export interface StateStore {
 	loadOutput?(node: string): unknown;
 	loadSnapshot(): unknown;
 	loadRecords(since: number): Map<string, StoredResult>;
+	/**
+	 * Drops records before `since`, which belong to finished stages, so the store does not grow with
+	 * the run's length. Optional: a store that keeps only what it needs may leave it out.
+	 */
+	compactResults?(since: number): void;
 	saveSnapshot(snapshot: unknown): void;
 	recordResult(
 		key: string,

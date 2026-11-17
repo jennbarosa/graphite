@@ -46,10 +46,11 @@ graphite --version                                     print the version
 | `--input <input.json>` | `run` | A JSON value every task receives as `context.input`. See [input](durable-workflows.md#input). |
 | `--each <item.graphite>` | `run` | Runs the item graph once per item the graph produces. Needs `--key`. See [fan-out](durable-workflows.md#fan-out). |
 | `--key <field>` | `run` | The item field that identifies each item. |
-| `--seen <file.json>` | `run` | Item keys already started, so a run skips them. Defaults beside the state file. |
+| `--seen <file.json>` | `run` | Item keys already started. A later run resumes those items without running finished tasks again. Defaults beside the state file. |
 | `--until-passed <N>` | `run` | Stops starting items once N have passed. |
+| `--retry <key>` | `run` | Clears the stored error of the task with that key, so this run runs it again. Not used with `--each`. See [retrying a failed task](durable-workflows.md#retrying-a-failed-task). |
 | `--durable` | `run` | Accepted and ignored: `run` is always durable. |
-| `--frontend <key>` | `check`, `compile`, `debug` | The front end to use. `typescript` is the only one shipped, and the default. See [front ends](front-ends.md). |
+| `--frontend <key>` | `check`, `compile`, `debug` | The front end to use. `typescript` (the default) and `rust` are shipped. See [front ends](front-ends.md). |
 
 ## Exit status
 

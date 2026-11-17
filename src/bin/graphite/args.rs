@@ -60,6 +60,8 @@ pub enum Command {
         seen: Option<PathBuf>,
         /// `--until-passed`: stop starting items after this many pass.
         until_passed: Option<u32>,
+        /// `--retry`: the key of a stored task error to clear, so the run runs that task again.
+        retry: Option<String>,
     },
     Doctor {
         json: bool,
@@ -93,6 +95,7 @@ struct Options {
     key: Option<String>,
     seen: Option<PathBuf>,
     until_passed: Option<u32>,
+    retry: Option<String>,
     simulate: Vec<String>,
 }
 
@@ -213,6 +216,7 @@ fn parse_options(args: &[String]) -> Result<(Options, Vec<String>), String> {
                     .map_err(|_| format!("--until-passed needs a whole number, got {text}"))?;
                 options.until_passed = Some(count);
             }
+            "--retry" => options.retry = Some(value(&mut words, "--retry")?),
             "--simulate" => options.simulate.push(value(&mut words, "--simulate")?),
             flag if flag.starts_with("--") => return Err(format!("unknown option {flag}")),
             _ => positionals.push(arg),
@@ -239,6 +243,7 @@ fn accepted_flags(verb: &str) -> &'static [&'static str] {
             "--key",
             "--seen",
             "--until-passed",
+            "--retry",
         ],
         "debug" => &["--frontend", "--graph", "--out", "--allow", "--simulate"],
         _ => &[],
@@ -262,6 +267,7 @@ fn given_flags(options: &Options) -> Vec<&'static str> {
         ("--key", options.key.is_some()),
         ("--seen", options.seen.is_some()),
         ("--until-passed", options.until_passed.is_some()),
+        ("--retry", options.retry.is_some()),
         ("--simulate", !options.simulate.is_empty()),
     ]
     .into_iter()
@@ -331,6 +337,7 @@ fn command(
                 key: options.key,
                 seen: options.seen,
                 until_passed: options.until_passed,
+                retry: options.retry,
             })
         }
         "debug" => {
@@ -366,6 +373,9 @@ fn check_run_options(options: &Options) -> Result<(), String> {
     }
     if options.each.is_none() && (options.seen.is_some() || options.until_passed.is_some()) {
         return Err("--seen and --until-passed apply to --each only".into());
+    }
+    if options.each.is_some() && options.retry.is_some() {
+        return Err("--retry clears a task in one run, so it does not apply to --each".into());
     }
     Ok(())
 }

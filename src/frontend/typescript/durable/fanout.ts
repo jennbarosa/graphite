@@ -43,16 +43,23 @@ export async function fanOut(options: FanOutOptions): Promise<FanOutSummary> {
 	}
 
 	const seen = readSeen(options.seenFile);
+	const visited = new Set<string>();
 	let started = 0;
 	let passed = 0;
 	for (const item of items) {
 		if (options.untilPassed !== undefined && passed >= options.untilPassed) break;
 		const key = keyOf(item, options.key);
-		if (seen.has(key)) continue;
-		// Recorded before the item runs, so a crash mid-item does not start it again.
-		seen.add(key);
-		appendLine(options.seenFile, key);
-		started++;
+		// A key listed twice in this run is handled once.
+		if (visited.has(key)) continue;
+		visited.add(key);
+		// A key already seen is resumed, not skipped. An item that finished returns its stored result
+		// without running a task again; one a crash interrupted runs on from its saved state.
+		if (!seen.has(key)) {
+			// Recorded before the item runs, so a crash mid-item does not start it again.
+			seen.add(key);
+			appendLine(options.seenFile, key);
+			started++;
+		}
 		const result = await runDurable(
 			options.item(item, options.itemStateFile(key))
 		);

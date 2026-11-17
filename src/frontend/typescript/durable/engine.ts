@@ -263,7 +263,6 @@ interface Session {
 /** Graphs already checked, with the options they were checked under. Keyed by graph, so it frees itself. */
 const checked = new WeakMap<object, string>();
 
-/** Runs the graph from its saved state, or from the entry if there is none. */
 /** The limits from the options, with defaults filled in. Throws for a value no run can use. */
 function resolveLimits(options: DurableOptions): Limits {
 	const limits = {
@@ -445,6 +444,7 @@ async function runStage(session: Session): Promise<Result | undefined> {
 	saveSnapshot(session, 'step-saved', key);
 	// The next stage has a later sequence, so nothing recorded for this one is needed again.
 	session.results.clear();
+	session.store.compactResults?.(run.transitions);
 	if (statusOf(run) === 'error') return errorResult(session, key);
 	if (taken === 0) {
 		return {

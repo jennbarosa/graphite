@@ -3,9 +3,9 @@
 A **front end** turns a checked graph into code for one host language. The parser, the checks,
 and the compiled graph know nothing about any language. A language appears only in its front end.
 
-Graphite ships one front end today: **TypeScript**, the default for every command. The front end
-interface is general, so supporting another language means writing one front end, not changing
-the graph language.
+Graphite ships two front ends: **TypeScript**, the default for every command, and **Rust**. The
+front end interface is general, so supporting another language means writing one front end, not
+changing the graph language.
 
 | Key (`--frontend`) | Language | Status |
 | --- | --- | --- |

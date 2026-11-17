@@ -21,6 +21,8 @@ import type { Detail, StateStore, StoredOutcome, StoredResult } from './contract
 import { isDetail, isRecord, isStoredOutcome } from './report';
 
 const READ_CHUNK_BYTES = 64 * 1024;
+/** Steps between rewrites that drop results of earlier stages from the results file. */
+const COMPACT_EVERY_STEPS = 1_000;
 
 /**
  * The state store backed by local files. `<file>` holds the snapshot, rewritten atomically at
@@ -30,6 +32,7 @@ const READ_CHUNK_BYTES = 64 * 1024;
 export function fileStore(stateFile: string): StateStore {
 	const resultsFile = `${stateFile}.results`;
 	const outputDir = `${stateFile}.outputs`;
+	let stepsSinceCompact = 0;
 	return {
 		outputDirectory: outputDir,
 		saveOutput: (node, value) => {
@@ -45,6 +48,11 @@ export function fileStore(stateFile: string): StateStore {
 		loadSnapshot: () =>
 			existsSync(stateFile) ? readSnapshot(stateFile) : undefined,
 		loadRecords: (since) => readRecords(resultsFile, since),
+		compactResults: (since) => {
+			if (++stepsSinceCompact < COMPACT_EVERY_STEPS) return;
+			stepsSinceCompact = 0;
+			readRecords(resultsFile, since);
+		},
 		saveSnapshot: (snapshot) =>
 			writeAtomic(stateFile, JSON.stringify({ snapshot })),
 		recordResult: (key, sequence, result) =>
@@ -106,15 +114,18 @@ function parseRecord(line: string): ResultRecord | undefined {
 
 /**
  * Reads the records at `since` or later, in order, keeping the last result for each key. The
- * file is read in chunks, so only those records are held in memory. A last line cut short by a
- * crash is dropped, and the file is cut back to the end of the last complete line, so later
- * appends start on a clean line. A bad complete line means the file is damaged.
+ * file is read in chunks, so only those records are held in memory. Records before `since` belong
+ * to finished stages, so when there are any, the file is rewritten without them. A last line cut
+ * short by a crash is dropped, and the file is cut back to the end of the last complete line, so
+ * later appends start on a clean line. A bad complete line means the file is damaged.
  */
 function readRecords(file: string, since: number): Map<string, StoredResult> {
 	const latest = new Map<string, StoredResult | null>();
 	if (!existsSync(file)) return new Map();
 	let size = 0;
 	let completeEnd = 0;
+	const kept: string[] = [];
+	let dropped = 0;
 	const fd = openSync(file, 'r');
 	try {
 		size = fstatSync(fd).size;
@@ -124,21 +135,26 @@ function readRecords(file: string, since: number): Map<string, StoredResult> {
 			if (record === undefined) {
 				throw new Error(`results file ${file} is malformed`);
 			}
-			if (record.sequence >= since) {
-				latest.set(
-					record.key,
-					record.outcome === null
-						? null
-						: record.detail === undefined
-							? { outcome: record.outcome }
-							: { outcome: record.outcome, detail: record.detail }
-				);
+			if (record.sequence < since) {
+				dropped++;
+				return;
 			}
+			kept.push(line);
+			latest.set(
+				record.key,
+				record.outcome === null
+					? null
+					: record.detail === undefined
+						? { outcome: record.outcome }
+						: { outcome: record.outcome, detail: record.detail }
+			);
 		});
 	} finally {
 		closeSync(fd);
 	}
-	if (completeEnd < size) cutFile(file, completeEnd);
+	// A rewrite also drops a torn last line, since only complete lines were kept.
+	if (dropped > 0) writeAtomic(file, kept.map((line) => `${line}\n`).join(''));
+	else if (completeEnd < size) cutFile(file, completeEnd);
 	const recovered = new Map<string, StoredResult>();
 	for (const [key, result] of latest) {
 		if (result !== null) recovered.set(key, result);

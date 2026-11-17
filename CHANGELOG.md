@@ -14,8 +14,18 @@ change the interface.
   TypeScript engine's rule for valid values. The Rust front end has no durable runner, so it does not
   enforce the limit.
 
+- `graphite run --retry <key>` clears a failed task's stored error, so the run runs that task again.
+
+### Fixed
+
+- Fan-out (`run --each`) no longer leaves an item unfinished after a crash. A seen item is resumed from its
+  own state, and `--until-passed` counts the items that passed in earlier runs.
+- The results file drops the records of finished stages, so it no longer grows with a long run.
+
 ### Changed
 
+- Fan-out seen keys are resumed, not skipped, on later runs: a finished item returns its stored result
+  without running its tasks again.
 - Durable tasks no longer have a 60-second default limit. Without a `timeout` annotation or a
   `taskTimeoutMs` option, a task runs until it finishes.
 

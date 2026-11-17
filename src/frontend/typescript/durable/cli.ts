@@ -1,24 +1,26 @@
 // Command-line entry for `graphite run`. It runs one generated graph under the durable engine and
 // prints the result as JSON. Usage:
 //   bun run cli.ts <graph.ts> <state.json> [--runner <tasks.ts> | --tasks <tasks.json>]
-//                  [--input <input.json>]
+//                  [--input <input.json>] [--retry <key>]
 //                  [--each <item.ts> --key <field> [--seen <file.json>] [--until-passed <N>]]
 // `--runner` names a module whose default export is the task runner, with the `Runner` signature.
 // `--tasks` names a JSON file of task commands, `{ "cwd", "commands": { task: [argv...] } }`. Pass
 // one of them, not both. `--input` names a JSON file whose value every task receives as
 // `context.input`. `--each` runs the item graph once per item of the first graph's output, with the
-// fan-out rules in fanout.ts. The run log goes to stderr.
+// fan-out rules in fanout.ts. `--retry <key>` clears the stored error of that task before the run, so
+// the run runs it again; it does not apply to `--each`. The run log goes to stderr.
 import { mkdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { type CommandTable, commandRunner } from './commands';
-import { type DurableOptions, type Runner, runDurable } from './engine';
+import { type DurableOptions, type Runner, retryFailedTask, runDurable } from './engine';
 import { fanOut } from './fanout';
 import { runLog } from './run-log';
 import { RETRY_FLAG, TASK_ANNOTATION, type GraphLike } from './contract';
 import { outcomeConditionsOf, taskNames } from './graph-checks';
+import { fileStore } from './store';
 
 const USAGE =
-	'usage: cli.ts <graph.ts> <state.json> [--runner <tasks.ts> | --tasks <tasks.json>] [--input <input.json>] [--each <item.ts> --key <field>]';
+	'usage: cli.ts <graph.ts> <state.json> [--runner <tasks.ts> | --tasks <tasks.json>] [--input <input.json>] [--retry <key>] [--each <item.ts> --key <field>]';
 const NEEDS_TASKS = 3;
 
 const args = process.argv.slice(2);
@@ -31,8 +33,13 @@ const eachPath = flag(args, '--each');
 const keyField = flag(args, '--key');
 const seenPath = flag(args, '--seen');
 const untilText = flag(args, '--until-passed');
+const retryKey = flag(args, '--retry');
 if (!modulePath || !statePath) {
 	console.error(USAGE);
+	process.exit(2);
+}
+if (retryKey !== undefined && eachPath !== undefined) {
+	console.error('--retry applies to one run, not to --each');
 	process.exit(2);
 }
 if (runnerPath !== undefined && tasksPath !== undefined) {
@@ -99,6 +106,14 @@ const optionsFor = (
 });
 
 if (itemGraph === undefined || eachPath === undefined || keyField === undefined) {
+	if (retryKey !== undefined) {
+		try {
+			await retryFailedTask(fileStore(statePathResolved), retryKey);
+		} catch (error) {
+			console.error(error instanceof Error ? error.message : String(error));
+			process.exit(2);
+		}
+	}
 	const result = await runDurable(
 		optionsFor(graph, modulePathResolved, statePathResolved, input)
 	);

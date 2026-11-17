@@ -7,6 +7,7 @@ use graphite::graph::CompiledGraph;
 #[path = "support/parse.rs"]
 mod fixture;
 
+#[allow(dead_code)]
 #[path = "support/bun.rs"]
 mod bun;
 

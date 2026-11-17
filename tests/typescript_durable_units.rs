@@ -21,6 +21,15 @@ fn simulate_stubs_and_their_lines_pass_their_bun_tests() {
 }
 
 #[test]
+fn the_durable_results_file_pass_its_bun_tests() {
+    bun::assert_bun_test_passes_with(
+        Path::new(env!("CARGO_MANIFEST_DIR")),
+        "tests/typescript/durable_store.test.ts",
+        &no_variables(),
+    );
+}
+
+#[test]
 fn graph_checks_pass_their_bun_tests() {
     bun::assert_bun_test_passes_with(
         Path::new(env!("CARGO_MANIFEST_DIR")),

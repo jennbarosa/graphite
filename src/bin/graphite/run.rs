@@ -22,6 +22,8 @@ pub struct Options<'a> {
     /// A JSON file whose value every task receives as its input.
     pub input_data: Option<&'a Path>,
     pub allow: Option<&'a Path>,
+    /// The key of a stored task error to clear before the run, so that task runs again.
+    pub retry: Option<&'a str>,
     /// Runs the item graph once per item the graph produces.
     pub fan_out: Option<FanOut<'a>>,
 }
@@ -74,6 +76,11 @@ pub fn run(input: &Path, state: Option<&Path>, options: &Options<'_>) -> Result<
             if let (Some(fan), Some(item_graphs)) = (&options.fan_out, &item_graphs) {
                 fan_out_args(frontend, fan, item_graphs, &directory, &mut args)?;
             }
+            push_flag(
+                &mut args,
+                "--retry",
+                options.retry.map(std::ffi::OsStr::new),
+            );
             push_flag(&mut args, "--runner", options.runner.map(Path::as_os_str));
             push_flag(
                 &mut args,
