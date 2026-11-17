@@ -26,6 +26,8 @@ change the interface.
 
 - Fan-out seen keys are resumed, not skipped, on later runs: a finished item returns its stored result
   without running its tasks again.
+- The `--durable` flag is removed. It did nothing since `run` became durable, and passing it is now a usage error.
+- `graphite inspect` prints the annotations on the `graph` line, in text and in `--json`.
 - Durable tasks no longer have a 60-second default limit. Without a `timeout` annotation or a
   `taskTimeoutMs` option, a task runs until it finishes.
 
@@ -73,6 +75,13 @@ change the interface.
 
 - A seen file whose last line was cut short by a crash could make the next key join that line, so an
   item could be started again. The torn line is now cut before the next key is appended.
+- Fan-out with the same `--seen` file and a new `--state` no longer runs the tasks of items an earlier state
+  started. Each state records the items it started, and a key without a record there is skipped.
+  An item started before this version has no record, so an interrupted one is skipped, not resumed. Finish it by hand.
+- `--allow` checks the annotations on the `graph` line, which it skipped before.
+- The state lock is written whole, so a lock with no readable pid is refused rather than taken over.
+- `--retry` refuses a stage the run has already passed, such as a task whose error an `errored` edge routed,
+  instead of reporting a retry that never runs.
 
 ## [0.1.0] - 2026-11-12
 

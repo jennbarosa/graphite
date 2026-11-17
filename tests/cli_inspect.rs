@@ -4,7 +4,7 @@
 #[path = "support/cli.rs"]
 mod cli;
 
-use cli::{graphite, stderr, stdout, walk_spec};
+use cli::{dsl, graphite, stderr, stdout, walk_spec};
 
 #[test]
 fn lists_nodes_conditions_choices_and_edges() {
@@ -13,7 +13,7 @@ fn lists_nodes_conditions_choices_and_edges() {
     assert!(output.status.success(), "{}", stderr(&output));
     let text = stdout(&output);
     for expected in [
-        "graph walk",
+        "graph walk @choice:facing @idle:stopped",
         "    going loop @anim:walk @group:locomotion",
         "  conditions: keyup, left, right, up",
         "      when left -> side @flip:true",
@@ -72,5 +72,29 @@ fn inspect_json_describes_the_graph_with_null_for_else() {
     assert!(
         text.contains(r#""conditions":["keyup","left","right","up"]"#),
         "{text}"
+    );
+}
+
+#[test]
+fn inspect_shows_annotations_on_the_graph_line() {
+    let file = dsl(
+        "cli-inspect-graph-line",
+        "graph door @anim:idle\n  node closed @anim:open\n  node open end\n\n  edge closed -> open\n",
+    );
+    let text = graphite(["inspect".as_ref(), file.as_os_str()]);
+    assert!(text.status.success(), "{}", stderr(&text));
+    assert!(
+        stdout(&text).starts_with("graph door @anim:idle\n"),
+        "{}",
+        stdout(&text)
+    );
+
+    let json = graphite(["inspect".as_ref(), file.as_os_str(), "--json".as_ref()]);
+    assert!(json.status.success(), "{}", stderr(&json));
+    assert!(
+        stdout(&json)
+            .contains(r#""name":"door","annotations":[{"key":"anim","value":"idle"}],"nodes""#),
+        "{}",
+        stdout(&json)
     );
 }

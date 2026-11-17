@@ -128,3 +128,52 @@ fn retry_does_not_apply_to_each() {
         stderr(&output)
     );
 }
+
+#[test]
+fn retry_refuses_a_stage_the_run_has_already_passed() {
+    // The errored edge routes the failure, so the run moves on past the stage that failed.
+    let dir = scratch("cli-retry-past");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("item.graphite"),
+        "graph item\n  node audit @task:audit\n  node skip end\n\n  edge audit -> skip when passed\n  edge audit -> skip when errored\n  edge audit -> skip when failed\n",
+    )
+    .unwrap();
+    std::fs::write(dir.join("audit.sh"), "cat > /dev/null\nexit 1\n").unwrap();
+    std::fs::write(
+        dir.join("tasks.toml"),
+        "[tasks]\naudit = [\"sh\", \"audit.sh\"]\n",
+    )
+    .unwrap();
+    let allow = dir.join("allow.toml");
+    std::fs::write(&allow, "node_flags = []\n").unwrap();
+    let routed = |extra: &[&str]| {
+        let mut args: Vec<std::ffi::OsString> = vec![
+            "run".into(),
+            dir.join("item.graphite").into_os_string(),
+            "--tasks".into(),
+            dir.join("tasks.toml").into_os_string(),
+            "--state".into(),
+            dir.join("state.json").into_os_string(),
+        ];
+        args.extend(extra.iter().map(|arg| (*arg).into()));
+        graphite(args)
+    };
+
+    let first = routed(&[]);
+    assert_eq!(first.status.code(), Some(0), "{}", stderr(&first));
+    assert!(
+        stdout(&first).contains(r#""status":"ended""#),
+        "{}",
+        stdout(&first)
+    );
+
+    // The stage is done and the run ended past it, so its error cannot be retried.
+    let late = routed(&["--retry", "0:audit"]);
+    assert!(!late.status.success(), "{}", stdout(&late));
+    assert!(
+        stderr(&late).contains("the run is past this stage"),
+        "{}",
+        stderr(&late)
+    );
+}

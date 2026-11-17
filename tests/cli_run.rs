@@ -1,4 +1,4 @@
-//! `graphite run --durable`: runs a graph under the durable engine, and resumes from saved state.
+//! `graphite run`: runs a graph under the durable engine, and resumes from saved state.
 
 #[allow(dead_code)]
 #[path = "support/bun.rs"]
@@ -7,7 +7,7 @@ mod bun;
 #[path = "support/cli.rs"]
 mod cli;
 
-use cli::{graphite, manifest, scratch, stderr, stdout};
+use cli::{graphite, manifest, scratch, stderr, stdout, walk_spec};
 
 #[test]
 fn runs_the_graph_to_its_end_and_resumes_from_saved_state() {
@@ -18,7 +18,6 @@ fn runs_the_graph_to_its_end_and_resumes_from_saved_state() {
     let state = scratch("cli-run").join("state.json");
     let args = [
         "run".as_ref(),
-        "--durable".as_ref(),
         dsl.as_os_str(),
         "--allow".as_ref(),
         allow.as_os_str(),
@@ -56,7 +55,6 @@ fn refuses_a_graph_with_tasks_when_no_runner_is_given() {
     let state = dir.join("state.json");
     let output = graphite([
         "run".as_ref(),
-        "--durable".as_ref(),
         dsl.as_os_str(),
         "--allow".as_ref(),
         allow.as_os_str(),
@@ -81,7 +79,6 @@ fn runs_a_graph_without_tasks_or_outcome_conditions() {
     let state = scratch("cli-run-plain").join("state.json");
     let output = graphite([
         "run".as_ref(),
-        "--durable".as_ref(),
         dsl.as_os_str(),
         "--state".as_ref(),
         state.as_os_str(),
@@ -93,9 +90,25 @@ fn runs_a_graph_without_tasks_or_outcome_conditions() {
     );
 }
 
-/// `run` is durable on its own; the flag is accepted and changes nothing.
+/// `--durable` did nothing, so it was removed. An old script that passes it fails loudly.
 #[test]
-fn runs_durably_without_the_durable_flag() {
+fn the_removed_durable_flag_is_a_usage_error() {
+    let output = graphite([
+        "run".as_ref(),
+        walk_spec().as_os_str(),
+        "--durable".as_ref(),
+    ]);
+    assert_eq!(output.status.code(), Some(2), "{}", stdout(&output));
+    assert!(
+        stderr(&output).contains("unknown option --durable"),
+        "{}",
+        stderr(&output)
+    );
+}
+
+/// `run` is durable on its own.
+#[test]
+fn runs_durably_without_any_flag() {
     let fixtures = manifest().join("tests/fixtures/runtime");
     let state = scratch("cli-run-without-flag").join("state.json");
     let output = graphite([

@@ -38,7 +38,6 @@ pub const COMMANDS: &[(&str, &[&str])] = &[
             "--until-passed",
             "--retry",
             "--allow",
-            "--durable",
         ],
     ),
     ("doctor", &["--json"]),
@@ -109,7 +108,6 @@ without running finished tasks again.
 --retry <key> clears the stored error of the task with that key, so this run runs it again. The key is
 the one the run reported in its error. Not used with --each.
 --state defaults to <file stem>.state.json beside the file.
---durable is accepted for compatibility and does nothing: `run` is always durable.
 The runner is code that runs with your permissions. Use only runners you wrote or reviewed."
         }
         "debug" => {

@@ -20,7 +20,7 @@ fn help_goes_to_stdout_and_succeeds_in_every_form() {
 
     let named = graphite(["help", "run"]);
     assert!(named.status.success());
-    assert!(stdout(&named).contains("--durable is accepted"));
+    assert!(stdout(&named).contains("--retry <key>"));
 }
 
 #[test]

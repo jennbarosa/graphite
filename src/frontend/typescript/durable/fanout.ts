@@ -52,13 +52,18 @@ export async function fanOut(options: FanOutOptions): Promise<FanOutSummary> {
 		// A key listed twice in this run is handled once.
 		if (visited.has(key)) continue;
 		visited.add(key);
-		// A key already seen is resumed, not skipped. An item that finished returns its stored result
-		// without running a task again; one a crash interrupted runs on from its saved state.
+		// Each state keeps a marker for every item it started. A key in the seen file with no marker in
+		// this state was started by an earlier run with another state, so it is skipped here. A marked
+		// key is resumed: a finished item returns its stored result, and an interrupted one runs on.
+		const marker = `${options.itemStateFile(key)}.started`;
 		if (!seen.has(key)) {
-			// Recorded before the item runs, so a crash mid-item does not start it again.
+			// The marker is written first, so a crash between the two writes leaves the key unseen, not seen but unmarked.
+			appendLine(marker, key);
 			seen.add(key);
 			appendLine(options.seenFile, key);
 			started++;
+		} else if (!existsSync(marker)) {
+			continue;
 		}
 		const result = await runDurable(
 			options.item(item, options.itemStateFile(key))

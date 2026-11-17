@@ -218,6 +218,11 @@ export async function retryFailedTask(
 		if (store.loadRecords(0).get(key)?.outcome !== 'error') {
 			throw new Error(`task "${key}" has no stored error`);
 		}
+		// A stage numbered before the saved position has been routed already. Clearing it now would
+		// claim a retry that never runs.
+		if (sequence < transitionsSaved(store)) {
+			throw new Error(`task "${key}": the run is past this stage, so its error cannot be retried`);
+		}
 		store.recordResult(key, sequence, undefined);
 	});
 }
@@ -693,6 +698,14 @@ function parseFailure(value: unknown): StageFailure | undefined {
 		outcome: value.outcome,
 		...(detail === undefined ? {} : { detail }),
 	};
+}
+
+/** The transition count the saved run has reached, or 0 when no snapshot is saved. */
+function transitionsSaved(store: StateStore): number {
+	const { runSnapshot } = splitSnapshot(store.loadSnapshot());
+	return isRecord(runSnapshot) && typeof runSnapshot.transitions === 'number'
+		? runSnapshot.transitions
+		: 0;
 }
 
 function sequenceOf(key: string): number {

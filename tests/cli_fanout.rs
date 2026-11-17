@@ -172,20 +172,21 @@ fn a_seen_line_cut_short_by_a_crash_does_not_start_its_item_twice() {
     // A crash left "b.com" written without its newline: b.com was never started.
     std::fs::write(dir.join("state.json.seen.json"), "a.com\nb.com").unwrap();
 
-    // a.com is seen but has no state, so it never ran: the run resumes it. b.com is started once.
+    // a.com is in the seen file but this state never started it, so it is skipped. b.com's torn line is
+    // dropped, so b.com is started, and only once.
     let first = fan_out(&dir, &[]);
     assert!(first.status.success(), "{}", stderr(&first));
     assert_eq!(
         stdout(&first).trim(),
-        r#"{"status":"ended","items":2,"started":1,"passed":2}"#
+        r#"{"status":"ended","items":2,"started":1,"passed":1}"#
     );
 
-    // b.com was started by the first run, so a second run starts nothing, and both items still passed.
+    // b.com was started by the first run, so a second run starts nothing and b.com still counts as passed.
     let second = fan_out(&dir, &[]);
     assert!(second.status.success(), "{}", stderr(&second));
     assert_eq!(
         stdout(&second).trim(),
-        r#"{"status":"ended","items":2,"started":0,"passed":2}"#
+        r#"{"status":"ended","items":2,"started":0,"passed":1}"#
     );
 }
 
@@ -230,5 +231,49 @@ fn an_item_key_that_is_not_a_plain_name_is_refused_before_it_runs() {
         !dir.join("state.json.items")
             .join("../escape.state.json")
             .exists()
+    );
+}
+
+#[test]
+fn a_new_state_with_the_same_seen_file_runs_no_item_again() {
+    let dir = workdir(
+        "cli-fanout-new-state",
+        r#"[{"domain":"a.com"},{"domain":"b.com"}]"#,
+    );
+    // Every item's save task logs one line, so a second run that repeats an item shows as an extra line.
+    std::fs::write(
+        dir.join("save.sh"),
+        "cat > /dev/null\necho saved >> saves.log\nprintf '{\"outcome\":\"pass\"}\\n'\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("tasks.toml"),
+        "[tasks]\ndiscover = [\"sh\", \"pass.sh\"]\nemit = [\"sh\", \"emit.sh\"]\naudit = [\"sh\", \"pass.sh\"]\nsave = [\"sh\", \"save.sh\"]\n",
+    )
+    .unwrap();
+    // Two days: the same seen file, a new state file each day, as the docs describe.
+    let day = |state: &str| {
+        let mut args = fan_out_args(&dir, &["--seen", dir.join("seen.json").to_str().unwrap()]);
+        let index = args.iter().position(|arg| arg == "--state").unwrap() + 1;
+        args[index] = dir.join(state).into_os_string();
+        args
+    };
+
+    let monday = graphite(day("monday.state.json"));
+    assert!(monday.status.success(), "{}", stderr(&monday));
+    let tuesday = graphite(day("tuesday.state.json"));
+    assert!(tuesday.status.success(), "{}", stderr(&tuesday));
+
+    // Each item was saved once, on Monday. Tuesday's run starts nothing.
+    assert_eq!(
+        std::fs::read_to_string(dir.join("saves.log"))
+            .unwrap()
+            .lines()
+            .count(),
+        2
+    );
+    assert_eq!(
+        stdout(&tuesday).trim(),
+        r#"{"status":"ended","items":2,"started":0,"passed":0}"#
     );
 }

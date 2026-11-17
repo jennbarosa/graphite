@@ -89,6 +89,10 @@ fn graph_json(graph: &CompiledGraph) -> String {
         .collect();
     json::object(&[
         ("name", json::quote(graph.text(graph.name))),
+        (
+            "annotations",
+            annotations_json(graph, &graph.graph_annotations),
+        ),
         ("nodes", json::array(&nodes)),
         ("conditions", json::array(&conditions)),
         ("choices", json::array(&choices)),
@@ -116,7 +120,11 @@ fn annotations_json(graph: &CompiledGraph, span: &Span) -> String {
 pub fn describe(graphs: &[CompiledGraph]) -> String {
     let mut lines = Vec::new();
     for graph in graphs {
-        lines.push(format!("graph {}", graph.text(graph.name)));
+        lines.push(format!(
+            "graph {}{}",
+            graph.text(graph.name),
+            annotations(graph, &graph.graph_annotations)
+        ));
         describe_nodes(graph, &mut lines);
         describe_conditions(graph, &mut lines);
         describe_choices(graph, &mut lines);

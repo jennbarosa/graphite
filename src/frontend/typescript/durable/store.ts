@@ -7,6 +7,7 @@ import {
 	fstatSync,
 	fsyncSync,
 	ftruncateSync,
+	linkSync,
 	mkdirSync,
 	openSync,
 	readFileSync,
@@ -14,7 +15,6 @@ import {
 	renameSync,
 	unlinkSync,
 	writeFileSync,
-	writeSync,
 } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { Detail, StateStore, StoredOutcome, StoredResult } from './contract';
@@ -256,25 +256,33 @@ async function withLock<T>(
  */
 function acquire(stateFile: string): () => void {
 	const lock = `${stateFile}.lock`;
-	for (let tries = 0; tries < 2; tries++) {
-		try {
-			const fd = openSync(lock, 'wx');
-			writeSync(fd, String(process.pid));
-			closeSync(fd);
-			return () => unlinkSync(lock);
-		} catch (error) {
-			if ((error as NodeJS.ErrnoException).code !== 'EEXIST')
-				throw error;
-			const owner = Number(readFileSync(lock, 'utf8'));
-			if (alive(owner)) {
-				throw new Error(
-					`state ${stateFile} is locked by process ${owner}`
-				);
+	// The pid goes into a temp file that is then linked to the lock, so the lock never exists without its owner.
+	const temp = `${lock}.${process.pid}.tmp`;
+	writeFileSync(temp, String(process.pid));
+	try {
+		for (let tries = 0; tries < 2; tries++) {
+			try {
+				linkSync(temp, lock);
+				return () => unlinkSync(lock);
+			} catch (error) {
+				if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+				const owner = Number(readFileSync(lock, 'utf8'));
+				// Only a readable pid can be checked. Without one, the owner is not known to be dead.
+				if (!Number.isInteger(owner) || owner <= 0) {
+					throw new Error(
+						`state ${stateFile} is locked by a process with no readable pid; delete ${lock} if no run is active`
+					);
+				}
+				if (alive(owner)) {
+					throw new Error(`state ${stateFile} is locked by process ${owner}`);
+				}
+				unlinkSync(lock);
 			}
-			unlinkSync(lock);
 		}
+		throw new Error(`could not lock ${stateFile}`);
+	} finally {
+		unlinkSync(temp);
 	}
-	throw new Error(`could not lock ${stateFile}`);
 }
 
 function alive(pid: number): boolean {
