@@ -236,3 +236,100 @@ fn doctor_lists_the_purescript_front_end() {
         stdout(&output)
     );
 }
+
+#[test]
+fn inspect_reads_a_dotted_name_with_an_unknown_infix_without_a_flag() {
+    // Only compile and check write front-end output, so only they refuse an unknown infix.
+    let path = dsl("infix-read/my.walk.graphite", "graph door\n  node a end\n");
+    let output = graphite(["inspect".as_ref(), path.as_os_str()]);
+    assert!(output.status.success(), "{}", stderr(&output));
+    let output = graphite(["check".as_ref(), path.as_os_str()]);
+    assert!(!output.status.success());
+    assert!(stderr(&output).contains("no front end for the infix `.walk`"));
+}
+
+#[test]
+fn check_refuses_a_name_clash_that_compile_refuses() {
+    let path = dsl(
+        "clash/clash.pure.graphite",
+        "graph g\n  enum E a b\n  input home-east : bool\n  input home_east : bool\n  choose c : E\n    when home-east -> a\n    else -> b\n",
+    );
+    let output = graphite(["check".as_ref(), path.as_os_str()]);
+    assert!(!output.status.success());
+    assert!(
+        stderr(&output).contains("both become `homeEast`"),
+        "{}",
+        stderr(&output)
+    );
+}
+
+#[test]
+fn a_name_clash_points_at_the_later_declaration() {
+    let path = dsl(
+        "clash-line/clash.pure.graphite",
+        "graph g\n  enum E a b\n  input home-east : bool\n  input home_east : bool\n  choose c : E\n    when home-east -> a\n    else -> b\n",
+    );
+    let output = graphite(["check".as_ref(), path.as_os_str()]);
+    assert!(!output.status.success());
+    assert!(
+        stderr(&output).contains("--> line 4"),
+        "{}",
+        stderr(&output)
+    );
+}
+
+#[test]
+fn a_name_clash_gets_no_remove_the_output_hint() {
+    let path = dsl(
+        "clash-hint/clash.pure.graphite",
+        "graph g\n  enum Tactic flee\n  input x : bool\n  choose tactic : Tactic\n    when x -> flee\n    else -> flee\n  choose tacticArm : Tactic\n    when x -> flee\n    else -> flee\n",
+    );
+    let out = scratch("clash-hint-out");
+    let output = graphite([
+        "compile".as_ref(),
+        path.as_os_str(),
+        "--out".as_ref(),
+        out.as_os_str(),
+    ]);
+    assert!(!output.status.success());
+    assert!(!stderr(&output).contains("hint:"), "{}", stderr(&output));
+}
+
+#[test]
+fn a_front_end_named_by_a_flag_ignores_a_pure_infix() {
+    let path = dsl(
+        "flag-infix/door.purs.graphite",
+        "graph door\n  node closed end\n",
+    );
+    let output = graphite([
+        "check".as_ref(),
+        path.as_os_str(),
+        "--frontend".as_ref(),
+        "typescript".as_ref(),
+    ]);
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert_eq!(stdout(&output), "ok: 1 graph\n");
+}
+
+#[test]
+fn check_refuses_a_rust_constant_clash_that_compile_refuses() {
+    // `a-b` and `a_b` both become the Rust constant `A_B`. Only rendering finds this, so `check`
+    // must render too.
+    let path = dsl(
+        "rust-clash/door.graphite",
+        "graph door\n  node a-b\n  node a_b end\n  edge a-b -> a_b when go\n",
+    );
+    let check = graphite([
+        "check".as_ref(),
+        path.as_os_str(),
+        "--frontend".as_ref(),
+        "rust".as_ref(),
+    ]);
+    assert!(!check.status.success());
+    assert!(
+        stderr(&check).contains("both become the Rust constant `A_B`"),
+        "{}",
+        stderr(&check)
+    );
+    assert!(stderr(&check).contains("--> line 1"), "{}", stderr(&check));
+}

@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use graphite::pipeline::build::{self, Request};
 
 use crate::allow::Allowlist;
-use crate::load;
+use crate::resolve::{self, Output};
 
 /// Where `compile` writes when no `--out` is given: `graphite-out/<file stem>`, beside the cwd.
 pub fn default_out(input: &Path) -> Result<PathBuf, String> {
@@ -24,8 +24,6 @@ pub fn run(
     pure: bool,
 ) -> Result<(), String> {
     let allowlist = allow.map(Allowlist::load).transpose()?;
-    // Reading first resolves the front end and explains a conflict before the build starts.
-    let loaded = load::read(input, allowlist.as_ref(), front_end, pure)?;
     let out = match out {
         Some(out) => out.to_path_buf(),
         None => default_out(input)?,
@@ -37,12 +35,14 @@ pub fn run(
         Some(list) => list.check(graphs),
         None => Ok(()),
     };
+    let select = |name: &str, directives: &graphite::preprocess::Directives<'_>| {
+        resolve::resolve(name, front_end, pure, directives, Output::Written)
+    };
     let written = build::run(Request {
         input,
         out,
-        front_end: loaded.front_end,
         node_flags,
-        pure: loaded.pure,
+        select: &select,
         verify: Some(&verify),
     })?;
     for path in written {

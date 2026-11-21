@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 
 pub mod build;
 
-use crate::frontend::Frontend;
+use crate::frontend::{Frontend, NameClash};
 use crate::graph::CompiledGraph;
 use crate::lexer::Diagnostic;
 use crate::parser::{Capacity, GRAPH_KEYWORD, ParseError, Schema, parse_body};
@@ -71,7 +71,11 @@ fn capacities_of(source: &str, schema: &Schema<'_>) -> Vec<Capacity> {
             arms: block.lines,
             // A declaration takes a line, and one line may hold several members.
             enums: if schema.pure { block.lines } else { 0 },
-            members: if schema.pure { block.bytes } else { 0 },
+            members: if schema.pure {
+                block.bytes.div_ceil(2)
+            } else {
+                0
+            },
             inputs: if schema.pure { block.lines } else { 0 },
             annotations: block.bytes + block.lines * block.defaults,
             flags: if schema.node_flags.is_empty() {
@@ -106,12 +110,22 @@ fn opens_graph(line: &str) -> bool {
 pub fn compile(source: &str, schema: &Schema<'_>) -> Result<Vec<CompiledGraph>, ParseError> {
     let directives = preprocess(source)?;
     let schema = effective(schema, schema.pure || directives.is_pure());
-    let body = directives.body;
+    compile_body(source, directives.body, &schema)
+}
+
+/// [`compile`] for a caller that has already read the directives: `body` is their
+/// [`Directives::body`](crate::preprocess::Directives), and `schema.pure` must already hold the
+/// file's mode. Reading the directives again would repeat the work of the caller's read.
+pub fn compile_body(
+    source: &str,
+    body: usize,
+    schema: &Schema<'_>,
+) -> Result<Vec<CompiledGraph>, ParseError> {
     parse_body(
         source,
         body,
-        &schema,
-        &capacities_of(&source[body..], &schema),
+        schema,
+        &capacities_of(&source[body..], schema),
     )
 }
 
@@ -120,6 +134,24 @@ pub fn compile(source: &str, schema: &Schema<'_>) -> Result<Vec<CompiledGraph>, 
 pub struct Collision {
     message: Cow<'static, str>,
     offset: usize,
+    /// Whether the clash is with a file that already exists in the output directory. Only then
+    /// does removing that directory help.
+    existing: bool,
+}
+
+impl Collision {
+    fn new(message: String, offset: usize) -> Self {
+        Self {
+            message: Cow::Owned(message),
+            offset,
+            existing: false,
+        }
+    }
+
+    /// Whether removing the output directory would clear this collision.
+    pub fn is_existing(&self) -> bool {
+        self.existing
+    }
 }
 
 impl Collision {
@@ -138,12 +170,36 @@ impl fmt::Display for Collision {
 
 impl std::error::Error for Collision {}
 
-/// Checks that no two outputs share a file name, and that none replaces the runtime.
+/// Checks that the graphs can be written: no two outputs share a file name, none replaces the
+/// runtime, and every front end accepts every graph (each graph is rendered into nowhere, so a
+/// clash found while rendering is reported too).
 ///
 /// Names are compared case-insensitively, so a graph set that builds on Linux also builds on
 /// macOS and Windows. Returns the first collision in source order. Nothing is written.
 pub fn check_outputs(frontend: &dyn Frontend, graphs: &[CompiledGraph]) -> Result<(), Collision> {
-    check_plan(frontend, graphs, None)
+    check_plan(frontend, graphs, None)?;
+    for graph in graphs {
+        frontend
+            .check_graph(graph)
+            .map_err(|error| collision_at(graph, &error))?;
+    }
+    Ok(())
+}
+
+/// A front end's error for `graph`. A name clash carries the offset of the declaration that
+/// clashes; any other error is placed at the graph's offset.
+fn collision_at(graph: &CompiledGraph, error: &io::Error) -> Collision {
+    let offset = name_clash(error).map_or(graph.offset, |clash| clash.offset);
+    Collision::new(error.to_string(), offset)
+}
+
+/// The name clash inside a front end's error, if the error is one.
+fn name_clash(error: &io::Error) -> Option<&NameClash> {
+    error.get_ref()?.downcast_ref::<NameClash>()
+}
+
+fn is_name_clash(error: &io::Error) -> bool {
+    name_clash(error).is_some()
 }
 
 /// [`check_outputs`], plus a refusal for any output that already exists in `directory`.
@@ -160,8 +216,8 @@ fn check_plan(
         let message =
             format!("the runtime file `{runtime}` already exists in the output directory");
         return Err(Collision {
-            message: Cow::Owned(message),
-            offset: first,
+            existing: true,
+            ..Collision::new(message, first)
         });
     }
     // Lowercased output name -> owning graph, or `None` for the runtime.
@@ -173,19 +229,19 @@ fn check_plan(
     for (index, graph) in graphs.iter().enumerate() {
         let name = graph.text(graph.name);
         if graph.kind != frontend.kind() {
-            let message = format!(
-                "graph `{name}` is a {} graph, but this front end writes {} graphs",
-                graph.kind.label(),
-                frontend.kind().label()
-            );
-            return Err(Collision {
-                message: Cow::Owned(message),
-                offset: graph.offset,
-            });
+            return Err(Collision::new(
+                format!(
+                    "graph `{name}` is a {} graph, but this front end writes {} graphs",
+                    graph.kind.label(),
+                    frontend.kind().label()
+                ),
+                graph.offset,
+            ));
         }
         for module in frontend.modules(graph) {
             let file = frontend.file_name(graph, module);
-            let message = if exists(&file) {
+            let existing = exists(&file);
+            let message = if existing {
                 format!("graph `{name}` would overwrite the existing file `{file}`")
             } else {
                 let key = file.to_lowercase();
@@ -205,8 +261,8 @@ fn check_plan(
                 }
             };
             return Err(Collision {
-                message: Cow::Owned(message),
-                offset: graph.offset,
+                existing,
+                ..Collision::new(message, graph.offset)
             });
         }
     }
@@ -250,7 +306,17 @@ fn write_each(
     for graph in graphs {
         for module in frontend.modules(graph) {
             let path = directory.join(frontend.file_name(graph, module));
-            write_file(&path, |output| frontend.emit_module(graph, module, output))?;
+            // A name clash found while rendering is located at its declaration. Other errors pass
+            // through unchanged.
+            write_file(&path, |output| frontend.emit_module(graph, module, output)).map_err(
+                |error| {
+                    if is_name_clash(&error) {
+                        io::Error::new(error.kind(), collision_at(graph, &error))
+                    } else {
+                        error
+                    }
+                },
+            )?;
             written.push(path);
         }
     }

@@ -3,27 +3,29 @@
 
 use graphite::frontend::registry::{self, Target};
 use graphite::kind::Kind;
+use graphite::pipeline::build::Chosen;
 use graphite::preprocess::Directives;
 
-/// The front end and mode for one file.
-pub struct Resolved {
-    pub target: &'static Target,
-    /// Whether the file is pure, so it is parsed as a pure file.
-    pub pure: bool,
-    /// What made the file pure, as a phrase such as "by `--pure`" or "because of `--frontend
-    /// purescript`". `None` for a machine file.
-    pub because: Option<String>,
+/// What a command does with a file's front end. Only a command that writes front-end output needs
+/// the infix to name one, so only it refuses an unknown infix.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Output {
+    /// `compile` and `check` write front-end output, so an unknown infix is an error.
+    Written,
+    /// Every other command only reads the graphs, so the infix is ignored.
+    Unused,
 }
 
 /// Resolves `name` (the file's name, without its directory), the `--frontend` and `--pure` flags,
 /// and the directives read from its source. Errors name the signals that conflict.
+/// `output` says what the command does with the front end. See [`Output`].
 pub fn resolve(
     name: &str,
     flag_front_end: Option<&str>,
     flag_pure: bool,
     directives: &Directives<'_>,
-) -> Result<Resolved, String> {
-    let infix = name_infix(name);
+    output: Output,
+) -> Result<Chosen, String> {
     let directive_pure = directives
         .frontend
         .is_some_and(|(value, _)| value == "pure");
@@ -47,6 +49,11 @@ pub fn resolve(
         None => None,
     };
     let explicit_pure = explicit_target.is_some_and(|target| target.frontend.kind() == Kind::Pure);
+    // A front end named by a flag or directive decides the front end, so the infix is ignored.
+    let infix = match &explicit {
+        Some(_) => None,
+        None => name_infix(name),
+    };
 
     let reason = pure_reason(
         name,
@@ -73,8 +80,10 @@ pub fn resolve(
             target
         }
         _ => match infix {
-            Some(infix) => infix_target(name, infix, reason.as_deref())?,
-            None => registry::lookup(if reason.is_some() {
+            Some(infix) if output == Output::Written => {
+                infix_target(name, infix, reason.as_deref())?
+            }
+            _ => registry::lookup(if reason.is_some() {
                 registry::DEFAULT_PURE_FRONT_END
             } else {
                 registry::DEFAULT_FRONT_END
@@ -82,7 +91,7 @@ pub fn resolve(
             .expect("the default front end is registered"),
         },
     };
-    Ok(Resolved {
+    Ok(Chosen {
         target,
         pure: reason.is_some(),
         because: reason,
@@ -129,11 +138,15 @@ fn pure_reason(
     if let Some(spelled) = explicit_pure {
         return Some(format!("because of {spelled}"));
     }
-    if let Some(infix) = infix
-        && targets_with_extension(infix).next().is_some()
-        && targets_with_extension(infix).all(|target| target.frontend.kind() == Kind::Pure)
-    {
-        return Some(format!("by its `.{infix}` infix"));
+    if let Some(infix) = infix {
+        let targets: Vec<&Target> = targets_with_extension(infix).collect();
+        if !targets.is_empty()
+            && targets
+                .iter()
+                .all(|target| target.frontend.kind() == Kind::Pure)
+        {
+            return Some(format!("by its `.{infix}` infix"));
+        }
     }
     None
 }
@@ -214,7 +227,7 @@ fn pure_front_ends() -> String {
 mod tests {
     use graphite::preprocess::Directives;
 
-    use super::resolve;
+    use super::{Output, resolve};
 
     fn none() -> Directives<'static> {
         Directives {
@@ -245,7 +258,7 @@ mod tests {
         flag_pure: bool,
         directives: &Directives<'_>,
     ) -> Result<(&'static str, bool), String> {
-        resolve(name, flag, flag_pure, directives).map(|r| (r.target.key, r.pure))
+        resolve(name, flag, flag_pure, directives, Output::Written).map(|r| (r.target.key, r.pure))
     }
 
     #[test]
@@ -279,6 +292,12 @@ mod tests {
             key("combat.ts.pure.graphite", None, false, &none()),
             Err("`combat.ts.pure.graphite` is pure (by its `.pure` name), but no pure front end writes `.ts` (pure front ends: purescript)".to_owned())
         );
+    }
+
+    #[test]
+    fn a_read_that_writes_no_output_ignores_the_infix() {
+        let resolved = resolve("my.walk.graphite", None, false, &none(), Output::Unused).unwrap();
+        assert_eq!((resolved.target.key, resolved.pure), ("typescript", false));
     }
 
     #[test]
@@ -341,7 +360,14 @@ mod tests {
 
     #[test]
     fn a_machine_file_sent_to_a_pure_front_end_is_pure_because_of_the_target() {
-        let resolved = resolve("door.graphite", Some("purescript"), false, &none()).unwrap();
+        let resolved = resolve(
+            "door.graphite",
+            Some("purescript"),
+            false,
+            &none(),
+            Output::Written,
+        )
+        .unwrap();
         assert!(resolved.pure);
         assert_eq!(
             resolved.because.as_deref(),
@@ -370,8 +396,23 @@ mod tests {
     }
 
     #[test]
+    fn a_flag_that_names_a_front_end_ignores_the_infix() {
+        assert_eq!(
+            key("door.purs.graphite", Some("typescript"), false, &none()),
+            Ok(("typescript", false))
+        );
+    }
+
+    #[test]
     fn a_purs_infix_is_pure_by_rule_five() {
-        let resolved = resolve("combat.purs.graphite", None, false, &none()).unwrap();
+        let resolved = resolve(
+            "combat.purs.graphite",
+            None,
+            false,
+            &none(),
+            Output::Written,
+        )
+        .unwrap();
         assert_eq!(resolved.because.as_deref(), Some("by its `.purs` infix"));
     }
 }

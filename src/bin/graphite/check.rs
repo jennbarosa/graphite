@@ -6,6 +6,7 @@ use std::path::Path;
 use graphite::pipeline::check_outputs;
 
 use crate::allow::Allowlist;
+use crate::resolve::Output;
 use crate::{Failure, json, load};
 
 pub fn run(
@@ -36,7 +37,7 @@ fn count(
     pure: bool,
 ) -> Result<usize, String> {
     let allowlist = allow.map(Allowlist::load).transpose()?;
-    let loaded = load::read(input, allowlist.as_ref(), front_end, pure)?;
+    let loaded = load::read(input, allowlist.as_ref(), front_end, pure, Output::Written)?;
     check_outputs(loaded.front_end.frontend, &loaded.graphs)
         .map_err(|collision| collision.diagnostic(&loaded.source).to_string())?;
     Ok(loaded.graphs.len())

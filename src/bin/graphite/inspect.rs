@@ -5,10 +5,11 @@ use std::path::Path;
 use graphite::graph::{Annotation, CompiledGraph, Span, Ty, index};
 use graphite::kind::Kind;
 
+use crate::resolve::Output;
 use crate::{Failure, json, load};
 
 pub fn run(input: &Path, json: bool, pure: bool) -> Result<(), Failure> {
-    let loaded = load::read(input, None, None, pure)?;
+    let loaded = load::read(input, None, None, pure, Output::Unused)?;
     let graphs = loaded.graphs;
     if json {
         println!("{}", describe_json(&graphs));
@@ -84,6 +85,7 @@ fn graph_json(graph: &CompiledGraph) -> String {
             ])
         })
         .collect();
+    let pure = graph.kind == Kind::Pure;
     let choices: Vec<String> = graph
         .choices
         .iter()
@@ -99,19 +101,20 @@ fn graph_json(graph: &CompiledGraph) -> String {
                     ])
                 })
                 .collect();
-            json::object(&[
-                ("name", json::quote(graph.text(choice.name))),
-                (
+            let mut fields = vec![("name", json::quote(graph.text(choice.name)))];
+            if pure {
+                fields.push((
                     "enum",
                     json::optional(
                         choice
                             .ty
                             .map(|ty| graph.text(graph.enums[ty as usize].name)),
                     ),
-                ),
-                ("annotations", annotations_json(graph, &choice.annotations)),
-                ("arms", json::array(&arms)),
-            ])
+                ));
+                fields.push(("annotations", annotations_json(graph, &choice.annotations)));
+            }
+            fields.push(("arms", json::array(&arms)));
+            json::object(&fields)
         })
         .collect();
     let edges: Vec<String> = graph
@@ -133,16 +136,20 @@ fn graph_json(graph: &CompiledGraph) -> String {
             ])
         })
         .collect();
-    json::object(&[
-        ("name", json::quote(graph.text(graph.name))),
-        ("kind", json::quote(graph.kind.label())),
-        ("nodes", json::array(&nodes)),
-        ("conditions", json::array(&conditions)),
-        ("enums", json::array(&enums)),
-        ("inputs", json::array(&inputs)),
-        ("choices", json::array(&choices)),
-        ("edges", json::array(&edges)),
-    ])
+    // The pure fields appear only on pure graphs, so a machine graph's JSON is unchanged.
+    let mut fields = vec![("name", json::quote(graph.text(graph.name)))];
+    if pure {
+        fields.push(("kind", json::quote(graph.kind.label())));
+    }
+    fields.push(("nodes", json::array(&nodes)));
+    fields.push(("conditions", json::array(&conditions)));
+    if pure {
+        fields.push(("enums", json::array(&enums)));
+        fields.push(("inputs", json::array(&inputs)));
+    }
+    fields.push(("choices", json::array(&choices)));
+    fields.push(("edges", json::array(&edges)));
+    json::object(&fields)
 }
 
 /// Annotations as `[{"key":..,"value":..}]`, with `value` null when the annotation has none.
