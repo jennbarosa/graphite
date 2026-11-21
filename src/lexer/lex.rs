@@ -1,24 +1,10 @@
-//! The lexer as a stage graph. `lex.graphite` holds its states and their edges. Each state's task here
-//! scans its part of the source, and reports which edges hold next. The result is the same token
-//! stream as the iterator in `lexer.rs`, and the same first error.
+//! The lexer: a streaming scanner that yields tokens and at most one error, then ends.
 
-use std::sync::OnceLock;
+use crate::lexer::{LexError, LexErrorKind, Token, TokenKind, WORD_BREAK};
 
-use crate::bootstrap;
-use crate::bootstrap::lex::{Task, task};
-use crate::graph::CompiledGraph;
-use crate::lexer::{LexError, LexErrorKind, Token, TokenKind};
-use crate::stage::Stepper;
-
-fn lexer_graph() -> &'static CompiledGraph {
-    static GRAPH: OnceLock<CompiledGraph> = OnceLock::new();
-    GRAPH.get_or_init(bootstrap::lex::graph)
-}
-
-/// The lexer as an iterator. Each call steps the graph until it has a token
-/// or an error to hand out, so the source is scanned lazily.
+/// The lexer as an iterator. Each call scans only as far as the next token or error needs, so the
+/// source is read lazily.
 pub struct Lexer<'a> {
-    stepper: Stepper<'static, Task>,
     state: State<'a>,
     /// Tokens already handed out, as an index into `state.tokens`.
     handed: usize,
@@ -34,8 +20,6 @@ impl<'a> Lexer<'a> {
     /// absolute, so diagnostics point into the whole source.
     pub fn at(source: &'a str, start: usize) -> Self {
         Lexer {
-            stepper: Stepper::new(lexer_graph(), task)
-                .unwrap_or_else(|error| panic!("the bundled lex.graphite is wrong: {error}")),
             state: State::new(source, start),
             handed: 0,
             finished: false,
@@ -58,14 +42,7 @@ impl<'a> Iterator for Lexer<'a> {
             if self.finished {
                 return self.state.error.take().map(Err);
             }
-            let state = &mut self.state;
-            let end = self
-                .stepper
-                .step(&mut |task| state.run(task))
-                .unwrap_or_else(|message| panic!("the lexer graph stopped: {message}"));
-            if end.is_some() {
-                self.finished = true;
-            }
+            self.finished = self.state.step();
         }
     }
 }
@@ -80,8 +57,22 @@ struct State<'a> {
     pending_dedents: usize,
     line_start: bool,
     line_has_tokens: bool,
+    /// Set once the source is exhausted: the lexer closes the last line and every open block.
+    finishing: bool,
     tokens: Vec<Token<'a>>,
     error: Option<LexError>,
+}
+
+/// What the first character of a step's text is.
+enum Class {
+    Eof,
+    Newline,
+    Tab,
+    LineStart,
+    At,
+    Colon,
+    Arrow,
+    Word,
 }
 
 impl<'a> State<'a> {
@@ -94,6 +85,7 @@ impl<'a> State<'a> {
             pending_dedents: 0,
             line_start: true,
             line_has_tokens: false,
+            finishing: false,
             tokens: Vec::new(),
             error: None,
         }
@@ -107,58 +99,61 @@ impl<'a> State<'a> {
         self.tokens.push(Token { kind, offset });
     }
 
-    fn fail(&mut self, kind: LexErrorKind, offset: usize) -> &'static [&'static str] {
+    fn fail(&mut self, kind: LexErrorKind, offset: usize) -> bool {
         self.error = Some(LexError { kind, offset });
-        &["fail"]
+        true
     }
 
-    /// Runs the task of one state and returns the conditions that hold after it.
-    fn run(&mut self, task: Task) -> &'static [&'static str] {
-        match task {
-            Task::Pending => self.pending(),
-            Task::Classify => self.classify(),
-            Task::LineBreak => self.line_break(),
-            Task::Indentation => self.indentation(),
-            Task::At => self.punctuation(TokenKind::At, 1),
-            Task::Colon => self.punctuation(TokenKind::Colon, 1),
-            Task::Arrow => self.punctuation(TokenKind::Arrow, 2),
-            Task::Word => self.word(),
-            Task::TabError => self.fail(LexErrorKind::Tab, self.position),
-            Task::Finish => self.finish(),
+    /// Runs one step and returns `true` once the lexer is done or has failed. A step may emit
+    /// tokens or none; the caller hands tokens out between steps.
+    fn step(&mut self) -> bool {
+        if self.finishing {
+            return self.finish();
         }
-    }
-
-    /// Emits a pending dedent, one per visit, or reports that none are left.
-    fn pending(&mut self) -> &'static [&'static str] {
-        if self.pending_dedents == 0 {
-            return &["idle"];
+        if self.pending_dedents > 0 {
+            self.pending_dedents -= 1;
+            self.emit(TokenKind::Dedent, self.position);
+            return false;
         }
-        self.pending_dedents -= 1;
-        self.emit(TokenKind::Dedent, self.position);
-        &["dedent"]
+        match self.classify() {
+            Class::Eof => {
+                self.finishing = true;
+                self.finish()
+            }
+            Class::Newline => {
+                self.line_break();
+                false
+            }
+            Class::Tab => self.fail(LexErrorKind::Tab, self.position),
+            Class::LineStart => self.indentation(),
+            Class::At => self.punctuation(TokenKind::At, 1),
+            Class::Colon => self.punctuation(TokenKind::Colon, 1),
+            Class::Arrow => self.punctuation(TokenKind::Arrow, 2),
+            Class::Word => self.word(),
+        }
     }
 
     /// Skips the spaces, then reports what the next character is.
-    fn classify(&mut self) -> &'static [&'static str] {
+    fn classify(&mut self) -> Class {
         let bytes = self.bytes();
         self.pass_start = self.position;
         while bytes.get(self.position) == Some(&b' ') {
             self.position += 1;
         }
         match bytes.get(self.position) {
-            None => &["eof"],
-            Some(b'\n' | b'\r') => &["newline"],
-            Some(b'\t') => &["tab"],
-            Some(_) if self.line_start => &["line_start"],
-            Some(b'@') => &["at_sign"],
-            Some(b':') => &["colon"],
-            Some(b'-') if bytes.get(self.position + 1) == Some(&b'>') => &["arrow"],
-            Some(_) => &["word"],
+            None => Class::Eof,
+            Some(b'\n' | b'\r') => Class::Newline,
+            Some(b'\t') => Class::Tab,
+            Some(_) if self.line_start => Class::LineStart,
+            Some(b'@') => Class::At,
+            Some(b':') => Class::Colon,
+            Some(b'-') if bytes.get(self.position + 1) == Some(&b'>') => Class::Arrow,
+            Some(_) => Class::Word,
         }
     }
 
     /// Consumes a line break, and emits the line's newline when the line had tokens.
-    fn line_break(&mut self) -> &'static [&'static str] {
+    fn line_break(&mut self) {
         let bytes = self.bytes();
         let offset = self.position;
         self.position += 1;
@@ -170,21 +165,20 @@ impl<'a> State<'a> {
             self.line_has_tokens = false;
             self.emit(TokenKind::Newline, offset);
         }
-        &["again"]
     }
 
     /// The first token of a line: its indentation becomes an indent, a dedent, or nothing.
-    fn indentation(&mut self) -> &'static [&'static str] {
+    fn indentation(&mut self) -> bool {
         self.line_start = false;
         let width = self.position - self.pass_start;
         let current = self.indents.last().copied().unwrap_or(0);
         if width > current {
             self.indents.push(width);
             self.emit(TokenKind::Indent, self.position);
-            return &["indent"];
+            return false;
         }
         if width == current {
-            return &["same"];
+            return false;
         }
         let depth = if width == 0 {
             0
@@ -196,55 +190,54 @@ impl<'a> State<'a> {
                         kind: LexErrorKind::Indentation,
                         offset: self.pass_start,
                     });
-                    return &["bad"];
+                    return true;
                 }
             }
         };
         self.pending_dedents = self.indents.len() - depth - 1;
         self.indents.truncate(depth);
         self.emit(TokenKind::Dedent, self.position);
-        &["dedent"]
+        false
     }
 
     /// `@`, `:` or `->`: a token of its own.
-    fn punctuation(&mut self, kind: TokenKind<'a>, length: usize) -> &'static [&'static str] {
+    fn punctuation(&mut self, kind: TokenKind<'a>, length: usize) -> bool {
         let offset = self.position;
         self.position += length;
         self.line_has_tokens = true;
         self.emit(kind, offset);
-        &["again"]
+        false
     }
 
     /// A bare word: everything up to a break character or `->`.
-    fn word(&mut self) -> &'static [&'static str] {
+    fn word(&mut self) -> bool {
         let offset = self.position;
         self.position += word_length(&self.bytes()[offset..]);
         self.line_has_tokens = true;
         let text = &self.source[offset..self.position];
         self.emit(TokenKind::Word(text), offset);
-        &["again"]
+        false
     }
 
     /// The end of the source: close the last line, then close every open block.
-    fn finish(&mut self) -> &'static [&'static str] {
+    fn finish(&mut self) -> bool {
         if self.line_has_tokens {
             self.line_has_tokens = false;
             self.emit(TokenKind::Newline, self.position);
-            return &["again"];
+            return false;
         }
         match self.indents.pop() {
             Some(_) => {
                 self.emit(TokenKind::Dedent, self.position);
-                &["again"]
+                false
             }
-            None => &["done"],
+            None => true,
         }
     }
 }
 
 /// The length of the word at the start of `bytes`: up to a break character or `->`.
 fn word_length(bytes: &[u8]) -> usize {
-    use crate::lexer::WORD_BREAK;
     let mut length = 0;
     while let Some(&byte) = bytes.get(length) {
         if WORD_BREAK[byte as usize] || (byte == b'-' && bytes.get(length + 1) == Some(&b'>')) {
