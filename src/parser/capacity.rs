@@ -2,6 +2,7 @@
 
 use crate::graph::CompiledGraph;
 use crate::interner::Interner;
+use crate::kind::Kind;
 
 use super::ParseError;
 
@@ -17,6 +18,9 @@ pub struct Capacity {
     pub conditions: usize,
     pub choices: usize,
     pub arms: usize,
+    pub enums: usize,
+    pub members: usize,
+    pub inputs: usize,
     pub annotations: usize,
     pub flags: usize,
     pub strings: usize,
@@ -31,6 +35,9 @@ impl Capacity {
             self.conditions,
             self.choices,
             self.arms,
+            self.enums,
+            self.members,
+            self.inputs,
             self.annotations,
             self.flags,
         ] {
@@ -52,13 +59,18 @@ impl Capacity {
         Ok(CompiledGraph {
             name,
             offset,
+            kind: Kind::Machine,
             strings,
             nodes: buffer(self.nodes)?,
             edges: buffer(self.edges)?,
             outgoing: buffer(self.edges)?,
             conditions: buffer(self.conditions)?,
+            tests: buffer(self.conditions)?,
             choices: buffer(self.choices)?,
             arms: buffer(self.arms)?,
+            enums: buffer(self.enums)?,
+            members: buffer(self.members)?,
+            inputs: buffer(self.inputs)?,
             annotations: buffer(self.annotations)?,
             flags: buffer(self.flags)?,
             graph_annotations: 0..0,

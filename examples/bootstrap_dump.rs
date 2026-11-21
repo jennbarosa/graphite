@@ -8,7 +8,7 @@
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use graphite::graph::{CompiledGraph, Span, index};
+use graphite::graph::{CompiledGraph, Span, Test, Ty, index};
 use graphite::interner::StringId;
 use graphite::parser::Schema;
 use graphite::stage;
@@ -180,9 +180,15 @@ fn emit(graph: &CompiledGraph) -> String {
             .iter()
             .map(|choice| {
                 format!(
-                    "Choice {{ name: {}, arms: {} }}",
+                    "Choice {{ name: {}, arms: {}, ty: {}, annotations: {}, offset: {} }}",
                     id(choice.name),
-                    span(&choice.arms)
+                    span(&choice.arms),
+                    match choice.ty {
+                        Some(ty) => format!("Some({ty})"),
+                        None => "None".to_string(),
+                    },
+                    span(&choice.annotations),
+                    choice.offset,
                 )
             })
             .collect(),
@@ -217,6 +223,60 @@ fn emit(graph: &CompiledGraph) -> String {
             })
             .collect(),
     );
+    let enums = list(
+        graph
+            .enums
+            .iter()
+            .map(|item| {
+                format!(
+                    "Enum {{ name: {}, annotations: {}, members: {} }}",
+                    id(item.name),
+                    span(&item.annotations),
+                    span(&item.members)
+                )
+            })
+            .collect(),
+    );
+    let members = list(
+        graph
+            .members
+            .iter()
+            .map(|member| {
+                format!(
+                    "Member {{ name: {}, annotations: {} }}",
+                    id(member.name),
+                    span(&member.annotations)
+                )
+            })
+            .collect(),
+    );
+    let inputs = list(
+        graph
+            .inputs
+            .iter()
+            .map(|input| {
+                let ty = match input.ty {
+                    Ty::Bool => "Ty::Bool".to_string(),
+                    Ty::Enum(index) => format!("Ty::Enum({index})"),
+                };
+                format!(
+                    "Input {{ name: {}, ty: {ty}, annotations: {} }}",
+                    id(input.name),
+                    span(&input.annotations)
+                )
+            })
+            .collect(),
+    );
+    let tests = list(
+        graph
+            .tests
+            .iter()
+            .map(|test| match test {
+                Test::Flag(input) => format!("Test::Flag({input})"),
+                Test::Is(input, member) => format!("Test::Is({input}, {member})"),
+            })
+            .collect(),
+    );
     let conditions = list(graph.conditions.iter().map(|&name| id(name)).collect());
     let flags = list(graph.flags.iter().map(|&name| id(name)).collect());
     let outgoing = list(graph.outgoing.iter().map(u32::to_string).collect());
@@ -228,13 +288,18 @@ fn emit(graph: &CompiledGraph) -> String {
         "    CompiledGraph {".to_string(),
         format!("        name: {},", id(graph.name)),
         format!("        offset: {},", graph.offset),
+        format!("        kind: Kind::{:?},", graph.kind),
         format!("        strings: interner(STRINGS, {bytes}),"),
         format!("        nodes: vec![{nodes}],"),
         format!("        edges: vec![{edges}],"),
         format!("        outgoing: vec![{outgoing}],"),
         format!("        conditions: vec![{conditions}],"),
+        format!("        tests: vec![{tests}],"),
         format!("        choices: vec![{choices}],"),
         format!("        arms: vec![{arms}],"),
+        format!("        enums: vec![{enums}],"),
+        format!("        members: vec![{members}],"),
+        format!("        inputs: vec![{inputs}],"),
         format!("        annotations: vec![{annotations}],"),
         format!("        flags: vec![{flags}],"),
         format!(

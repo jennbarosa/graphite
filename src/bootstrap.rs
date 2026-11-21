@@ -5,8 +5,11 @@
     unused_imports,
     reason = "each generated module names only the variants its graph uses"
 )]
-use crate::graph::{Annotation, Arm, Choice, CompiledGraph, Edge, Node};
+use crate::graph::{
+    Annotation, Arm, Choice, CompiledGraph, Edge, Enum, Input, Member, Node, Test, Ty,
+};
 use crate::interner::{Interner, StringId};
+use crate::kind::Kind;
 
 /// The string with zero-based index `index` in its graph's string table.
 pub(crate) fn id(index: u32) -> StringId {

@@ -344,6 +344,9 @@ impl<'s> Builder<'s> {
             Choice {
                 name,
                 arms: narrow(start..self.graph.arms.len()),
+                ty: None,
+                annotations: 0..0,
+                offset,
             },
             offset,
         )?;

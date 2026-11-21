@@ -3,11 +3,14 @@
 use std::ops::Range;
 
 use crate::interner::{Interner, StringId};
+use crate::kind::Kind;
 
 pub struct CompiledGraph {
     pub name: StringId,
     /// Byte offset of the graph's name in the source, for diagnostics.
     pub offset: usize,
+    /// Whether this is a state machine or a pure decision table.
+    pub kind: Kind,
     pub strings: Interner,
     pub nodes: Vec<Node>,
     /// Edges remain in source order. Nodes index them through `outgoing`.
@@ -15,8 +18,14 @@ pub struct CompiledGraph {
     /// CSR adjacency: each node's range contains edge IDs in source order.
     pub outgoing: Vec<u32>,
     pub conditions: Vec<StringId>,
+    /// What each condition tests, parallel to `conditions`. Empty for machine graphs.
+    pub tests: Vec<Test>,
     pub choices: Vec<Choice>,
     pub arms: Vec<Arm>,
+    /// Pure graphs only: the enums, their members, and the inputs.
+    pub enums: Vec<Enum>,
+    pub members: Vec<Member>,
+    pub inputs: Vec<Input>,
     pub annotations: Vec<Annotation>,
     /// Domain flags only; core flags are represented directly on `Node`.
     pub flags: Vec<StringId>,
@@ -70,6 +79,49 @@ pub struct Edge {
 pub struct Choice {
     pub name: StringId,
     pub arms: Span,
+    /// The enum the arms' tags come from, as an index into `enums`. `None` in machine graphs.
+    pub ty: Option<u32>,
+    /// The annotations on the `choose` line, a range into `annotations`.
+    pub annotations: Span,
+    /// Byte offset of the `choose` line, for diagnostics.
+    pub offset: usize,
+}
+
+/// A pure file's enum: its members are a range into `members`.
+#[derive(Debug)]
+pub struct Enum {
+    pub name: StringId,
+    pub annotations: Span,
+    pub members: Span,
+}
+
+#[derive(Debug)]
+pub struct Member {
+    pub name: StringId,
+    pub annotations: Span,
+}
+
+/// A pure file's input: a bool, or one enum.
+#[derive(Debug)]
+pub struct Input {
+    pub name: StringId,
+    pub ty: Ty,
+    pub annotations: Span,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Ty {
+    Bool,
+    /// An index into `enums`.
+    Enum(u32),
+}
+
+/// What a condition tests. `Flag` reads a bool input; `Is` compares an enum input with one of
+/// its members, by the member's position in the enum.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Test {
+    Flag(u32),
+    Is(u32, u32),
 }
 
 #[derive(Debug)]

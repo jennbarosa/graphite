@@ -59,6 +59,9 @@ fn capacities_of(source: &str, schema: &Schema<'_>) -> Vec<Capacity> {
             conditions: block.lines,
             choices: block.lines,
             arms: block.lines,
+            enums: 0,
+            members: 0,
+            inputs: 0,
             annotations: block.bytes + block.lines * block.defaults,
             flags: if schema.node_flags.is_empty() {
                 0

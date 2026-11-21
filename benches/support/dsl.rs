@@ -34,6 +34,9 @@ pub fn graph_capacity(names: &[String]) -> Capacity {
         conditions: nodes,
         choices: full_choices + partial_choices,
         arms: full_choices * 4 + partial_choices * 2,
+        enums: 0,
+        members: 0,
+        inputs: 0,
         annotations: nodes
             + nodes / 3 * 2
             + usize::from(nodes % 3 == 2)
