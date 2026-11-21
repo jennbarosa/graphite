@@ -37,28 +37,6 @@ tool instead, set its variable: `GRAPHITE_BUN`, `GRAPHITE_TSC`, `GRAPHITE_PURS` 
 cargo run -- doctor
 ```
 
-## Bootstrap
-
-Graphite reads its own grammar from four rule files in `src/graphs/`: `lex.graphite`,
-`grammar.graphite`, `structure.graphite` and `directive.graphite`. The compiled form of each is
-committed in `src/generated/`, and the library builds from those files. Nothing parses
-`.graphite` text at build time.
-
-After you edit a `.graphite` file, regenerate its compiled form from the repository root:
-
-```sh
-for rule in lex grammar structure directive; do
-  cargo run --example bootstrap_dump -- "src/graphs/$rule.graphite" "src/generated/$rule.rs"
-done
-```
-
-Commit the changed files in `src/generated/` with the rule change. CI runs the same loop
-and fails if the committed files are stale.
-
-The regeneration steps (read, parse, emit, write) are the stage graph in
-`src/graphs/regenerate.graphite`, run by `graphite::stage`. The Rust task bodies are in
-`examples/bootstrap_dump.rs`.
-
 ## Checks before you open a pull request
 
 CI runs these on every push and pull request. Run them locally first:
@@ -68,9 +46,6 @@ cargo fmt --check
 cargo clippy --all-targets -- -D warnings
 cargo test
 ```
-
-CI also regenerates `src/generated/` from the `.graphite` rule files and fails if the
-committed copies differ. See [Bootstrap](#bootstrap).
 
 Clippy warnings fail the build, so fix them rather than adding `#[allow]` unless there
 is a clear reason, and say that reason in a comment.
@@ -132,22 +107,18 @@ cargo test --test parser_fixtures walk -- --nocapture
 
 ```text
 src/
-  lexer.rs, lexer/lex.rs   token types, and the lexer that runs lex.graphite
-  parser.rs, parser/       the parser that runs grammar.graphite into compiled arrays
-  bootstrap.rs             the rule files as compiled data, from generated/
-  generated/               compiled rule data, written by examples/bootstrap_dump.rs
-  graphs/                  the .graphite rule files that describe graphite itself, plus
-                           regenerate.graphite, the stage graph for regeneration
-  stage.rs                 the stage-graph runner that drives build and regeneration
+  lexer.rs, lexer/lex.rs   token types, and the streaming lexer
+  parser.rs, parser/       the grammar and structure checks, which build compiled arrays
+  preprocess.rs            the @! directives at the top of a file
   graph.rs, interner.rs    compiled graph data, and the string interner
+  kind.rs                  machine and pure graph kinds
   frontend/                output front ends: typescript/ (index, chunks, runtime.ts)
   pipeline.rs              compile and write_modules
   bin/graphite/            the CLI; runtime_assets.rs bundles the TypeScript durable engine
 src/frontend/typescript/durable/  durable engine, run log, and the run CLI (TypeScript)
 cli/                       debugger session (TypeScript)
 docs/                      user documentation
-examples/                  DSL files, a TypeScript driver, a durable workflow, a Rust program,
-                           and bootstrap_dump, the regeneration tool
+examples/                  DSL files, a TypeScript driver, a durable workflow, and a Rust program
 tests/                     Rust integration tests, fixtures, and Bun tests
 benches/                   Criterion benchmarks
 ```

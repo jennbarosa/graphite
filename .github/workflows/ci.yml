@@ -24,13 +24,6 @@ jobs:
       # The graphite CLI finds Bun on the PATH, so the pinned copy must be there too.
       - name: Put the pinned tools on the PATH
         run: echo "$GITHUB_WORKSPACE/tools/bin" >> "$GITHUB_PATH"
-      # src/generated/ must match what the converter writes from the .graphite rule files.
-      - name: Check the generated rule data is current
-        run: |
-          for rule in lex grammar structure directive; do
-            cargo run --quiet --example bootstrap_dump -- "src/graphs/$rule.graphite" "src/generated/$rule.rs"
-          done
-          git diff --exit-code -- src/generated
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test

@@ -58,14 +58,7 @@ Run these steps in order before calling a change done or committing. Each step m
    b. Re-index the graph: `node .gitnexus/run.cjs analyze --index-only`.
 2. **Lint and unit tests.**
    a. `cargo clippy --all-targets -- -D warnings`
-   b. Generated rule data is current:
-      ```sh
-      for rule in lex grammar structure directive; do
-        cargo run --quiet --example bootstrap_dump -- "src/graphs/$rule.graphite" "src/generated/$rule.rs"
-      done
-      git diff --exit-code -- src/generated
-      ```
-   c. All unit tests: `cargo test --lib --bins`
+   b. All unit tests: `cargo test --lib --bins`
 3. **Integration tests and `.graphite` fixtures.**
    a. The fixture-driven targets, named explicitly so they are never skipped:
       ```sh
