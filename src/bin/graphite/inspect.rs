@@ -28,7 +28,25 @@ pub fn describe_json(graphs: &[CompiledGraph]) -> String {
 }
 
 fn graph_json(graph: &CompiledGraph) -> String {
-    let nodes: Vec<String> = graph
+    let pure = graph.kind == Kind::Pure;
+    let mut fields = vec![("name", json::quote(graph.text(graph.name)))];
+    // The pure fields appear only on pure graphs, so a machine graph's JSON is unchanged.
+    if pure {
+        fields.push(("kind", json::quote(graph.kind.label())));
+    }
+    fields.push(("nodes", json::array(&nodes_json(graph))));
+    fields.push(("conditions", json::array(&conditions_json(graph))));
+    if pure {
+        fields.push(("enums", json::array(&enums_json(graph))));
+        fields.push(("inputs", json::array(&inputs_json(graph))));
+    }
+    fields.push(("choices", json::array(&choices_json(graph, pure))));
+    fields.push(("edges", json::array(&edges_json(graph))));
+    json::object(&fields)
+}
+
+fn nodes_json(graph: &CompiledGraph) -> Vec<String> {
+    graph
         .nodes
         .iter()
         .map(|node| {
@@ -44,13 +62,19 @@ fn graph_json(graph: &CompiledGraph) -> String {
                 ("annotations", annotations_json(graph, &node.annotations)),
             ])
         })
-        .collect();
-    let conditions: Vec<String> = graph
+        .collect()
+}
+
+fn conditions_json(graph: &CompiledGraph) -> Vec<String> {
+    graph
         .conditions
         .iter()
         .map(|&id| json::quote(graph.text(id)))
-        .collect();
-    let enums: Vec<String> = graph
+        .collect()
+}
+
+fn enums_json(graph: &CompiledGraph) -> Vec<String> {
+    graph
         .enums
         .iter()
         .map(|item| {
@@ -69,8 +93,11 @@ fn graph_json(graph: &CompiledGraph) -> String {
                 ("members", json::array(&members)),
             ])
         })
-        .collect();
-    let inputs: Vec<String> = graph
+        .collect()
+}
+
+fn inputs_json(graph: &CompiledGraph) -> Vec<String> {
+    graph
         .inputs
         .iter()
         .map(|input| {
@@ -84,9 +111,12 @@ fn graph_json(graph: &CompiledGraph) -> String {
                 ("annotations", annotations_json(graph, &input.annotations)),
             ])
         })
-        .collect();
-    let pure = graph.kind == Kind::Pure;
-    let choices: Vec<String> = graph
+        .collect()
+}
+
+/// A choice carries its enum and annotations only on a pure graph.
+fn choices_json(graph: &CompiledGraph, pure: bool) -> Vec<String> {
+    graph
         .choices
         .iter()
         .map(|choice| {
@@ -116,8 +146,11 @@ fn graph_json(graph: &CompiledGraph) -> String {
             fields.push(("arms", json::array(&arms)));
             json::object(&fields)
         })
-        .collect();
-    let edges: Vec<String> = graph
+        .collect()
+}
+
+fn edges_json(graph: &CompiledGraph) -> Vec<String> {
+    graph
         .edges
         .iter()
         .map(|edge| {
@@ -135,21 +168,7 @@ fn graph_json(graph: &CompiledGraph) -> String {
                 ("annotations", annotations_json(graph, &edge.annotations)),
             ])
         })
-        .collect();
-    // The pure fields appear only on pure graphs, so a machine graph's JSON is unchanged.
-    let mut fields = vec![("name", json::quote(graph.text(graph.name)))];
-    if pure {
-        fields.push(("kind", json::quote(graph.kind.label())));
-    }
-    fields.push(("nodes", json::array(&nodes)));
-    fields.push(("conditions", json::array(&conditions)));
-    if pure {
-        fields.push(("enums", json::array(&enums)));
-        fields.push(("inputs", json::array(&inputs)));
-    }
-    fields.push(("choices", json::array(&choices)));
-    fields.push(("edges", json::array(&edges)));
-    json::object(&fields)
+        .collect()
 }
 
 /// Annotations as `[{"key":..,"value":..}]`, with `value` null when the annotation has none.
