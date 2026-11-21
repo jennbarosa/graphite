@@ -13,6 +13,10 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use cli::{graphite, manifest, scratch, stderr, stdout};
+use graphite::frontend::lang::purescript::PURESCRIPT;
+use graphite::frontend::lang::{Language, Role};
+use graphite::frontend::pure::decision::{Decisions, Function, Test, Ty, lower};
+use graphite::parser::Schema;
 
 /// The inputs of one decision: each input's name, and its value (`true`, `false`, or a member).
 type Input = HashMap<String, String>;
@@ -271,12 +275,10 @@ fn write_project(project: &Path) {
     }
 }
 
-#[test]
-fn the_generated_modules_build_with_purs_in_strict_mode() {
-    let project: PathBuf = scratch("pure-project");
-    write_project(&project);
+/// Builds the project with `spago build --strict`, and returns the log. Any warning or error fails.
+fn build(project: &Path) -> String {
     let output = tools::command("spago", "GRAPHITE_SPAGO")
-        .current_dir(&project)
+        .current_dir(project)
         .env("PATH", tools::path_with_tools())
         .args(["build", "--strict"])
         .output()
@@ -289,4 +291,188 @@ fn the_generated_modules_build_with_purs_in_strict_mode() {
         "spago build --strict failed:\n{log}"
     );
     assert!(log.contains("Build succeeded"), "{log}");
+    log
+}
+
+#[test]
+fn the_generated_modules_build_with_purs_in_strict_mode() {
+    let project: PathBuf = scratch("pure-project");
+    write_project(&project);
+    build(&project);
+}
+
+/// One input's value in an assignment: a bool, or the position of a member in its enum.
+#[derive(Clone, Copy, PartialEq)]
+enum Value {
+    Flag(bool),
+    Member(usize),
+}
+
+/// Every assignment of a module's inputs, with the last input varying fastest.
+fn assignments(decisions: &Decisions) -> Vec<Vec<Value>> {
+    let mut all = vec![Vec::new()];
+    for input in &decisions.inputs {
+        let values: Vec<Value> = match input.ty {
+            Ty::Bool => vec![Value::Flag(false), Value::Flag(true)],
+            Ty::Enum(item) => (0..decisions.enums[item].members.len())
+                .map(Value::Member)
+                .collect(),
+        };
+        let mut next = Vec::new();
+        for row in &all {
+            for value in &values {
+                let mut extended = row.clone();
+                extended.push(*value);
+                next.push(extended);
+            }
+        }
+        all = next;
+    }
+    all
+}
+
+fn holds(test: Test, values: &[Value]) -> bool {
+    match test {
+        Test::Flag(input) => values[input] == Value::Flag(true),
+        Test::Is(input, member) => values[input] == Value::Member(member),
+    }
+}
+
+/// The tag a choice returns for `values`, as its source defines it: the first arm whose test
+/// holds, with the last arm as the `else`.
+fn decided<'g>(function: &Function<'g>, values: &[Value]) -> &'g str {
+    function
+        .cases
+        .iter()
+        .find(|case| case.test.is_none_or(|test| holds(test, values)))
+        .map(|case| case.tag)
+        .expect("a pure choice ends with an else")
+}
+
+/// A PureScript string literal for `text`.
+fn literal(text: &str) -> String {
+    let mut out = Vec::new();
+    PURESCRIPT.string(text, &mut out).unwrap();
+    String::from_utf8(out).unwrap()
+}
+
+/// The input list as a label spells it, and the record literal the driver passes for it.
+fn arguments(decisions: &Decisions, values: &[Value]) -> (String, String) {
+    let module = PURESCRIPT.ident(Role::Module, decisions.name);
+    let mut labels = Vec::new();
+    let mut fields = Vec::new();
+    for (input, value) in decisions.inputs.iter().zip(values) {
+        let (text, code) = match *value {
+            Value::Flag(flag) => (flag.to_string(), flag.to_string()),
+            Value::Member(member) => {
+                let Ty::Enum(item) = input.ty else {
+                    unreachable!("a member value belongs to an enum input")
+                };
+                let name = decisions.enums[item].members[member].name;
+                (
+                    name.to_owned(),
+                    format!("{module}.{}", PURESCRIPT.ident(Role::Member, name)),
+                )
+            }
+        };
+        labels.push(format!("{}={text}", input.name));
+        fields.push(format!(
+            "{}: {code}",
+            PURESCRIPT.ident(Role::Field, input.name)
+        ));
+    }
+    let record = if fields.is_empty() {
+        "{}".to_owned()
+    } else {
+        format!("{{ {} }}", fields.join(", "))
+    };
+    (labels.join(","), record)
+}
+
+/// The PureScript driver, which calls every generated choice on every input and prints each
+/// result, and the report it must print. The report comes from the source decisions, so the
+/// generated code is compared with what the source says, not with its own text.
+struct Driver {
+    source: String,
+    report: String,
+}
+
+/// The driver for the samples at `paths`, relative to the crate root. The modules are imported by
+/// their names, as `write_project` writes them.
+fn driver(paths: &[&str]) -> Driver {
+    let mut imports = String::new();
+    let mut shows = String::new();
+    let mut entries = Vec::new();
+    let mut report = String::new();
+    for path in paths {
+        let source = std::fs::read_to_string(manifest().join(path)).unwrap();
+        let schema = Schema {
+            pure: true,
+            ..Schema::default()
+        };
+        let graphs = graphite::pipeline::compile(&source, &schema).unwrap();
+        for graph in &graphs {
+            let decisions = lower(graph);
+            let module = PURESCRIPT.ident(Role::Module, decisions.name);
+            imports.push_str(&format!("import {module} as {module}\n"));
+            for item in &decisions.enums {
+                let ty = PURESCRIPT.ident(Role::Type, item.name);
+                shows.push_str(&format!("\nshow{module}{ty} :: {module}.{ty} -> String\n"));
+                for member in &item.members {
+                    let spelled = PURESCRIPT.ident(Role::Member, member.name);
+                    shows.push_str(&format!(
+                        "show{module}{ty} {module}.{spelled} = {}\n",
+                        literal(member.name)
+                    ));
+                }
+            }
+            for function in &decisions.functions {
+                let returns = PURESCRIPT.ident(Role::Type, decisions.enums[function.returns].name);
+                let show = format!("show{module}{returns}");
+                let call = format!(
+                    "{module}.{}",
+                    PURESCRIPT.ident(Role::Function, function.name)
+                );
+                for values in assignments(&decisions) {
+                    let (args, record) = arguments(&decisions, &values);
+                    let prefix = format!("{}.{}({args}) -> ", decisions.name, function.name);
+                    let tag = decided(function, &values);
+                    entries.push(format!(
+                        "{} <> {show}({call} {record}) <> \"\\n\"",
+                        literal(&prefix)
+                    ));
+                    report.push_str(&format!("{prefix}{tag}\n"));
+                }
+            }
+        }
+    }
+    // Prelude alone: `foldr` is not in it, so the report is one `<>` chain.
+    let source = format!(
+        "module GraphiteDriver where\n\nimport Prelude\n{imports}{shows}\n\
+         report :: String\n\
+         report = {}\n",
+        entries.join("\n  <> ")
+    );
+    Driver { source, report }
+}
+
+#[test]
+fn the_generated_decisions_return_what_their_sources_say() {
+    let project: PathBuf = scratch("pure-runtime-project");
+    write_project(&project);
+    let driver = driver(&SAMPLES.map(|(_, path)| path));
+    std::fs::write(project.join("src/GraphiteDriver.purs"), &driver.source).unwrap();
+    build(&project);
+    std::fs::write(
+        project.join("run.mjs"),
+        "import { report } from \"./output/GraphiteDriver/index.js\";\nprocess.stdout.write(report);\n",
+    )
+    .unwrap();
+    let output = tools::command("bun", "GRAPHITE_BUN")
+        .current_dir(&project)
+        .arg("run.mjs")
+        .output()
+        .expect("bun must be installed: run scripts/setup-tools.py");
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert_eq!(stdout(&output), driver.report);
 }
