@@ -10,11 +10,9 @@ pub struct Diagnostic<'s> {
 }
 
 impl<'s> Diagnostic<'s> {
-    pub(crate) fn new(
-        message: impl Into<Cow<'static, str>>,
-        offset: usize,
-        source: &'s str,
-    ) -> Self {
+    /// A diagnostic for `message` at byte `offset` of `source`. Callers that add context to a
+    /// library message build one with this, so it renders like the library's own.
+    pub fn new(message: impl Into<Cow<'static, str>>, offset: usize, source: &'s str) -> Self {
         Self {
             message: message.into(),
             offset,

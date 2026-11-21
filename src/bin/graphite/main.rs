@@ -15,6 +15,7 @@ mod js;
 mod json;
 mod load;
 mod man;
+mod resolve;
 mod run;
 mod runtime_assets;
 mod scratch;
@@ -85,9 +86,10 @@ fn run(command: Command) -> Result<(), Failure> {
             input,
             front_end,
             allow,
+            pure,
             json,
-        } => check::run(&input, &front_end, allow.as_deref(), json),
-        Command::Inspect { input, json } => inspect::run(&input, json),
+        } => check::run(&input, front_end.as_deref(), allow.as_deref(), pure, json),
+        Command::Inspect { input, json, pure } => inspect::run(&input, json, pure),
         other => dispatch(other).map_err(Failure::Message),
     }
 }
@@ -121,7 +123,14 @@ fn dispatch(command: Command) -> Result<(), String> {
             out,
             front_end,
             allow,
-        } => compile::run(&input, out.as_deref(), &front_end, allow.as_deref()),
+            pure,
+        } => compile::run(
+            &input,
+            out.as_deref(),
+            front_end.as_deref(),
+            allow.as_deref(),
+            pure,
+        ),
         Command::Run {
             input,
             state,

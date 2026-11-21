@@ -32,6 +32,7 @@ pub fn run(
         require_durable_front_end(front_end.key)?;
     }
     let (_, graphs) = load::graphs(input, allow)?;
+    load::require_runnable(&graphs, input)?;
     let entry = load::select(&graphs, graph)?;
     let stem = entry.text(entry.name).to_owned();
     in_directory(out, |directory| {

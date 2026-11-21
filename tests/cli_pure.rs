@@ -1,0 +1,203 @@
+//! Pure files through the command line: how a file's name, its directives and the flags pick the
+//! front end and the mode, and what each command does with a pure file.
+
+#[allow(dead_code)]
+#[path = "support/cli.rs"]
+mod cli;
+
+use cli::{dsl, graphite, manifest, scratch, stderr, stdout};
+
+const PURE: &str =
+    "graph g\n  enum E a\n  input x : bool\n  choose c : E\n    when x -> a\n    else -> a\n";
+
+fn combat() -> std::path::PathBuf {
+    manifest().join("examples/combat.pure.graphite")
+}
+
+#[test]
+fn a_pure_name_checks_as_a_purescript_file() {
+    let output = graphite(["check".as_ref(), combat().as_os_str()]);
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert_eq!(stdout(&output), "ok: 1 graph\n");
+}
+
+#[test]
+fn a_purs_infix_is_pure_by_rule_five() {
+    let source = dsl("pure-infix/combat.purs.graphite", PURE);
+    let output = graphite(["check".as_ref(), source.as_os_str()]);
+    assert!(output.status.success(), "{}", stderr(&output));
+}
+
+#[test]
+fn a_pure_name_with_a_machine_infix_is_refused() {
+    let source = dsl("pure-infix/combat.ts.pure.graphite", PURE);
+    let output = graphite(["check".as_ref(), source.as_os_str()]);
+    assert!(!output.status.success());
+    assert!(
+        stderr(&output).contains(
+            "`combat.ts.pure.graphite` is pure (by its `.pure` name), but no pure front end writes `.ts` (pure front ends: purescript)"
+        ),
+        "{}",
+        stderr(&output)
+    );
+}
+
+#[test]
+fn an_unknown_infix_names_the_known_ones() {
+    let source = dsl("pure-infix/my.walk.graphite", "graph w\n  node a end\n");
+    let output = graphite(["check".as_ref(), source.as_os_str()]);
+    assert!(!output.status.success());
+    assert!(
+        stderr(&output).contains("no front end for the infix `.walk`"),
+        "{}",
+        stderr(&output)
+    );
+    assert!(stderr(&output).contains("(known infixes: ts, rs, purs)"));
+}
+
+#[test]
+fn a_machine_node_in_a_purescript_file_says_why_it_is_pure() {
+    let source = dsl("pure-flag/door.graphite", "graph door\n  node a end\n");
+    let output = graphite([
+        "check".as_ref(),
+        source.as_os_str(),
+        "--frontend".as_ref(),
+        "purescript".as_ref(),
+    ]);
+    assert!(!output.status.success());
+    assert!(
+        stderr(&output).contains(
+            "`node` is not allowed in a pure file (pure because of `--frontend purescript`)"
+        ),
+        "{}",
+        stderr(&output)
+    );
+}
+
+#[test]
+fn pure_with_a_machine_front_end_names_both_sides() {
+    let source = dsl("pure-flag/conflict.graphite", "graph door\n  node a end\n");
+    let output = graphite([
+        "check".as_ref(),
+        source.as_os_str(),
+        "--pure".as_ref(),
+        "--frontend".as_ref(),
+        "typescript".as_ref(),
+    ]);
+    assert!(!output.status.success());
+    assert!(
+        stderr(&output).contains(
+            "pure (by `--pure`), but `typescript` is a machine front end (pure front ends: purescript)"
+        ),
+        "{}",
+        stderr(&output)
+    );
+}
+
+#[test]
+fn a_flag_beats_a_purescript_directive_and_the_file_builds_as_machine() {
+    let source = dsl(
+        "pure-flag/beats.graphite",
+        "@!frontend:purescript\ngraph door\n  node a end\n",
+    );
+    let output = graphite([
+        "check".as_ref(),
+        source.as_os_str(),
+        "--frontend".as_ref(),
+        "typescript".as_ref(),
+    ]);
+    assert!(output.status.success(), "{}", stderr(&output));
+}
+
+#[test]
+fn a_rust_infix_builds_rust_and_keeps_the_infix_out_of_the_output_name() {
+    let source = dsl("rust-infix/door.rs.graphite", "graph door\n  node a end\n");
+    let out = scratch("rust-infix/out");
+    let _ = std::fs::remove_dir_all(&out);
+    let output = graphite([
+        "compile".as_ref(),
+        source.as_os_str(),
+        "--out".as_ref(),
+        out.as_os_str(),
+    ]);
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert!(
+        out.join("door.rs").exists(),
+        "{:?}",
+        std::fs::read_dir(&out)
+    );
+}
+
+#[test]
+fn compile_writes_the_purescript_module_and_no_runtime() {
+    let out = scratch("pure-compile/out");
+    let _ = std::fs::remove_dir_all(&out);
+    let output = graphite([
+        "compile".as_ref(),
+        combat().as_os_str(),
+        "--out".as_ref(),
+        out.as_os_str(),
+    ]);
+    assert!(output.status.success(), "{}", stderr(&output));
+    let mut names: Vec<String> = std::fs::read_dir(&out)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    names.sort();
+    assert_eq!(names, ["Combat.purs"]);
+    let expected =
+        std::fs::read_to_string(manifest().join("tests/fixtures/pure/Combat.purs")).unwrap();
+    assert_eq!(
+        std::fs::read_to_string(out.join("Combat.purs")).unwrap(),
+        expected
+    );
+}
+
+#[test]
+fn run_and_debug_refuse_a_pure_file() {
+    for command in ["run", "debug"] {
+        let output = graphite([command.as_ref(), combat().as_os_str()]);
+        assert!(!output.status.success(), "{command}");
+        assert!(
+            stderr(&output)
+                .contains("is a pure file; `graphite run` and `graphite debug` run machine graphs"),
+            "{command}: {}",
+            stderr(&output)
+        );
+    }
+}
+
+#[test]
+fn run_refuses_the_pure_flag() {
+    let output = graphite(["run".as_ref(), combat().as_os_str(), "--pure".as_ref()]);
+    assert!(!output.status.success());
+    assert!(
+        stderr(&output).contains("run does not take --pure"),
+        "{}",
+        stderr(&output)
+    );
+}
+
+#[test]
+fn inspect_reports_the_kind_and_the_declarations_of_a_pure_file() {
+    let output = graphite(["inspect".as_ref(), combat().as_os_str(), "--json".as_ref()]);
+    assert!(output.status.success(), "{}", stderr(&output));
+    let text = stdout(&output);
+    assert!(text.contains("\"kind\":\"pure\""), "{text}");
+    assert!(text.contains("\"enums\":[{\"name\":\"Tactic\""), "{text}");
+    assert!(
+        text.contains("\"inputs\":[{\"name\":\"homeEast\",\"type\":\"bool\""),
+        "{text}"
+    );
+}
+
+#[test]
+fn inspect_text_marks_a_pure_graph_and_leaves_a_machine_graph_alone() {
+    let pure = graphite(["inspect".as_ref(), combat().as_os_str()]);
+    assert!(stdout(&pure).contains("  kind pure\n  enums\n    Tactic = flee | hit | hold\n"));
+    let door = graphite([
+        "inspect".as_ref(),
+        manifest().join("examples/door.graphite").as_os_str(),
+    ]);
+    assert!(!stdout(&door).contains("kind"), "{}", stdout(&door));
+}

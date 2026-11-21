@@ -68,6 +68,7 @@ pub fn run(input: &Path, state: Option<&Path>, options: &Options<'_>) -> Result<
         (allow, None) => allow.map(Allowlist::load).transpose()?,
     };
     let (_, graphs) = load::graphs_with(input, allowlist.as_ref())?;
+    load::require_runnable(&graphs, input)?;
     let entry = load::select(&graphs, None)?;
     let item_graphs = options
         .fan_out

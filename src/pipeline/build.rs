@@ -20,6 +20,8 @@ pub struct Request<'a> {
     pub out: PathBuf,
     pub front_end: &'static Target,
     pub node_flags: Vec<String>,
+    /// Whether the file is pure. The directives can also make it pure.
+    pub pure: bool,
     pub verify: Option<&'a Verify<'a>>,
 }
 
@@ -76,7 +78,7 @@ impl Job<'_> {
         let flags: Vec<&str> = self.request.node_flags.iter().map(String::as_str).collect();
         let schema = Schema {
             node_flags: &flags,
-            ..Default::default()
+            pure: self.request.pure,
         };
         self.graphs = compile(&self.source, &schema)
             .map_err(|error| error.diagnostic(&self.source).to_string())?;

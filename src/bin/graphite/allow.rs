@@ -101,8 +101,28 @@ impl Allowlist {
                 let place = || format!("graph {graph_name}, node {}", graph.text(node.name));
                 self.check_span(graph, &node.annotations, &place)?;
             }
+            for item in &graph.enums {
+                let place = || format!("graph {graph_name}, enum {}", graph.text(item.name));
+                self.check_span(graph, &item.annotations, &place)?;
+                for member in &graph.members[index(&item.members)] {
+                    let place = || {
+                        format!(
+                            "graph {graph_name}, member {} of enum {}",
+                            graph.text(member.name),
+                            graph.text(item.name)
+                        )
+                    };
+                    self.check_span(graph, &member.annotations, &place)?;
+                }
+            }
+            for input in &graph.inputs {
+                let place = || format!("graph {graph_name}, input {}", graph.text(input.name));
+                self.check_span(graph, &input.annotations, &place)?;
+            }
             for choice in &graph.choices {
                 let choice_name = graph.text(choice.name);
+                let place = || format!("graph {graph_name}, choice {choice_name}");
+                self.check_span(graph, &choice.annotations, &place)?;
                 for arm in &graph.arms[index(&choice.arms)] {
                     let place = || format!("graph {graph_name}, choice {choice_name}");
                     self.check_span(graph, &arm.annotations, &place)?;

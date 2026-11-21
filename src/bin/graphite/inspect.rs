@@ -2,12 +2,14 @@
 
 use std::path::Path;
 
-use graphite::graph::{Annotation, CompiledGraph, Span, index};
+use graphite::graph::{Annotation, CompiledGraph, Span, Ty, index};
+use graphite::kind::Kind;
 
 use crate::{Failure, json, load};
 
-pub fn run(input: &Path, json: bool) -> Result<(), Failure> {
-    let (_, graphs) = load::graphs(input, None)?;
+pub fn run(input: &Path, json: bool, pure: bool) -> Result<(), Failure> {
+    let loaded = load::read(input, None, None, pure)?;
+    let graphs = loaded.graphs;
     if json {
         println!("{}", describe_json(&graphs));
     } else {
@@ -47,6 +49,41 @@ fn graph_json(graph: &CompiledGraph) -> String {
         .iter()
         .map(|&id| json::quote(graph.text(id)))
         .collect();
+    let enums: Vec<String> = graph
+        .enums
+        .iter()
+        .map(|item| {
+            let members: Vec<String> = graph.members[index(&item.members)]
+                .iter()
+                .map(|member| {
+                    json::object(&[
+                        ("name", json::quote(graph.text(member.name))),
+                        ("annotations", annotations_json(graph, &member.annotations)),
+                    ])
+                })
+                .collect();
+            json::object(&[
+                ("name", json::quote(graph.text(item.name))),
+                ("annotations", annotations_json(graph, &item.annotations)),
+                ("members", json::array(&members)),
+            ])
+        })
+        .collect();
+    let inputs: Vec<String> = graph
+        .inputs
+        .iter()
+        .map(|input| {
+            let ty = match input.ty {
+                Ty::Bool => "bool".to_string(),
+                Ty::Enum(index) => graph.text(graph.enums[index as usize].name).to_string(),
+            };
+            json::object(&[
+                ("name", json::quote(graph.text(input.name))),
+                ("type", json::quote(&ty)),
+                ("annotations", annotations_json(graph, &input.annotations)),
+            ])
+        })
+        .collect();
     let choices: Vec<String> = graph
         .choices
         .iter()
@@ -64,6 +101,15 @@ fn graph_json(graph: &CompiledGraph) -> String {
                 .collect();
             json::object(&[
                 ("name", json::quote(graph.text(choice.name))),
+                (
+                    "enum",
+                    json::optional(
+                        choice
+                            .ty
+                            .map(|ty| graph.text(graph.enums[ty as usize].name)),
+                    ),
+                ),
+                ("annotations", annotations_json(graph, &choice.annotations)),
                 ("arms", json::array(&arms)),
             ])
         })
@@ -89,8 +135,11 @@ fn graph_json(graph: &CompiledGraph) -> String {
         .collect();
     json::object(&[
         ("name", json::quote(graph.text(graph.name))),
+        ("kind", json::quote(graph.kind.label())),
         ("nodes", json::array(&nodes)),
         ("conditions", json::array(&conditions)),
+        ("enums", json::array(&enums)),
+        ("inputs", json::array(&inputs)),
         ("choices", json::array(&choices)),
         ("edges", json::array(&edges)),
     ])
@@ -117,12 +166,42 @@ pub fn describe(graphs: &[CompiledGraph]) -> String {
     let mut lines = Vec::new();
     for graph in graphs {
         lines.push(format!("graph {}", graph.text(graph.name)));
+        if graph.kind == Kind::Pure {
+            describe_pure(graph, &mut lines);
+            describe_choices(graph, &mut lines);
+            continue;
+        }
         describe_nodes(graph, &mut lines);
         describe_conditions(graph, &mut lines);
         describe_choices(graph, &mut lines);
         describe_edges(graph, &mut lines);
     }
     lines.join("\n") + "\n"
+}
+
+/// A pure graph's enums and inputs, which a machine graph does not have. Its choices follow.
+fn describe_pure(graph: &CompiledGraph, lines: &mut Vec<String>) {
+    lines.push("  kind pure".to_string());
+    lines.push("  enums".to_string());
+    for item in &graph.enums {
+        let members: Vec<&str> = graph.members[index(&item.members)]
+            .iter()
+            .map(|member| graph.text(member.name))
+            .collect();
+        lines.push(format!(
+            "    {} = {}",
+            graph.text(item.name),
+            members.join(" | ")
+        ));
+    }
+    lines.push("  inputs".to_string());
+    for input in &graph.inputs {
+        let ty = match input.ty {
+            Ty::Bool => "bool".to_string(),
+            Ty::Enum(index) => graph.text(graph.enums[index as usize].name).to_string(),
+        };
+        lines.push(format!("    {} : {ty}", graph.text(input.name)));
+    }
 }
 
 fn describe_nodes(graph: &CompiledGraph, lines: &mut Vec<String>) {

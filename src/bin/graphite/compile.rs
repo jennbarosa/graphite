@@ -19,15 +19,17 @@ pub fn default_out(input: &Path) -> Result<PathBuf, String> {
 pub fn run(
     input: &Path,
     out: Option<&Path>,
-    front_end: &str,
+    front_end: Option<&str>,
     allow: Option<&Path>,
+    pure: bool,
 ) -> Result<(), String> {
-    let front_end = load::front_end(front_end)?;
+    let allowlist = allow.map(Allowlist::load).transpose()?;
+    // Reading first resolves the front end and explains a conflict before the build starts.
+    let loaded = load::read(input, allowlist.as_ref(), front_end, pure)?;
     let out = match out {
         Some(out) => out.to_path_buf(),
         None => default_out(input)?,
     };
-    let allowlist = allow.map(Allowlist::load).transpose()?;
     let node_flags = allowlist.as_ref().map_or(Vec::new(), |list| {
         list.node_flags().into_iter().map(str::to_string).collect()
     });
@@ -38,8 +40,9 @@ pub fn run(
     let written = build::run(Request {
         input,
         out,
-        front_end,
+        front_end: loaded.front_end,
         node_flags,
+        pure: loaded.pure,
         verify: Some(&verify),
     })?;
     for path in written {

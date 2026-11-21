@@ -17,18 +17,22 @@ pub enum Command {
         input: PathBuf,
         /// `None` means `graphite-out/<file stem>`, resolved by the command.
         out: Option<PathBuf>,
-        front_end: String,
+        /// `None` lets the file's name, directives and `--pure` pick the front end.
+        front_end: Option<String>,
         allow: Option<PathBuf>,
+        pure: bool,
     },
     Check {
         input: PathBuf,
-        front_end: String,
+        front_end: Option<String>,
         allow: Option<PathBuf>,
+        pure: bool,
         json: bool,
     },
     Inspect {
         input: PathBuf,
         json: bool,
+        pure: bool,
     },
     Debug {
         input: PathBuf,
@@ -80,6 +84,7 @@ pub enum Command {
 #[derive(Default)]
 struct Options {
     out: Option<PathBuf>,
+    pure: bool,
     front_end: Option<String>,
     graph: Option<String>,
     allow: Option<PathBuf>,
@@ -166,6 +171,7 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
         match arg.as_str() {
             "--out" => options.out = Some(PathBuf::from(value(&mut rest_args, "--out")?)),
             "--frontend" => options.front_end = Some(value(&mut rest_args, "--frontend")?),
+            "--pure" => options.pure = true,
             "--graph" => options.graph = Some(value(&mut rest_args, "--graph")?),
             "--allow" => options.allow = Some(PathBuf::from(value(&mut rest_args, "--allow")?)),
             "--state" => options.state = Some(PathBuf::from(value(&mut rest_args, "--state")?)),
@@ -200,6 +206,7 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
     let rest: Vec<String> = positionals.collect();
     let Options {
         out,
+        pure,
         front_end,
         graph,
         allow,
@@ -235,7 +242,6 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
     if json && !matches!(verb.as_str(), "check" | "inspect") {
         return Err(format!("{verb} does not take --json"));
     }
-    let front_end = front_end.unwrap_or_else(|| registry::DEFAULT_FRONT_END.to_string());
     match verb.as_str() {
         "init" => {
             only_file(&rest, &verb)?;
@@ -243,6 +249,7 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
             refuse(graph.is_some(), "--graph", &verb)?;
             refuse(front_end_given, "--frontend", &verb)?;
             refuse(allow.is_some(), "--allow", &verb)?;
+            refuse(pure, "--pure", &verb)?;
             refuse_run_flags(durable, &state, &runner, &verb)?;
             Ok(Command::Init { input })
         }
@@ -255,6 +262,7 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
                 out,
                 front_end,
                 allow,
+                pure,
             })
         }
         "check" => {
@@ -266,6 +274,7 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
                 input,
                 front_end,
                 allow,
+                pure,
                 json,
             })
         }
@@ -276,13 +285,14 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
             refuse(front_end_given, "--frontend", &verb)?;
             refuse(allow.is_some(), "--allow", &verb)?;
             refuse_run_flags(durable, &state, &runner, &verb)?;
-            Ok(Command::Inspect { input, json })
+            Ok(Command::Inspect { input, json, pure })
         }
         "run" => {
             only_file(&rest, &verb)?;
             refuse(out.is_some(), "--out", &verb)?;
             refuse(graph.is_some(), "--graph", &verb)?;
             refuse(front_end_given, "--frontend", &verb)?;
+            refuse(pure, "--pure", &verb)?;
             if runner.is_some() && tasks.is_some() {
                 return Err("--runner and --tasks both name the task code: pass one".into());
             }
@@ -309,7 +319,9 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
             })
         }
         "debug" => {
+            refuse(pure, "--pure", &verb)?;
             refuse_run_flags(durable, &state, &runner, &verb)?;
+            let front_end = front_end.unwrap_or_else(|| registry::DEFAULT_FRONT_END.to_string());
             if !simulate.is_empty() && !rest.is_empty() {
                 return Err(
                     "debug --simulate takes no commands: each stub decides its task's outcome"
