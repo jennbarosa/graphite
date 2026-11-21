@@ -6,6 +6,7 @@ pub mod lang;
 pub mod layered;
 pub mod layout;
 pub mod names;
+pub mod pure;
 pub mod registry;
 pub mod rust;
 pub mod typescript;
@@ -13,6 +14,7 @@ pub mod typescript;
 use std::io::{self, Write};
 
 use crate::graph::CompiledGraph;
+use crate::kind::Kind;
 
 /// One file of a graph's output. Nodes and choices are split into fixed-size chunks. The index
 /// is the one file that grows with the whole graph: it holds the graph's names and tables.
@@ -53,4 +55,14 @@ pub trait Frontend {
 
     /// The extension of this front end's files, without the dot. Inference matches on it.
     fn extension(&self) -> &'static str;
+
+    /// The kind of graph this front end writes. Machine front ends are the default.
+    fn kind(&self) -> Kind {
+        Kind::Machine
+    }
+
+    /// The runtime's file name, or `None` when the front end writes no runtime.
+    fn runtime_file_name_opt(&self) -> Option<&'static str> {
+        Some(self.runtime_file_name())
+    }
 }

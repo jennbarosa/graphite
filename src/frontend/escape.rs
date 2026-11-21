@@ -16,7 +16,11 @@ pub enum Escape {
 }
 
 /// Writes `value` as a double-quoted literal, with each character escaped by `rule`.
-pub fn quoted(value: &str, output: &mut dyn Write, rule: fn(char) -> Escape) -> io::Result<()> {
+pub fn quoted(
+    value: &str,
+    output: &mut dyn Write,
+    rule: impl Fn(char) -> Escape,
+) -> io::Result<()> {
     output.write_all(b"\"")?;
     let mut start = 0;
     for (index, ch) in value.char_indices() {

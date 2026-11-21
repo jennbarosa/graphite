@@ -14,7 +14,7 @@ pub enum Line {
 
 /// What kind of graph a file holds. The set is closed and compiler-internal, so this is an enum
 /// with methods rather than a trait.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum Kind {
     /// A state machine: nodes, edges and choices, run by the runtime.
     #[default]

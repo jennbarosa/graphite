@@ -153,10 +153,10 @@ fn check_plan(
     directory: Option<&Path>,
 ) -> Result<(), Collision> {
     let exists = |file: &str| directory.is_some_and(|directory| directory.join(file).exists());
-    let runtime = frontend.runtime_file_name();
+    let runtime = frontend.runtime_file_name_opt();
     // The runtime has no source of its own, so a conflict on it points at the first graph.
     let first = graphs.first().map_or(0, |graph| graph.offset);
-    if exists(runtime) {
+    if let Some(runtime) = runtime.filter(|runtime| exists(runtime)) {
         let message =
             format!("the runtime file `{runtime}` already exists in the output directory");
         return Err(Collision {
@@ -166,9 +166,23 @@ fn check_plan(
     }
     // Lowercased output name -> owning graph, or `None` for the runtime.
     let mut owners: HashMap<String, Option<usize>> = HashMap::new();
-    owners.insert(runtime.to_lowercase(), None);
+    if let Some(runtime) = runtime {
+        owners.insert(runtime.to_lowercase(), None);
+    }
+    let runtime = runtime.unwrap_or_default();
     for (index, graph) in graphs.iter().enumerate() {
         let name = graph.text(graph.name);
+        if graph.kind != frontend.kind() {
+            let message = format!(
+                "graph `{name}` is a {} graph, but this front end writes {} graphs",
+                graph.kind.label(),
+                frontend.kind().label()
+            );
+            return Err(Collision {
+                message: Cow::Owned(message),
+                offset: graph.offset,
+            });
+        }
         for module in frontend.modules(graph) {
             let file = frontend.file_name(graph, module);
             let message = if exists(&file) {
@@ -228,9 +242,11 @@ fn write_each(
     directory: &Path,
     written: &mut Vec<PathBuf>,
 ) -> io::Result<()> {
-    let runtime = directory.join(frontend.runtime_file_name());
-    write_file(&runtime, |output| frontend.emit_runtime(output))?;
-    written.push(runtime);
+    if let Some(name) = frontend.runtime_file_name_opt() {
+        let runtime = directory.join(name);
+        write_file(&runtime, |output| frontend.emit_runtime(output))?;
+        written.push(runtime);
+    }
     for graph in graphs {
         for module in frontend.modules(graph) {
             let path = directory.join(frontend.file_name(graph, module));
