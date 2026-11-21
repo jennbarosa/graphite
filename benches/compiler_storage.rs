@@ -2,7 +2,6 @@ use std::hint::black_box;
 use std::time::Duration;
 
 use criterion::{BatchSize, Criterion, Throughput, criterion_group, criterion_main};
-use graphite::arena::Arena;
 use graphite::interner::Interner;
 
 #[path = "support/workload.rs"]
@@ -87,34 +86,6 @@ fn compiler_storage(criterion: &mut Criterion) {
         });
     }
 
-    let mut arena = Arena::with_capacity(count).unwrap();
-    group.bench_function("arena_refill", |bencher| {
-        bencher.iter(|| {
-            arena.clear();
-            for index in 0..count as u32 {
-                black_box(arena.push(black_box(index)).unwrap());
-            }
-            black_box(&arena);
-        });
-    });
-    group.bench_function("vec_build", |bencher| {
-        bencher.iter(|| {
-            let mut items = Vec::new();
-            for index in 0..count as u32 {
-                items.push(black_box(index));
-            }
-            black_box(items);
-        });
-    });
-    group.bench_function("arena_build", |bencher| {
-        bencher.iter(|| {
-            let mut arena = Arena::with_capacity(count).unwrap();
-            for index in 0..count as u32 {
-                black_box(arena.push(black_box(index)).unwrap());
-            }
-            black_box(arena);
-        });
-    });
     group.finish();
 }
 

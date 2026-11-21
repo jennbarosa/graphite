@@ -108,7 +108,7 @@ is a clear reason, and say that reason in a comment.
 ## Benchmarks
 
 ```sh
-cargo bench --bench compiler_storage     # arena and interner
+cargo bench --bench compiler_storage     # string interner
 cargo bench --bench parser               # full DSL compilation
 cargo bench --bench lexer                # tokenizer
 cargo bench --bench frontend             # TypeScript emission
@@ -141,8 +141,7 @@ src/
   graphs/                  the .graphite rule files that describe graphite itself, plus
                            regenerate.graphite, the stage graph for regeneration
   stage.rs                 the stage-graph runner that drives build and regeneration
-  graph.rs, arena.rs,      compiled graph data, arena, and string interner
-  interner.rs
+  graph.rs, interner.rs    compiled graph data, and the string interner
   frontend/                output front ends: typescript/ (index, chunks, runtime.ts)
   pipeline.rs              compile and write_modules
   bin/graphite/            the CLI; runtime_assets.rs bundles the TypeScript durable engine

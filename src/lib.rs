@@ -1,6 +1,5 @@
 #![doc = include_str!("../README.md")]
 
-pub mod arena;
 mod bootstrap;
 pub mod frontend;
 pub mod graph;

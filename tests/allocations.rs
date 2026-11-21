@@ -1,7 +1,6 @@
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
 
-use graphite::arena::Arena;
 use graphite::interner::{Interner, InternerFull};
 use graphite::lexer::{Lexer, TokenKind};
 use graphite::parser::{Capacity, Schema, parse};
@@ -69,23 +68,6 @@ fn counter_detects_a_real_allocation() {
         measure();
         other.join().unwrap();
     });
-}
-
-#[test]
-fn refilling_after_clear_does_not_allocate() {
-    let mut arena = Arena::with_capacity(100).unwrap();
-    for value in 0..100u32 {
-        arena.push(value).unwrap();
-    }
-    arena.clear();
-
-    let ((), allocated) = allocations_during(|| {
-        for value in 0..100u32 {
-            arena.push(value).unwrap();
-        }
-    });
-
-    assert_eq!(allocated, 0);
 }
 
 #[test]
