@@ -10,7 +10,7 @@ use super::ParseError;
 /// Strings count distinct interned words, including the graph name, domain flags,
 /// annotation keys/values, and tags. String bytes count their total UTF-8 length.
 /// Core keywords/flags and references to declared nodes need no additional strings.
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Capacity {
     pub nodes: usize,
     pub edges: usize,

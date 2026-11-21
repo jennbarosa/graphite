@@ -21,15 +21,16 @@ fn grammar_graph() -> &'static CompiledGraph {
     GRAPH.get_or_init(bootstrap::grammar::graph)
 }
 
-/// Parses `source` by running the grammar graph over its tokens.
+/// Parses `source` from byte `start` by running the grammar graph over its tokens.
 pub(crate) fn parse(
     source: &str,
+    start: usize,
     schema: &Schema<'_>,
     capacities: &[Capacity],
 ) -> Result<Vec<CompiledGraph>, ParseError> {
     let flags: HashSet<&str> = schema.node_flags.iter().copied().collect();
     let mut session = Session {
-        tokens: Tokens::new(source, Lexer::new(source)),
+        tokens: Tokens::new(source, Lexer::at(source, start)),
         flags: &flags,
         capacities,
         names: HashSet::new(),

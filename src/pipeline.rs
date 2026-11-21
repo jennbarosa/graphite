@@ -14,7 +14,8 @@ pub mod build;
 use crate::frontend::Frontend;
 use crate::graph::CompiledGraph;
 use crate::lexer::Diagnostic;
-use crate::parser::{Capacity, GRAPH_KEYWORD, ParseError, Schema, parse};
+use crate::parser::{Capacity, GRAPH_KEYWORD, ParseError, Schema, parse_body};
+use crate::preprocess::preprocess;
 
 /// Storage bounds for each graph block in `source`, in source order.
 ///
@@ -24,8 +25,15 @@ use crate::parser::{Capacity, GRAPH_KEYWORD, ParseError, Schema, parse};
 /// and an `else` adds at most one edge per hop: twice the arrow count bounds the edges.
 /// Annotations, flags and strings are bounded by the block's bytes, and every node may also copy
 /// each `default` annotation.
-/// Text before the first graph gets no bounds, so `parse` rejects it.
+/// Text before the first graph gets no bounds, so `parse` rejects it. The directives at the top
+/// of the file are not counted: the bounds are those of the body that [`compile`] parses.
 pub fn block_capacities(source: &str, schema: &Schema<'_>) -> Vec<Capacity> {
+    let body = preprocess(source).map_or(0, |directives| directives.body);
+    capacities_of(&source[body..], schema)
+}
+
+/// [`block_capacities`] for text that has no directives.
+fn capacities_of(source: &str, schema: &Schema<'_>) -> Vec<Capacity> {
     let mut blocks: Vec<Block> = Vec::new();
     let mut current: Option<Block> = None;
     for line in source.split_inclusive('\n') {
@@ -79,9 +87,16 @@ fn opens_graph(line: &str) -> bool {
         .is_some_and(|rest| rest.starts_with(' '))
 }
 
-/// Lexes and parses `source` into checked graphs, sized by [`block_capacities`].
+/// Reads the directives, then lexes and parses the rest of `source` into checked graphs. The
+/// storage is sized by [`block_capacities`], which counts the same body.
 pub fn compile(source: &str, schema: &Schema<'_>) -> Result<Vec<CompiledGraph>, ParseError> {
-    parse(source, schema, &block_capacities(source, schema))
+    let body = preprocess(source)?.body;
+    parse_body(
+        source,
+        body,
+        schema,
+        &capacities_of(&source[body..], schema),
+    )
 }
 
 /// Two graphs, or a graph and the runtime, would write the same output file.

@@ -27,10 +27,16 @@ pub struct Lexer<'a> {
 
 impl<'a> Lexer<'a> {
     pub fn new(source: &'a str) -> Self {
+        Self::at(source, 0)
+    }
+
+    /// A lexer that starts at byte `start`, which must be the start of a line. Token offsets stay
+    /// absolute, so diagnostics point into the whole source.
+    pub fn at(source: &'a str, start: usize) -> Self {
         Lexer {
             stepper: Stepper::new(lexer_graph(), task)
                 .unwrap_or_else(|error| panic!("the bundled lex.graphite is wrong: {error}")),
-            state: State::new(source),
+            state: State::new(source, start),
             handed: 0,
             finished: false,
         }
@@ -79,11 +85,11 @@ struct State<'a> {
 }
 
 impl<'a> State<'a> {
-    fn new(source: &'a str) -> Self {
+    fn new(source: &'a str, start: usize) -> Self {
         State {
             source,
-            position: 0,
-            pass_start: 0,
+            position: start,
+            pass_start: start,
             indents: Vec::new(),
             pending_dedents: 0,
             line_start: true,

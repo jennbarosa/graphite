@@ -33,7 +33,19 @@ pub fn parse(
     capacities: &[Capacity],
 ) -> Result<Vec<CompiledGraph>, ParseError> {
     check_source_len(source)?;
-    grammar::parse(source, schema, capacities)
+    grammar::parse(source, 0, schema, capacities)
+}
+
+/// [`parse`] from byte `body`, past the directives that [`crate::preprocess`] reads. The
+/// capacities count the same text as `body..`.
+pub(crate) fn parse_body(
+    source: &str,
+    body: usize,
+    schema: &Schema<'_>,
+    capacities: &[Capacity],
+) -> Result<Vec<CompiledGraph>, ParseError> {
+    check_source_len(source)?;
+    grammar::parse(source, body, schema, capacities)
 }
 
 /// Positions are `u32`, so a longer source cannot be parsed.
