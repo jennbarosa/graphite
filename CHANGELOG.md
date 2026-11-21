@@ -9,11 +9,27 @@ change the interface.
 
 ### Changed
 
+- **Breaking:** a dotted file name now picks its front end from the infix. `door.rs.graphite`
+  builds Rust, where it used to build TypeScript, with no warning. Pass `--frontend typescript` or add
+  `@!frontend:typescript` to keep the old output. A name such as `my.walk.graphite` with no known
+  infix is now an error unless a flag or directive names the front end. See the
+  [CLI reference](docs/cli.md#choosing-the-front-end-and-mode).
+- `check` and `compile` pick the front end from the file's name and directives when `--frontend` is
+  not given. The default is still `typescript` for machine files.
+- The allowlist's `[annotations]` check now covers enum, member, input and choose lines.
+
 - Graph files now end in `.graphite` instead of `.dsl`. The examples, fixtures and bundled graph
   descriptions use the new extension. The language itself is unchanged.
 
 ### Added
 
+- Pure files: `enum`, `input`, `choose NAME : ENUM` and `when` tests on declared inputs, with the
+  `purescript` front end writing a PureScript module. A pure file is a decision table, so it has
+  no states and cannot be run. See [pure files](docs/dsl.md#pure-files) and
+  [PureScript](docs/purescript.md).
+- Directives at the top of a file: `@!pure` and `@!frontend:KEY`.
+- `--pure` for `check`, `compile` and `inspect`. `inspect` reports a pure graph's kind, enums and
+  inputs.
 - Annotations on the `graph` line (`graph walk @choice:facing`), read with `graph.annotations()` in TypeScript
   and `GRAPH.annotations` in Rust.
 - `default @key:value` lines, before the first node, add annotations to every node that does not set the key.

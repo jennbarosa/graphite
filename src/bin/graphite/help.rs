@@ -18,9 +18,9 @@ Run `graphite help <command>` for a command's options.";
 /// table; a unit test checks each option against the command's help text.
 pub const COMMANDS: &[(&str, &[&str])] = &[
     ("init", &[]),
-    ("check", &["--frontend", "--allow", "--json"]),
-    ("compile", &["--out", "--frontend", "--allow"]),
-    ("inspect", &["--json"]),
+    ("check", &["--frontend", "--pure", "--allow", "--json"]),
+    ("compile", &["--out", "--frontend", "--pure", "--allow"]),
+    ("inspect", &["--json", "--pure"]),
     (
         "debug",
         &["--frontend", "--graph", "--out", "--allow", "--simulate"],
@@ -76,16 +76,20 @@ Writes a starter graph to <file.graphite>. It refuses to overwrite an existing f
 Next: `graphite check <file.graphite>`, then `graphite compile <file.graphite>`."
         }
         "check" => {
-            "usage: graphite check <file.graphite> [--frontend typescript] [--allow <list.toml>] [--json]
+            "usage: graphite check <file.graphite> [--frontend <key>] [--pure] [--allow <list.toml>] [--json]
 
 Parses and validates the graph, and checks that the generated file names do not collide.
-Prints `ok: N graphs` when the file is valid. With --json, prints {\"ok\":true,\"graphs\":N}, or
-{\"ok\":false,\"error\":...} on failure. Writes nothing."
+The front end is --frontend, else an @!frontend directive, else the file's infix (door.ts.graphite
+is TypeScript), else the default. A pure file (--pure, an @!pure directive, or a .pure name) is
+checked as a pure graph. Prints `ok: N graphs` when the file is valid. With --json, prints
+{\"ok\":true,\"graphs\":N}, or {\"ok\":false,\"error\":...} on failure. Writes nothing."
         }
         "compile" => {
-            "usage: graphite compile <file.graphite> [--out <dir>] [--frontend typescript] [--allow <list.toml>]
+            "usage: graphite compile <file.graphite> [--out <dir>] [--frontend <key>] [--pure] [--allow <list.toml>]
 
-Writes one index module per graph, its chunk modules, and the runtime (graphite.ts).
+Writes the modules of each graph for its front end: TypeScript writes an index module, its chunk
+modules and the runtime (graphite.ts); PureScript writes one module per file. The front end is
+chosen as for `check`.
 --out defaults to graphite-out/<file name without extension>.
 It never overwrites: remove the directory, or pass another --out, to compile again."
         }
@@ -121,10 +125,11 @@ The run prints each stage it enters and each task's outcome, then how it ended. 
 the run ends, and 1 when it stalls or errors. A stall names the node with no route taken."
         }
         "inspect" => {
-            "usage: graphite inspect <file.graphite> [--json]
+            "usage: graphite inspect <file.graphite> [--json] [--pure]
 
 Prints the compiled nodes, edges, conditions, choices and annotations, for checking what the
-parser understood. --json prints the same facts as one JSON object."
+parser understood. A pure graph prints its kind, enums and inputs. --json prints the same facts
+as one JSON object. --pure reads the file as a pure file, as `check` does."
         }
         "doctor" => {
             "usage: graphite doctor [--json]

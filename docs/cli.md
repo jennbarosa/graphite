@@ -49,7 +49,42 @@ graphite --version                                     print the version
 | `--seen <file.json>` | `run` | Item keys already started, so a run skips them. Defaults beside the state file. |
 | `--until-passed <N>` | `run` | Stops starting items once N have passed. |
 | `--durable` | `run` | Accepted and ignored: `run` is always durable. |
-| `--frontend <key>` | `check`, `compile`, `debug` | The front end to use. `typescript` is the only one shipped, and the default. See [front ends](front-ends.md). |
+| `--frontend <key>` | `check`, `compile`, `debug` | The front end to use. Without it, the file's name and directives pick one; see [choosing the front end](#choosing-the-front-end-and-mode). `debug` defaults to `typescript`. |
+| `--pure` | `check`, `compile`, `inspect` | Reads the file as a pure file, as an `@!pure` directive does. Refused by `run` and `debug`, which run machine graphs only. |
+
+## Choosing the front end and mode
+
+A file's front end comes from the first of these that applies:
+
+1. `--frontend <key>`.
+2. An `@!frontend:<key>` directive at the top of the file. A directive loses to the flag, and is
+   then ignored completely.
+3. The file's infix. `door.ts.graphite` uses the target whose extension is `ts`, and
+   `door.rs.graphite` uses `rust`. A name without `.graphite` has no infix.
+4. The default: `typescript` for a machine file, and `purescript` for a pure file.
+
+A file is pure when any of these holds: `--pure`; an `@!pure` directive; an `@!frontend:pure`
+directive; a name ending in `.pure.graphite`; a target that is pure (`--frontend purescript`, or
+`@!frontend:purescript`); or an infix whose targets are all pure (`combat.purs.graphite`).
+
+| File | Front end | Mode |
+| --- | --- | --- |
+| `door.graphite` | `typescript` | machine |
+| `door.rs.graphite` | `rust` | machine |
+| `combat.pure.graphite` | `purescript` | pure |
+| `combat.purs.graphite` | `purescript` | pure |
+| `combat.ts.pure.graphite` | error: no pure front end writes `.ts` | |
+| `my.walk.graphite` | error: no front end for the infix `.walk` | |
+
+Two signals that disagree are an error that names both sides, for example
+"pure (by `--pure`), but `typescript` is a machine front end (pure front ends: purescript)". A
+machine line in a pure file says why the file is pure, as in "`node` is not allowed in a pure file
+(pure because of `--frontend purescript`)".
+
+**Breaking change.** A dotted name used to pick no front end and always use TypeScript. Now the
+infix picks one: `door.rs.graphite` builds Rust. Pass `--frontend typescript` or add
+`@!frontend:typescript` to keep the old output. A name such as `my.walk.graphite` with no known
+infix now needs one of those as well.
 
 ## Exit status
 

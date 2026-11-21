@@ -144,3 +144,48 @@ and a `[tasks]` section in an allowlist is refused.
 Conditions are set by the host and keep their values until the host changes them. A choice is
 evaluated in order: the first arm whose condition holds is selected, and `else` is the fallback.
 With no `else`, a choice that matches no arm selects nothing: `choose()` returns `undefined`.
+
+## Directives
+
+A line that starts with `@!` is a directive. It goes at the top of the file, before the first
+`graph`, and blank lines may sit between directives. Nothing else may come first, and no directive
+may follow the first graph.
+
+| Directive | Meaning |
+| --- | --- |
+| `@!pure` | The file is pure. Takes no value. |
+| `@!frontend:KEY` | Use the front end `KEY` (`typescript`, `rust` or `purescript`). `@!frontend:pure` names no front end, and only makes the file pure. |
+
+Each directive can appear once. A directive is one word with nothing else on its line. The flag
+`--frontend` beats `@!frontend`, and a losing directive is ignored completely. See the
+[CLI reference](cli.md#choosing-the-front-end-and-mode) for the full rules.
+
+## Pure files
+
+A pure file is a decision table. It has no nodes or edges, so it cannot run: `graphite run` and
+`graphite debug` refuse it. Its body holds these lines:
+
+- `enum NAME MEMBER...` on one line, or `enum NAME` with its members in an indented block below.
+- `input NAME : bool` or `input NAME : ENUM`, declaring an input of the file.
+- `default @key:value`, which adds annotations to every arm after it that does not set the key.
+- `choose NAME : ENUM`, with `when` and `else` arms. Each arm's tag must be a member of the enum.
+  Every choose must end in an `else`, so that every input reaches an arm.
+
+A `when` names an input: `when NAME` tests a bool input, and `when NAME:MEMBER` tests an enum input
+against one of its members. Every `when` must name an input declared above it. A pure file has no
+`node` or `edge` lines.
+
+The output is described in [the PureScript front end](purescript.md).
+
+## Inputs and enums
+
+An enum lists its members. Members are compared with `NAME:MEMBER`, and each member is a value, not a
+string: `when dir:east` is an equality test on the input `dir`. Enums and inputs take annotations,
+like everything else (`enum Dir @axis:compass`, `input lowHealth : bool @source:stats`), and an
+allowlist checks their values in the same way as node annotations.
+
+Annotations may appear on the `graph` line, the enum and member lines, the input line, the
+`choose` line, and each arm. The `default` line applies to arms in a pure file.
+
+The editor highlights directives in red. The Neovim file in `editors/nvim` does this, and the
+colour is a default that a colour scheme may override.

@@ -201,3 +201,38 @@ fn inspect_text_marks_a_pure_graph_and_leaves_a_machine_graph_alone() {
     ]);
     assert!(!stdout(&door).contains("kind"), "{}", stdout(&door));
 }
+
+#[test]
+fn an_allowlist_refuses_a_disallowed_value_on_an_input_line() {
+    let allow = dsl(
+        "pure-allow/list.toml",
+        "[annotations]\nsource = [\"stats\"]\n",
+    );
+    let source = dsl(
+        "pure-allow/bad.pure.graphite",
+        "graph g\n  enum E a\n  input x : bool @source:guess\n  choose c : E\n    when x -> a\n    else -> a\n",
+    );
+    let output = graphite([
+        "check".as_ref(),
+        source.as_os_str(),
+        "--allow".as_ref(),
+        allow.as_os_str(),
+    ]);
+    assert!(!output.status.success());
+    assert!(
+        stderr(&output).contains("input x")
+            && stderr(&output).contains("@source:guess is not allowed"),
+        "{}",
+        stderr(&output)
+    );
+}
+
+#[test]
+fn doctor_lists_the_purescript_front_end() {
+    let output = graphite(["doctor"]);
+    assert!(
+        stdout(&output).contains("purescript"),
+        "{}",
+        stdout(&output)
+    );
+}
