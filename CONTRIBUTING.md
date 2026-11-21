@@ -23,7 +23,6 @@ Then install the pinned test tools once, and build and test from the repository 
 scripts/setup-tools.py   # Bun 1.4.4, PureScript 0.15.16 (purs), spago 1.0.5, TypeScript 6.0.3 (tsc)
 cargo build
 cargo test
-cargo test --no-default-features   # without the SIMD lexer
 ```
 
 `scripts/setup-tools.py` puts the tools in `tools/` (ignored by git), checks every download
@@ -68,7 +67,6 @@ CI runs these on every push and pull request. Run them locally first:
 cargo fmt --check
 cargo clippy --all-targets -- -D warnings
 cargo test
-cargo test --no-default-features
 ```
 
 CI also regenerates `src/generated/` from the `.graphite` rule files and fails if the

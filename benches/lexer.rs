@@ -88,8 +88,7 @@ fn lexer(criterion: &mut Criterion) {
         );
     }
     eprintln!(
-        "Graphite lexer: tier={tier} seed={seed} stages={stages} graphs={graphs} words={words} workers={workers} simd={} bytes={} tokens={tokens}",
-        cfg!(all(feature = "lexer-simd", target_arch = "x86_64")),
+        "Graphite lexer: tier={tier} seed={seed} stages={stages} graphs={graphs} words={words} workers={workers} bytes={} tokens={tokens}",
         source.len()
     );
 

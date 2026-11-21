@@ -75,7 +75,6 @@ Run these steps in order before calling a change done or committing. Each step m
       ```
       When you add a fixture-driven test target, add it to this list.
    b. All integration tests: `cargo test` (the full suite; it includes every target above and the CLI tests that also touch `.graphite` files).
-   c. `cargo test --no-default-features`
 4. **Graph check and commit**, only when steps 1 to 3 all pass.
    a. `node .gitnexus/run.cjs detect-changes --scope all --repo .`. Report the risk level. `partial: true` or `truncated: true` is not clean; re-run it.
    b. Commit the changed files with a message that describes the change. **Do not add a `Co-Authored-By` trailer or any other co-author line.**

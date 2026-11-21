@@ -12,10 +12,6 @@ categories = ["command-line-utilities", "development-tools"]
 
 [workspace]
 
-[features]
-default = ["lexer-simd"]
-lexer-simd = []
-
 [lib]
 path = "src/lib.rs"
 

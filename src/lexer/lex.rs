@@ -242,14 +242,7 @@ impl<'a> State<'a> {
     }
 }
 
-/// The length of the word at the start of `bytes`: up to a break character or `->`. Uses the same
-/// SIMD scan as `Lexer` when that feature is on, and a byte loop otherwise.
-#[cfg(all(feature = "lexer-simd", target_arch = "x86_64"))]
-fn word_length(bytes: &[u8]) -> usize {
-    super::simd::word_prefix_len(bytes)
-}
-
-#[cfg(not(all(feature = "lexer-simd", target_arch = "x86_64")))]
+/// The length of the word at the start of `bytes`: up to a break character or `->`.
 fn word_length(bytes: &[u8]) -> usize {
     use crate::lexer::WORD_BREAK;
     let mut length = 0;

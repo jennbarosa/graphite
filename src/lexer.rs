@@ -3,8 +3,6 @@
 
 mod diagnostic;
 pub mod lex;
-#[cfg(all(feature = "lexer-simd", target_arch = "x86_64"))]
-mod simd;
 
 pub use diagnostic::Diagnostic;
 
