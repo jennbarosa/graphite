@@ -3,6 +3,9 @@ use std::path::{Path, PathBuf};
 
 #[path = "support/bun.rs"]
 mod bun;
+#[allow(dead_code)]
+#[path = "support/tools.rs"]
+mod tools;
 
 use graphite::frontend::typescript::TYPESCRIPT;
 use graphite::frontend::{Frontend, Module, registry};

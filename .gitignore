@@ -1,2 +1,7 @@
 /target
 graphite-out/
+
+# Tools installed by scripts/setup-tools.sh (the package-lock.json is committed; the rest is not)
+/tools/bin/
+/tools/downloads/
+/tools/node_modules/

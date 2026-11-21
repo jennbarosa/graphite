@@ -7,6 +7,9 @@ mod bun;
 #[allow(dead_code)]
 #[path = "support/cli.rs"]
 mod cli;
+#[allow(dead_code)]
+#[path = "support/tools.rs"]
+mod tools;
 
 use graphite::frontend::registry;
 use graphite::parser::Schema;

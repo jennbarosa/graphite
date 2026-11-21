@@ -6,6 +6,9 @@ mod bun;
 #[allow(dead_code)]
 #[path = "support/cli.rs"]
 mod cli;
+#[allow(dead_code)]
+#[path = "support/tools.rs"]
+mod tools;
 
 use cli::{debugging_front_ends, dsl, graphite, manifest, scratch, stderr, stdout, walk_spec};
 
@@ -361,6 +364,7 @@ fn graphite_js_runner_selects_the_runtime() {
     let working = Command::new(env!("CARGO_BIN_EXE_graphite"))
         .args(["debug".as_ref(), spec.as_os_str(), "show".as_ref()])
         .env("GRAPHITE_JS_RUNNER", "bun")
+        .env("PATH", tools::path_with_tools())
         .output()
         .unwrap();
     assert!(working.status.success(), "{}", stderr(&working));
