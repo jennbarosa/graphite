@@ -30,18 +30,18 @@ fn workdir(name: &str, items: &str) -> PathBuf {
     .unwrap();
     std::fs::write(dir.join("items.json"), items).unwrap();
     std::fs::write(
-        dir.join("pass.sh"),
-        "cat > /dev/null\nprintf '{\"outcome\":\"pass\"}\\n'\n",
+        dir.join("pass.py"),
+        "import sys\nsys.stdin.read()\nprint('{\"outcome\":\"pass\"}')\n",
     )
     .unwrap();
     std::fs::write(
-        dir.join("emit.sh"),
-        "cat > /dev/null\nprintf '{\"outcome\":\"pass\",\"output\":'\ncat items.json\nprintf '}\\n'\n",
+        dir.join("emit.py"),
+        "import sys\nsys.stdin.read()\nsys.stdout.write('{\"outcome\":\"pass\",\"output\":' + open(\"items.json\").read() + '}\\n')\n",
     )
     .unwrap();
     std::fs::write(
         dir.join("tasks.toml"),
-        "[tasks]\ndiscover = [\"sh\", \"pass.sh\"]\nemit = [\"sh\", \"emit.sh\"]\naudit = [\"sh\", \"pass.sh\"]\nsave = [\"sh\", \"pass.sh\"]\n",
+        "[tasks]\ndiscover = [\"python3\", \"pass.py\"]\nemit = [\"python3\", \"emit.py\"]\naudit = [\"python3\", \"pass.py\"]\nsave = [\"python3\", \"pass.py\"]\n",
     )
     .unwrap();
     dir
@@ -105,13 +105,13 @@ fn an_item_a_crash_interrupted_is_finished_by_the_next_run() {
     let dir = workdir("cli-fanout-crash", r#"[{"domain":"a.com"}]"#);
     // The audit task waits until `go` exists. Until then it sleeps, so the run is still in progress.
     std::fs::write(
-        dir.join("audit.sh"),
-        "cat > /dev/null\ntouch audit-started\nif [ -e go ]; then printf '{\"outcome\":\"pass\"}\\n'; exit 0; fi\nexec sleep 30\n",
+        dir.join("audit.py"),
+        "import os\nimport sys\nimport time\nsys.stdin.read()\nopen(\"audit-started\", \"w\").close()\nif os.path.exists(\"go\"):\n    print('{\"outcome\":\"pass\"}')\n    sys.exit(0)\ntime.sleep(30)\n",
     )
     .unwrap();
     std::fs::write(
         dir.join("tasks.toml"),
-        "[tasks]\ndiscover = [\"sh\", \"pass.sh\"]\nemit = [\"sh\", \"emit.sh\"]\naudit = [\"sh\", \"audit.sh\"]\nsave = [\"sh\", \"pass.sh\"]\n",
+        "[tasks]\ndiscover = [\"python3\", \"pass.py\"]\nemit = [\"python3\", \"emit.py\"]\naudit = [\"python3\", \"audit.py\"]\nsave = [\"python3\", \"pass.py\"]\n",
     )
     .unwrap();
 
@@ -242,13 +242,13 @@ fn a_new_state_with_the_same_seen_file_runs_no_item_again() {
     );
     // Every item's save task logs one line, so a second run that repeats an item shows as an extra line.
     std::fs::write(
-        dir.join("save.sh"),
-        "cat > /dev/null\necho saved >> saves.log\nprintf '{\"outcome\":\"pass\"}\\n'\n",
+        dir.join("save.py"),
+        "import sys\nsys.stdin.read()\nopen(\"saves.log\", \"a\").write(\"saved\\n\")\nprint('{\"outcome\":\"pass\"}')\n",
     )
     .unwrap();
     std::fs::write(
         dir.join("tasks.toml"),
-        "[tasks]\ndiscover = [\"sh\", \"pass.sh\"]\nemit = [\"sh\", \"emit.sh\"]\naudit = [\"sh\", \"pass.sh\"]\nsave = [\"sh\", \"save.sh\"]\n",
+        "[tasks]\ndiscover = [\"python3\", \"pass.py\"]\nemit = [\"python3\", \"emit.py\"]\naudit = [\"python3\", \"pass.py\"]\nsave = [\"python3\", \"save.py\"]\n",
     )
     .unwrap();
     // Two days: the same seen file, a new state file each day, as the docs describe.
