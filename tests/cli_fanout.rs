@@ -133,7 +133,8 @@ fn an_item_a_crash_interrupted_is_finished_by_the_next_run() {
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
     let killed = std::process::Command::new("kill")
-        .arg("-KILL")
+        // `--` before the negative group id: procps kill (Ubuntu) kills the group without it but exits 1.
+        .args(["-KILL", "--"])
         .arg(format!("-{}", child.id()))
         .status()
         .unwrap();
