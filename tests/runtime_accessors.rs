@@ -7,6 +7,9 @@ mod bun;
 #[allow(dead_code)]
 #[path = "support/cli.rs"]
 mod cli;
+#[allow(dead_code)]
+#[path = "support/tools.rs"]
+mod tools;
 
 use graphite::frontend::registry;
 use graphite::parser::Schema;
@@ -22,6 +25,7 @@ fn host_accessors_workflow_host_and_persistence_run_on_the_fixtures() {
         &workflow,
         &Schema {
             node_flags: &["retry"],
+            ..Default::default()
         },
     )
     .unwrap();

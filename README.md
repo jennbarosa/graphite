@@ -81,6 +81,7 @@ The [tutorial](docs/tutorial.md) builds a real graph from scratch and explains e
 | [DSL reference](docs/dsl.md) | Every line type, the rules, and chains. |
 | [Front ends](docs/front-ends.md) | How graphs become code in each language, and how to add one. |
 | [TypeScript front end](docs/typescript.md) | The generated TypeScript API and writing a host. |
+| [PureScript front end](docs/purescript.md) | Pure decision tables, written as PureScript modules. |
 | [Durable workflows](docs/durable-workflows.md) | Running tasks with checkpoints and retries. |
 | [CLI reference](docs/cli.md) | Every command and option. Also `graphite help <command>`. |
 | [Rust API](docs/rust.md) | Compiling graphs from Rust code. |
@@ -110,6 +111,24 @@ graph walk @choice:facing @idle:stopped
 
 Working examples are in [`examples/`](examples/): `door.graphite` and `walk.graphite` for animation,
 `order.graphite` for an order lifecycle, and `workflow/` for a durable task pipeline.
+
+## Pure decision tables
+
+A graph that only chooses (no states, no runs) is a pure file. It declares its inputs and enums,
+and each choice names the arm it picks:
+
+```graphite
+@!frontend:purescript
+graph combat
+  enum Tactic flee hit hold
+  input lowHealth : bool
+  choose tactic : Tactic
+    when lowHealth -> flee
+    else           -> hold
+```
+
+`graphite compile combat.graphite` writes `Combat.purs`, a PureScript module with a plain function
+`tactic :: Input -> Tactic`. The [DSL reference](docs/dsl.md#pure-files) lists the lines it allows.
 
 ## What Graphite catches before a run
 

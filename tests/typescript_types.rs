@@ -1,8 +1,11 @@
 //! The generated TypeScript types must accept real names and reject typos. The bun tests only
 //! run the code, so this test runs the TypeScript compiler (`tsc`) over a host file.
 
+#[allow(dead_code)]
+#[path = "support/tools.rs"]
+mod tools;
+
 use std::path::PathBuf;
-use std::process::Command;
 
 use graphite::frontend::registry;
 use graphite::parser::Schema;
@@ -31,8 +34,7 @@ export { node, wrong };
 
 #[test]
 fn generated_types_accept_real_names_and_reject_typos() {
-    // `GRAPHITE_TSC` names the compiler binary; otherwise `tsc` is found on the path.
-    let tsc = std::env::var_os("GRAPHITE_TSC").unwrap_or_else(|| "tsc".into());
+    // `GRAPHITE_TSC` names the compiler binary; otherwise the copy in `tools/` is used.
     let directory = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("typescript-types");
     let _ = std::fs::remove_dir_all(&directory);
     let source = include_str!("fixtures/runtime/walk_spec.graphite");
@@ -41,7 +43,7 @@ fn generated_types_accept_real_names_and_reject_typos() {
     write_modules(frontend, &graphs, &directory).unwrap();
     std::fs::write(directory.join("host.ts"), HOST).unwrap();
 
-    let output = Command::new(&tsc)
+    let output = tools::command("tsc", "GRAPHITE_TSC")
         .current_dir(&directory)
         .args([
             "--noEmit",
@@ -59,7 +61,7 @@ fn generated_types_accept_real_names_and_reject_typos() {
         ])
         .output()
         .unwrap_or_else(|error| {
-            panic!("cannot run {tsc:?}: {error}; install typescript or set GRAPHITE_TSC")
+            panic!("cannot run tsc: {error}; run scripts/setup-tools.py or set GRAPHITE_TSC")
         });
     assert!(
         output.status.success(),

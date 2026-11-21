@@ -7,7 +7,7 @@ pub struct ParseError {
 }
 
 impl ParseError {
-    pub(super) fn new(message: &'static str, offset: usize) -> Self {
+    pub(crate) fn new(message: &'static str, offset: usize) -> Self {
         Self { message, offset }
     }
 

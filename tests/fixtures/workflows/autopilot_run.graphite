@@ -1,0 +1,38 @@
+graph gads_run
+
+  node setup                 @task:sync
+  node research              @task:research
+  node validate              @task:validate
+  node canopy     retry      @task:canopy
+  node write                 @task:write
+  node test       retry      @task:test
+  node commit                @task:commit_content
+  node push                  @task:push
+  node report     end        @task:report
+
+  edge setup    -> research  when passed
+  edge research -> validate  when passed
+  edge validate -> canopy    when passed
+  edge canopy   -> write     when passed
+  edge write    -> test      when passed
+  edge test     -> commit    when passed
+  edge commit   -> push      when passed
+  edge push     -> report    when passed
+
+  edge setup    -> report when failed
+  edge research -> report when failed
+  edge validate -> report when failed
+  edge canopy   -> report when failed
+  edge write    -> report when failed
+  edge test     -> report when failed
+  edge commit   -> report when failed
+  edge push     -> report when failed
+
+  edge setup    -> report when errored
+  edge research -> report when errored
+  edge validate -> report when errored
+  edge canopy   -> report when errored
+  edge write    -> report when errored
+  edge test     -> report when errored
+  edge commit   -> report when errored
+  edge push     -> report when errored

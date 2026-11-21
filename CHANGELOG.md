@@ -24,6 +24,24 @@ change the interface.
 
 ### Changed
 
+- **Breaking:** a dotted file name now picks its front end from the infix. `door.rs.graphite`
+  builds Rust, where it used to build TypeScript, with no warning. Pass `--frontend typescript` or add
+  `@!frontend:typescript` to keep the old output. A name such as `my.walk.graphite` with no known
+  infix is now an error for `compile` and `check` unless a flag or directive names the front end.
+  Other commands ignore the infix. See the
+  [CLI reference](docs/cli.md#choosing-the-front-end-and-mode).
+- `check` and `compile` pick the front end from the file's name and directives when `--frontend` is
+  not given. The default is still `typescript` for machine files.
+- The allowlist's `[annotations]` check now covers enum, member, input and choose lines.
+- **Breaking (library):** `Frontend` gains a required `extension` method. `Schema` gains a `pure`
+  field, so a struct literal needs `..Default::default()`. `CompiledGraph`, `Choice` and the pure
+  data types gain fields. `pipeline::build::Request` takes a `select` callback in place of
+  `front_end` and `pure`, and the file is read once.
+- `check` now renders every output, so it reports the same name clashes as `compile`. A clash
+  found while rendering, such as two machine nodes that become one Rust constant, is now reported
+  with the line of its graph, and it is refused before anything is written.
+- A pure name that PureScript cannot use, or that clashes with a name the module imports (such as
+  `Nothing` or `otherwise`), is refused with the line of the declaration that causes it.
 - Fan-out seen keys are resumed, not skipped, on later runs: a finished item returns its stored result
   without running its tasks again.
 - The `--durable` flag is removed. It did nothing since `run` became durable, and passing it is now a usage error.
@@ -36,6 +54,13 @@ change the interface.
 
 ### Added
 
+- Pure files: `enum`, `input`, `choose NAME : ENUM` and `when` tests on declared inputs, with the
+  `purescript` front end writing a PureScript module. A pure file is a decision table, so it has
+  no states and cannot be run. See [pure files](docs/dsl.md#pure-files) and
+  [PureScript](docs/purescript.md).
+- Directives at the top of a file: `@!pure` and `@!frontend:KEY`.
+- `--pure` for `check`, `compile` and `inspect`. `inspect` reports a pure graph's kind, enums and
+  inputs.
 - Annotations on the `graph` line (`graph walk @choice:facing`), read with `graph.annotations()` in TypeScript
   and `GRAPH.annotations` in Rust.
 - `default @key:value` lines, before the first node, add annotations to every node that does not set the key.

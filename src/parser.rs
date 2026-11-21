@@ -15,10 +15,12 @@ pub use error::ParseError;
 /// The keyword that opens each graph block.
 pub const GRAPH_KEYWORD: &str = "graph";
 
-/// Additional legal node flags. Core `loop` and `end` are always available.
+/// Additional legal node flags. Core `loop` and `end` are always available. `pure` makes the
+/// graphs pure, for signals the library cannot read from the text (flags, names, targets).
 #[derive(Default)]
 pub struct Schema<'a> {
     pub node_flags: &'a [&'a str],
+    pub pure: bool,
 }
 
 /// Compile one lexer stream directly into owned, checked graph arrays.
@@ -32,8 +34,19 @@ pub fn parse(
     schema: &Schema<'_>,
     capacities: &[Capacity],
 ) -> Result<Vec<CompiledGraph>, ParseError> {
+    parse_body(source, 0, schema, capacities)
+}
+
+/// [`parse`] from byte `body`, past the directives that [`crate::preprocess`] reads. The
+/// capacities count the same text as `body..`.
+pub(crate) fn parse_body(
+    source: &str,
+    body: usize,
+    schema: &Schema<'_>,
+    capacities: &[Capacity],
+) -> Result<Vec<CompiledGraph>, ParseError> {
     check_source_len(source)?;
-    grammar::parse(source, schema, capacities)
+    grammar::parse(source, body, schema, capacities)
 }
 
 /// Positions are `u32`, so a longer source cannot be parsed.

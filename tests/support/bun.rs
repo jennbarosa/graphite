@@ -1,7 +1,6 @@
 //! Runs a TypeScript test file with Bun from the crate root, pointing it at a generated output.
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 /// Asserts that `bun test <file>` passes, with `variable` set to `value` for the run.
 pub fn assert_bun_test_passes(manifest: &Path, file: &str, variable: &str, value: &Path) {
@@ -10,7 +9,7 @@ pub fn assert_bun_test_passes(manifest: &Path, file: &str, variable: &str, value
 
 /// Like [`assert_bun_test_passes`], with several environment variables set for the run.
 pub fn assert_bun_test_passes_with(manifest: &Path, file: &str, variables: &[(&str, PathBuf)]) {
-    let mut command = Command::new("bun");
+    let mut command = crate::tools::command("bun", "GRAPHITE_BUN");
     command
         .arg("test")
         .arg(manifest.join(file))
@@ -20,7 +19,7 @@ pub fn assert_bun_test_passes_with(manifest: &Path, file: &str, variables: &[(&s
     }
     let output = command
         .output()
-        .expect("bun must be installed to run the TypeScript tests");
+        .expect("bun must be installed to run the TypeScript tests: run scripts/setup-tools.py");
     assert!(
         output.status.success(),
         "{file} failed:\n{}{}",

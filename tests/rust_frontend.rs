@@ -46,7 +46,7 @@ fn names_that_collide_after_rewrite_are_an_error() {
 #[test]
 fn runtime_is_the_graphite_module_and_is_registered() {
     let target = registry::lookup("rust").expect("rust is a registered front end");
-    assert_eq!(target.frontend.runtime_file_name(), "graphite.rs");
+    assert_eq!(target.frontend.runtime_file_name(), Some("graphite.rs"));
     let mut runtime = Vec::new();
     target.frontend.emit_runtime(&mut runtime).unwrap();
     assert!(

@@ -11,6 +11,11 @@ graph grammar
   node else_arm   @task:else_arm
   node arm        @task:arm
   node arms_end   @task:arms_end
+  node enum_line  @task:enum_line
+  node enum_members @task:enum_members
+  node member     @task:member
+  node members_end @task:members_end
+  node input_line @task:input_line
   node block_end  @task:block_end
   node graph_end  @task:graph_end
   node finished   end
@@ -25,6 +30,8 @@ graph grammar
   edge body -> node_line when line_node
   edge body -> edge_line when line_edge
   edge body -> choose    when line_choose
+  edge body -> enum_line  when line_enum
+  edge body -> input_line when line_input
   edge body -> block_end when line_end
   edge body -> failed    when failed
   edge default_line -> body   when passed
@@ -46,6 +53,18 @@ graph grammar
   edge arm -> failed when failed
   edge arms_end -> body   when passed
   edge arms_end -> failed when failed
+  edge enum_line -> enum_members when block
+  edge enum_line -> body         when passed
+  edge enum_line -> failed       when failed
+  edge enum_members -> member      when member
+  edge enum_members -> members_end when closed
+  edge enum_members -> failed      when failed
+  edge member -> enum_members when passed
+  edge member -> failed       when failed
+  edge members_end -> body   when passed
+  edge members_end -> failed when failed
+  edge input_line -> body   when passed
+  edge input_line -> failed when failed
   edge block_end -> graph_end when passed
   edge block_end -> failed    when failed
   edge graph_end -> next   when passed

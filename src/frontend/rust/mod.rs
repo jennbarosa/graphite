@@ -7,6 +7,9 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use super::lang::digit_guard;
+use super::lang::is_plain_ident;
+use super::lang::rust_keywords::RUST_KEYWORDS;
 use super::{Frontend, Module};
 use crate::frontend::registry::{Debugger, Target};
 use crate::graph::{Annotation, CompiledGraph, Span, index};
@@ -16,6 +19,9 @@ use crate::interner::StringId;
 pub const RUNTIME_FILE: &str = "graphite.rs";
 
 const RUNTIME: &str = include_str!("runtime.rs");
+
+/// Extension of every generated module, without the dot.
+const EXTENSION: &str = "rs";
 
 pub struct Rust;
 
@@ -85,7 +91,7 @@ impl Frontend for Rust {
     }
 
     fn file_name(&self, graph: &CompiledGraph, _: Module) -> String {
-        format!("{}.rs", graph.text(graph.name))
+        format!("{}.{EXTENSION}", graph.text(graph.name))
     }
 
     fn emit_module(
@@ -110,8 +116,12 @@ impl Frontend for Rust {
         output.write_all(RUNTIME.as_bytes())
     }
 
-    fn runtime_file_name(&self) -> &'static str {
-        RUNTIME_FILE
+    fn runtime_file_name(&self) -> Option<&'static str> {
+        Some(RUNTIME_FILE)
+    }
+
+    fn extension(&self) -> &'static str {
+        EXTENSION
     }
 }
 
@@ -249,28 +259,14 @@ fn constants<'a>(
 
 /// Whether a graph name can be a Rust module name as written: an identifier, and not a keyword.
 fn is_module_name(name: &str) -> bool {
-    const KEYWORDS: &[&str] = &[
-        "as", "async", "await", "break", "const", "continue", "crate", "dyn", "else", "enum",
-        "extern", "false", "fn", "for", "if", "impl", "in", "let", "loop", "match", "mod", "move",
-        "mut", "pub", "ref", "return", "self", "static", "struct", "super", "trait", "true",
-        "type", "unsafe", "use", "where", "while",
-    ];
-    let mut characters = name.chars();
-    let starts_well = characters
-        .next()
-        .is_some_and(|first| first == '_' || first.is_ascii_alphabetic());
-    starts_well
-        && characters.all(|c| c == '_' || c.is_ascii_alphanumeric())
-        && !KEYWORDS.contains(&name)
+    is_plain_ident(name, RUST_KEYWORDS)
 }
 
 /// The Rust constant for a graph name: upper case, with any character that is not ASCII
 /// alphanumeric replaced by `_`, and a leading `_` when the name starts with a digit.
 fn ident(name: &str) -> String {
     let mut out = String::with_capacity(name.len() + 1);
-    if name.starts_with(|c: char| c.is_ascii_digit()) {
-        out.push('_');
-    }
+    digit_guard(name, &mut out);
     for c in name.chars() {
         out.push(if c.is_ascii_alphanumeric() {
             c.to_ascii_uppercase()

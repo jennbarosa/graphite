@@ -1,11 +1,16 @@
 graph structure
-  node degrees @task:degrees
-  node offsets @task:offsets
-  node reach   @task:reach
-  node routes  @task:routes
-  node done    end
-  node failed  end
+  node kind      @task:kind
+  node degrees   @task:degrees
+  node offsets   @task:offsets
+  node reach     @task:reach
+  node routes    @task:routes
+  node totality  @task:totality
+  node done      end
+  node failed    end
 
+  edge kind     -> degrees  when machine
+  edge kind     -> totality when pure
+  edge kind     -> failed   when failed
   edge degrees -> offsets when passed
   edge degrees -> failed  when failed
   edge offsets -> reach   when passed
@@ -14,3 +19,5 @@ graph structure
   edge reach   -> failed  when failed
   edge routes  -> done    when passed
   edge routes  -> failed  when failed
+  edge totality -> done   when passed
+  edge totality -> failed when failed

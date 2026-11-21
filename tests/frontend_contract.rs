@@ -15,6 +15,10 @@ impl Frontend for StringTable {
         "strings.txt".into()
     }
 
+    fn extension(&self) -> &'static str {
+        "txt"
+    }
+
     fn emit_module(
         &self,
         graph: &CompiledGraph,
@@ -31,8 +35,8 @@ impl Frontend for StringTable {
         Ok(())
     }
 
-    fn runtime_file_name(&self) -> &'static str {
-        "strings.ts"
+    fn runtime_file_name(&self) -> Option<&'static str> {
+        Some("strings.ts")
     }
 }
 

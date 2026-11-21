@@ -5,10 +5,18 @@ use std::path::Path;
 
 use graphite::pipeline::check_outputs;
 
+use crate::allow::Allowlist;
+use crate::resolve::Output;
 use crate::{Failure, json, load};
 
-pub fn run(input: &Path, front_end: &str, allow: Option<&Path>, json: bool) -> Result<(), Failure> {
-    let graphs = count(input, front_end, allow)?;
+pub fn run(
+    input: &Path,
+    front_end: Option<&str>,
+    allow: Option<&Path>,
+    pure: bool,
+    json: bool,
+) -> Result<(), Failure> {
+    let graphs = count(input, front_end, allow, pure)?;
     if json {
         println!(
             "{}",
@@ -22,10 +30,15 @@ pub fn run(input: &Path, front_end: &str, allow: Option<&Path>, json: bool) -> R
 }
 
 /// Checks the file and returns how many graphs it holds.
-fn count(input: &Path, front_end: &str, allow: Option<&Path>) -> Result<usize, String> {
-    let front_end = load::front_end(front_end)?;
-    let (source, graphs) = load::graphs(input, allow)?;
-    check_outputs(front_end.frontend, &graphs)
-        .map_err(|collision| collision.diagnostic(&source).to_string())?;
-    Ok(graphs.len())
+fn count(
+    input: &Path,
+    front_end: Option<&str>,
+    allow: Option<&Path>,
+    pure: bool,
+) -> Result<usize, String> {
+    let allowlist = allow.map(Allowlist::load).transpose()?;
+    let loaded = load::read(input, allowlist.as_ref(), front_end, pure, Output::Written)?;
+    check_outputs(loaded.front_end.frontend, &loaded.graphs)
+        .map_err(|collision| collision.diagnostic(&loaded.source).to_string())?;
+    Ok(loaded.graphs.len())
 }

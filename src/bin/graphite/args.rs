@@ -17,18 +17,22 @@ pub enum Command {
         input: PathBuf,
         /// `None` means `graphite-out/<file stem>`, resolved by the command.
         out: Option<PathBuf>,
-        front_end: String,
+        /// `None` lets the file's name, directives and `--pure` pick the front end.
+        front_end: Option<String>,
         allow: Option<PathBuf>,
+        pure: bool,
     },
     Check {
         input: PathBuf,
-        front_end: String,
+        front_end: Option<String>,
         allow: Option<PathBuf>,
+        pure: bool,
         json: bool,
     },
     Inspect {
         input: PathBuf,
         json: bool,
+        pure: bool,
     },
     Debug {
         input: PathBuf,
@@ -81,8 +85,11 @@ pub enum Command {
 /// Options as written, before each command decides which ones it accepts.
 #[derive(Default)]
 struct Options {
+    /// Every flag as written, in the order typed.
+    given: Vec<String>,
     out: Option<PathBuf>,
     front_end: Option<String>,
+    pure: bool,
     graph: Option<String>,
     allow: Option<PathBuf>,
     state: Option<PathBuf>,
@@ -194,9 +201,13 @@ fn parse_options(args: &[String]) -> Result<(Options, Vec<String>), String> {
     let mut positionals = Vec::new();
     let mut words = args.iter().cloned();
     while let Some(arg) = words.next() {
+        if arg.starts_with("--") {
+            options.given.push(arg.clone());
+        }
         match arg.as_str() {
             "--out" => options.out = Some(PathBuf::from(value(&mut words, "--out")?)),
             "--frontend" => options.front_end = Some(value(&mut words, "--frontend")?),
+            "--pure" => options.pure = true,
             "--graph" => options.graph = Some(value(&mut words, "--graph")?),
             "--allow" => options.allow = Some(PathBuf::from(value(&mut words, "--allow")?)),
             "--state" => options.state = Some(PathBuf::from(value(&mut words, "--state")?)),
@@ -225,50 +236,10 @@ fn parse_options(args: &[String]) -> Result<(Options, Vec<String>), String> {
 
 /// The options each command accepts. Any other option given to that command is refused.
 fn accepted_flags(verb: &str) -> &'static [&'static str] {
-    match verb {
-        "init" => &[],
-        "compile" => &["--out", "--frontend", "--allow"],
-        "check" => &["--frontend", "--allow", "--json"],
-        "inspect" => &["--json"],
-        "run" => &[
-            "--allow",
-            "--state",
-            "--runner",
-            "--input",
-            "--tasks",
-            "--each",
-            "--key",
-            "--seen",
-            "--until-passed",
-            "--retry",
-        ],
-        "debug" => &["--frontend", "--graph", "--out", "--allow", "--simulate"],
-        _ => &[],
-    }
-}
-
-/// The option flags that were given, in a fixed order.
-fn given_flags(options: &Options) -> Vec<&'static str> {
-    [
-        ("--out", options.out.is_some()),
-        ("--frontend", options.front_end.is_some()),
-        ("--graph", options.graph.is_some()),
-        ("--allow", options.allow.is_some()),
-        ("--state", options.state.is_some()),
-        ("--runner", options.runner.is_some()),
-        ("--json", options.json),
-        ("--input", options.input_data.is_some()),
-        ("--tasks", options.tasks.is_some()),
-        ("--each", options.each.is_some()),
-        ("--key", options.key.is_some()),
-        ("--seen", options.seen.is_some()),
-        ("--until-passed", options.until_passed.is_some()),
-        ("--retry", options.retry.is_some()),
-        ("--simulate", !options.simulate.is_empty()),
-    ]
-    .into_iter()
-    .filter_map(|(flag, given)| given.then_some(flag))
-    .collect()
+    help::COMMANDS
+        .iter()
+        .find(|(name, _)| *name == verb)
+        .map_or(&[], |(_, flags)| *flags)
 }
 
 /// Builds the command for `verb` from its file and options, refusing any option it does not accept.
@@ -279,16 +250,13 @@ fn command(
     options: Options,
 ) -> Result<Command, String> {
     let accepted = accepted_flags(verb);
-    if let Some(flag) = given_flags(&options)
-        .into_iter()
-        .find(|flag| !accepted.contains(flag))
+    if let Some(flag) = options
+        .given
+        .iter()
+        .find(|flag| !accepted.contains(&flag.as_str()))
     {
         return Err(format!("{verb} does not take {flag}"));
     }
-    let front_end = options
-        .front_end
-        .clone()
-        .unwrap_or_else(|| registry::DEFAULT_FRONT_END.to_string());
     match verb {
         "init" => {
             only_file(rest, verb)?;
@@ -299,16 +267,18 @@ fn command(
             Ok(Command::Compile {
                 input,
                 out: options.out,
-                front_end,
+                front_end: options.front_end,
                 allow: options.allow,
+                pure: options.pure,
             })
         }
         "check" => {
             only_file(rest, verb)?;
             Ok(Command::Check {
                 input,
-                front_end,
+                front_end: options.front_end,
                 allow: options.allow,
+                pure: options.pure,
                 json: options.json,
             })
         }
@@ -317,6 +287,7 @@ fn command(
             Ok(Command::Inspect {
                 input,
                 json: options.json,
+                pure: options.pure,
             })
         }
         "run" => {
@@ -345,7 +316,9 @@ fn command(
             }
             Ok(Command::Debug {
                 input,
-                front_end,
+                front_end: options
+                    .front_end
+                    .unwrap_or_else(|| registry::DEFAULT_FRONT_END.to_string()),
                 graph: options.graph,
                 out: options.out,
                 allow: options.allow,

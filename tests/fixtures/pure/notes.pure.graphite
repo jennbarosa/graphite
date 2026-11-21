@@ -1,0 +1,6 @@
+graph notes
+  enum Level low high @rank:one
+  input urgent : bool @source:flag
+  choose alert : Level @tick
+    when urgent -> high @sound
+    else -> low

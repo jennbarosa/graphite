@@ -11,7 +11,10 @@ use std::path::{Path, PathBuf};
 use cli::{graphite, manifest, scratch, stderr, stdout};
 
 /// A script that appends its stdin to `log.txt`, then prints its first argument: the report.
-const LOG_SCRIPT: &str = "cat >> log.txt\nprintf '%s\\n' \"$1\"\n";
+const LOG_SCRIPT: &str = r#"import sys
+open("log.txt", "a").write(sys.stdin.read())
+print(sys.argv[1])
+"#;
 
 /// A fresh working directory with the review workflow, its allowlist, `tasks.toml`, and any
 /// extra files as `(name, contents)`.
@@ -26,16 +29,16 @@ fn workdir(name: &str, tasks: &str, files: &[(&str, &str)]) -> PathBuf {
     .unwrap();
     std::fs::copy(fixtures.join("workflow.toml"), dir.join("workflow.toml")).unwrap();
     std::fs::write(dir.join("tasks.toml"), tasks).unwrap();
-    std::fs::write(dir.join("log.sh"), LOG_SCRIPT).unwrap();
+    std::fs::write(dir.join("log.py"), LOG_SCRIPT).unwrap();
     for (file, contents) in files {
         std::fs::write(dir.join(file), contents).unwrap();
     }
     dir
 }
 
-/// A task that runs `log.sh` and answers with `report`, a JSON line.
+/// A task that runs `log.py` and answers with `report`, a JSON line.
 fn logged(report: &str) -> String {
-    format!("[\"sh\", \"log.sh\", '{report}']")
+    format!("[\"python3\", \"log.py\", '{report}']")
 }
 
 /// `graphite run` on the workdir's workflow, with the allowlist and state file, plus `extra`.
@@ -94,21 +97,23 @@ fn every_task_runs_its_command_and_the_input_reaches_it() {
 #[test]
 fn a_failing_command_routes_to_fix_and_its_detail_reaches_fix() {
     // The first lint fails with a detail; every later lint passes.
-    let lint = "if [ -f marker ]; then printf '%s\\n' '{\"outcome\":\"pass\"}'; \
-                else touch marker; \
-                printf '%s\\n' '{\"outcome\":\"fail\",\"detail\":{\"message\":\"2 checks failed\",\"code\":\"lint\"}}'; fi\n";
+    let lint = r#"import os
+import sys
+open("log.txt", "a").write(sys.stdin.read())
+if os.path.exists("marker"):
+    print('{"outcome":"pass"}')
+else:
+    open("marker", "w").close()
+    print('{"outcome":"fail","detail":{"message":"2 checks failed","code":"lint"}}')
+"#;
     let pass = r#"{"outcome":"pass"}"#;
     let tasks = format!(
-        "[tasks]\nwrite = {}\nlint = [\"sh\", \"lint.sh\"]\nfix = {}\ndeploy = {}\n",
+        "[tasks]\nwrite = {}\nlint = [\"python3\", \"lint.py\"]\nfix = {}\ndeploy = {}\n",
         logged(r#"{"outcome":"none"}"#),
         logged(pass),
         logged(pass)
     );
-    let dir = workdir(
-        "cli-tasks-fail",
-        &tasks,
-        &[("lint.sh", &format!("cat >> log.txt\n{lint}"))],
-    );
+    let dir = workdir("cli-tasks-fail", &tasks, &[("lint.py", lint)]);
 
     let output = run(&dir, &tasks_flag(&dir));
     assert!(
@@ -213,15 +218,21 @@ fn input_is_refused_for_commands_that_do_not_run_tasks() {
 /// from it by node name.
 #[test]
 fn a_command_reads_an_earlier_stages_output_from_the_outputs_directory() {
-    let read_draft = r#"input=$(cat); dir=$(printf '%s' "$input" | sed 's/.*"outputs":"\([^"]*\)".*/\1/'); cat "$dir/draft.json" >> log.txt; printf '%s\n' '{"outcome":"pass"}'
+    let read_draft = r#"import os
+import re
+import sys
+text = sys.stdin.read()
+directory = re.findall(r'"outputs":"([^"]*)"', text)[-1]
+open("log.txt", "a").write(open(os.path.join(directory, "draft.json")).read())
+print('{"outcome":"pass"}')
 "#;
     let tasks = format!(
-        "[tasks]\nwrite = {}\nlint = [\"sh\", \"read.sh\"]\nfix = {}\ndeploy = {}\n",
+        "[tasks]\nwrite = {}\nlint = [\"python3\", \"read.py\"]\nfix = {}\ndeploy = {}\n",
         logged(r#"{"outcome":"none","output":{"draft":"hi"}}"#),
         logged(r#"{"outcome":"pass"}"#),
         logged(r#"{"outcome":"pass"}"#),
     );
-    let dir = workdir("cli-tasks-outputs", &tasks, &[("read.sh", read_draft)]);
+    let dir = workdir("cli-tasks-outputs", &tasks, &[("read.py", read_draft)]);
     let output = run(&dir, &tasks_flag(&dir));
     assert!(
         output.status.success(),
@@ -238,10 +249,19 @@ fn a_command_reads_an_earlier_stages_output_from_the_outputs_directory() {
 fn a_thrown_error_routes_to_the_errored_edge_when_the_graph_declares_it() {
     let graph = "graph review\n  node draft @task:write\n  node check @task:lint\n  node fix @task:fix\n  node ship end @task:deploy\n\n  edge draft -> check\n  edge check -> ship when passed\n  edge check -> fix when failed\n  edge check -> fix when errored\n  edge fix -> check\n";
     // The first lint throws; every later one passes.
-    let lint = "cat >> log.txt\nif [ -f marker ]; then printf '%s\\n' '{\"outcome\":\"pass\"}'; else touch marker; echo 'lint crashed' >&2; exit 3; fi\n";
+    let lint = r#"import os
+import sys
+open("log.txt", "a").write(sys.stdin.read())
+if os.path.exists("marker"):
+    print('{"outcome":"pass"}')
+else:
+    open("marker", "w").close()
+    print("lint crashed", file=sys.stderr)
+    sys.exit(3)
+"#;
     let pass = r#"{"outcome":"pass"}"#;
     let tasks = format!(
-        "[tasks]\nwrite = {}\nlint = [\"sh\", \"lint.sh\"]\nfix = {}\ndeploy = {}\n",
+        "[tasks]\nwrite = {}\nlint = [\"python3\", \"lint.py\"]\nfix = {}\ndeploy = {}\n",
         logged(r#"{"outcome":"none"}"#),
         logged(pass),
         logged(pass),
@@ -249,7 +269,7 @@ fn a_thrown_error_routes_to_the_errored_edge_when_the_graph_declares_it() {
     let dir = workdir(
         "cli-tasks-errored",
         &tasks,
-        &[("lint.sh", lint), ("errors.graphite", graph)],
+        &[("lint.py", lint), ("errors.graphite", graph)],
     );
     let output = graphite([
         "run".as_ref(),

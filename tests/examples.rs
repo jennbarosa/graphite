@@ -13,6 +13,7 @@ fn every_example_graph_checks() {
         (examples.join("door.graphite"), None),
         (examples.join("walk.graphite"), None),
         (examples.join("order.graphite"), None),
+        (examples.join("combat.pure.graphite"), None),
         (
             examples.join("workflow/workflow.graphite"),
             Some(examples.join("workflow/workflow.toml")),

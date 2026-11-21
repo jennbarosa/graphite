@@ -17,14 +17,14 @@ fn workdir(name: &str) -> std::path::PathBuf {
     )
     .unwrap();
     std::fs::write(
-        dir.join("audit.sh"),
-        "cat > /dev/null\nif [ -e ok ]; then printf '{\"outcome\":\"pass\"}\\n'; exit 0; fi\nexit 1\n",
+        dir.join("audit.py"),
+        "import os\nimport sys\nsys.stdin.read()\nif os.path.exists(\"ok\"):\n    print('{\"outcome\":\"pass\"}')\n    sys.exit(0)\nsys.exit(1)\n",
     )
     .unwrap();
-    std::fs::write(dir.join("pass.sh"), "cat > /dev/null\n").unwrap();
+    std::fs::write(dir.join("pass.py"), "import sys\nsys.stdin.read()\n").unwrap();
     std::fs::write(
         dir.join("tasks.toml"),
-        "[tasks]\naudit = [\"sh\", \"audit.sh\"]\nsave = [\"sh\", \"pass.sh\"]\n",
+        "[tasks]\naudit = [\"python3\", \"audit.py\"]\nsave = [\"python3\", \"pass.py\"]\n",
     )
     .unwrap();
     dir
@@ -139,10 +139,14 @@ fn retry_refuses_a_stage_the_run_has_already_passed() {
         "graph item\n  node audit @task:audit\n  node skip end\n\n  edge audit -> skip when passed\n  edge audit -> skip when errored\n  edge audit -> skip when failed\n",
     )
     .unwrap();
-    std::fs::write(dir.join("audit.sh"), "cat > /dev/null\nexit 1\n").unwrap();
+    std::fs::write(
+        dir.join("audit.py"),
+        "import sys\nsys.stdin.read()\nsys.exit(1)\n",
+    )
+    .unwrap();
     std::fs::write(
         dir.join("tasks.toml"),
-        "[tasks]\naudit = [\"sh\", \"audit.sh\"]\n",
+        "[tasks]\naudit = [\"python3\", \"audit.py\"]\n",
     )
     .unwrap();
     let allow = dir.join("allow.toml");

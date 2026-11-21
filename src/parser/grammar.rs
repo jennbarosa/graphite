@@ -9,8 +9,9 @@ use crate::bootstrap;
 use crate::bootstrap::grammar::{Task, task};
 use crate::graph::CompiledGraph;
 use crate::interner::StringId;
+use crate::kind::{Kind, Line};
 use crate::lexer::{Lexer, TokenKind};
-use crate::parser::compiler::{Builder, CHOOSE_ARM, GRAPH_FORM};
+use crate::parser::compiler::{Builder, CHOOSE_ARM, CHOOSE_NEEDS_WHEN, GRAPH_FORM};
 use crate::parser::tokens::Tokens;
 use crate::parser::{Capacity, GRAPH_KEYWORD, ParseError, Schema, structure};
 use crate::stage::Stepper;
@@ -21,16 +22,23 @@ fn grammar_graph() -> &'static CompiledGraph {
     GRAPH.get_or_init(bootstrap::grammar::graph)
 }
 
-/// Parses `source` by running the grammar graph over its tokens.
+/// Parses `source` from byte `start` by running the grammar graph over its tokens.
 pub(crate) fn parse(
     source: &str,
+    start: usize,
     schema: &Schema<'_>,
     capacities: &[Capacity],
 ) -> Result<Vec<CompiledGraph>, ParseError> {
     let flags: HashSet<&str> = schema.node_flags.iter().copied().collect();
+    let kind = if schema.pure {
+        Kind::Pure
+    } else {
+        Kind::Machine
+    };
     let mut session = Session {
-        tokens: Tokens::new(source, Lexer::new(source)),
+        tokens: Tokens::new(source, Lexer::at(source, start)),
         flags: &flags,
+        kind,
         capacities,
         names: HashSet::new(),
         graphs: crate::parser::capacity::buffer(capacities.len())?,
@@ -73,6 +81,8 @@ struct ChoiceHead {
 struct Session<'a, 's> {
     tokens: Tokens<'a>,
     flags: &'s HashSet<&'s str>,
+    /// Whether the file is a machine or a pure file, which decides the lines it may hold.
+    kind: Kind,
     capacities: &'s [Capacity],
     names: HashSet<&'a str>,
     graphs: Vec<CompiledGraph>,
@@ -106,6 +116,11 @@ impl<'a, 's> Session<'a, 's> {
             Task::ElseArm => self.else_arm(),
             Task::Arm => self.arm(),
             Task::ArmsEnd => self.arms_end(),
+            Task::EnumLine => self.enum_line(),
+            Task::EnumMembers => self.enum_members(),
+            Task::Member => self.member(),
+            Task::MembersEnd => self.members_end(),
+            Task::InputLine => self.input_line(),
             Task::BlockEnd => self.block_end(),
             Task::GraphEnd => self.graph_end(),
         }
@@ -186,7 +201,7 @@ impl<'a, 's> Session<'a, 's> {
                 offset,
             ));
         }
-        let opened = Builder::new(capacity, name, &mut self.tokens, self.flags)
+        let opened = Builder::new(capacity, name, &mut self.tokens, self.flags, self.kind)
             .and_then(|builder| builder.opened(&mut self.tokens));
         match opened {
             Ok(mut builder) => {
@@ -200,7 +215,8 @@ impl<'a, 's> Session<'a, 's> {
         }
     }
 
-    /// The next body line: a node, an edge, a choose, or the end of the body.
+    /// The next body line: a declaration, a node, an edge, a choose, or the end of the body. The
+    /// graph's kind decides which lines it may hold.
     fn body(&mut self) -> &'static [&'static str] {
         match self.tokens.at(TokenKind::Dedent) {
             Ok(true) => return &["line_end"],
@@ -212,28 +228,96 @@ impl<'a, 's> Session<'a, 's> {
             Err(error) => return self.fail(error),
         };
         self.keyword_offset = offset;
-        match keyword {
-            "default" if !self.linking && self.builder().graph.nodes.is_empty() => {
-                &["line_default"]
+        let line = match keyword {
+            "default" => Line::Default,
+            "node" => Line::Node,
+            "edge" => Line::Edge,
+            "choose" => Line::Choose,
+            "enum" => Line::Enum,
+            "input" => Line::Input,
+            _ => return self.fail(ParseError::new(GRAPH_FORM, offset)),
+        };
+        if let Err(message) = self.kind.allows(line) {
+            return self.fail(ParseError::new(message, offset));
+        }
+        match line {
+            Line::Default
+                if self.kind == Kind::Machine
+                    && (self.linking || !self.builder().graph.nodes.is_empty()) =>
+            {
+                self.fail(ParseError::new(
+                    "`default` must come before the first node",
+                    offset,
+                ))
             }
-            "default" => self.fail(ParseError::new(
-                "`default` must come before the first node",
-                offset,
-            )),
-            "node" if !self.linking => &["line_node"],
-            "edge" => {
-                self.linking = true;
-                &["line_edge"]
-            }
-            "choose" => {
-                self.linking = true;
-                &["line_choose"]
-            }
-            "node" => self.fail(ParseError::new(
+            Line::Default => &["line_default"],
+            Line::Node if self.linking => self.fail(ParseError::new(
                 "nodes must be declared before edges and choices",
                 offset,
             )),
-            _ => self.fail(ParseError::new(GRAPH_FORM, offset)),
+            Line::Node => &["line_node"],
+            Line::Edge => {
+                self.linking = true;
+                &["line_edge"]
+            }
+            Line::Choose => {
+                self.linking = true;
+                &["line_choose"]
+            }
+            Line::Enum => &["line_enum"],
+            Line::Input => &["line_input"],
+        }
+    }
+
+    /// Runs one builder step on the open graph. The step reads from the tokens; its error is the
+    /// line's error.
+    fn step<T>(
+        &mut self,
+        read: impl FnOnce(&mut Builder<'s>, &mut Tokens<'a>) -> Result<T, ParseError>,
+    ) -> Result<T, ParseError> {
+        let builder = self
+            .builder
+            .as_mut()
+            .expect("a declaration line is read inside a graph");
+        read(builder, &mut self.tokens)
+    }
+
+    /// `enum NAME MEMBER...` or `enum NAME`: one line, or a head whose members follow.
+    fn enum_line(&mut self) -> &'static [&'static str] {
+        match self.step(|builder, tokens| builder.enum_head(tokens)) {
+            Ok(true) => &["block"],
+            Ok(false) => OK,
+            Err(error) => self.fail(error),
+        }
+    }
+
+    /// The next member of a block enum, or the end of its block.
+    fn enum_members(&mut self) -> &'static [&'static str] {
+        match self.tokens.at(TokenKind::Dedent) {
+            Ok(true) => &["closed"],
+            Ok(false) => &["member"],
+            Err(error) => self.fail(error),
+        }
+    }
+
+    fn member(&mut self) -> &'static [&'static str] {
+        match self.step(|builder, tokens| builder.member(tokens)) {
+            Ok(()) => OK,
+            Err(error) => self.fail(error),
+        }
+    }
+
+    fn members_end(&mut self) -> &'static [&'static str] {
+        match self.step(|builder, tokens| builder.enum_end(tokens)) {
+            Ok(()) => OK,
+            Err(error) => self.fail(error),
+        }
+    }
+
+    fn input_line(&mut self) -> &'static [&'static str] {
+        match self.step(|builder, tokens| builder.input(tokens)) {
+            Ok(()) => OK,
+            Err(error) => self.fail(error),
         }
     }
 
@@ -286,12 +370,13 @@ impl<'a, 's> Session<'a, 's> {
                 self.else_seen = true;
                 &["arm_else"]
             }
+            "else" if !self.else_seen => self.fail(ParseError::new(CHOOSE_NEEDS_WHEN, offset)),
             _ => self.fail(ParseError::new(CHOOSE_ARM, offset)),
         }
     }
 
     fn when_arm(&mut self) -> &'static [&'static str] {
-        match self.with_builder(|builder, tokens| builder.condition(tokens)) {
+        match self.with_builder(|builder, tokens| builder.when_condition(tokens)) {
             Ok(condition) => {
                 self.pending_condition = Some(condition);
                 OK

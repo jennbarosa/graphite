@@ -3,6 +3,9 @@ use std::path::{Path, PathBuf};
 
 #[path = "support/bun.rs"]
 mod bun;
+#[allow(dead_code)]
+#[path = "support/tools.rs"]
+mod tools;
 
 use graphite::frontend::typescript::TYPESCRIPT;
 use graphite::frontend::{Frontend, Module, registry};
@@ -32,6 +35,7 @@ fn block_bounds_are_enough_for_a_compile_that_uses_every_line() {
     let source = "graph walk\n  node windup @anim:windup\n  node going loop @anim:walk\n  node stopped end @anim:idle\n  edge windup -> stopped when keyup\n  edge windup -> going\n  edge going -> stopped when keyup\n  choose facing\n    when left -> side @flip:true\n    else -> down\n";
     let schema = Schema {
         node_flags: &["loop"],
+        ..Default::default()
     };
     let graphs = compile(source, &schema).unwrap();
     assert_eq!(graphs.len(), 1);
@@ -187,6 +191,10 @@ impl Frontend for FailingOn {
         TYPESCRIPT.file_name(graph, module)
     }
 
+    fn extension(&self) -> &'static str {
+        TYPESCRIPT.extension()
+    }
+
     fn emit_module(
         &self,
         graph: &CompiledGraph,
@@ -203,7 +211,7 @@ impl Frontend for FailingOn {
         TYPESCRIPT.emit_runtime(output)
     }
 
-    fn runtime_file_name(&self) -> &'static str {
+    fn runtime_file_name(&self) -> Option<&'static str> {
         TYPESCRIPT.runtime_file_name()
     }
 }

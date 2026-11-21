@@ -1,0 +1,15 @@
+graph lamp
+  enum Mode off on
+  input power : bool
+  input mode : Mode
+  choose light : Mode
+    when power -> on
+    when mode:off -> off
+    else -> off
+
+graph gate
+  enum Lock open shut
+  input key : bool
+  choose lock : Lock
+    when key -> open
+    else -> shut

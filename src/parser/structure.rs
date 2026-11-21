@@ -47,10 +47,12 @@ struct Work<'g> {
 impl Work<'_> {
     fn run(&mut self, task: Task) -> &'static [&'static str] {
         let result = match task {
+            Task::Kind => return self.graph.kind.structure_route(),
             Task::Degrees => degrees(self.graph),
             Task::Offsets => offsets(self.graph),
             Task::Reach => reachability(self.graph),
             Task::Routes => routes(self.graph),
+            Task::Totality => totality(self.graph),
         };
         match result {
             Ok(()) => OK,
@@ -198,6 +200,22 @@ fn routes(graph: &CompiledGraph) -> Result<(), ParseError> {
                 stack.push(target);
             }
         }
+    }
+    Ok(())
+}
+
+/// A pure graph has no nodes to walk. Each of its choices must end in an `else` arm, so every
+/// input reaches an arm.
+fn totality(graph: &CompiledGraph) -> Result<(), ParseError> {
+    for choice in &graph.choices {
+        let arms = &graph.arms[index(&choice.arms)];
+        if arms.last().is_some_and(|arm| arm.condition.is_none()) {
+            continue;
+        }
+        return Err(ParseError::new(
+            "choose needs an `else` arm in a pure file",
+            choice.offset,
+        ));
     }
     Ok(())
 }

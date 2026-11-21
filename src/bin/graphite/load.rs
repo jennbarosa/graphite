@@ -1,16 +1,24 @@
 //! Reads a DSL file into compiled graphs, and picks graphs, front ends and string IDs out of them.
+//! The file is read by `pipeline::build::compile_file`, which resolves the front end and mode.
 
 use std::path::Path;
 
 use graphite::frontend::registry::{self, Target};
 use graphite::graph::CompiledGraph;
-use graphite::parser::Schema;
-use graphite::pipeline::compile;
+use graphite::pipeline::build::compile_file;
+use graphite::preprocess::Directives;
 
 use crate::allow::Allowlist;
+use crate::resolve::{self, Output};
 
-/// The graphs in `path`, checked against `allow` when one is given, plus the source text their
-/// diagnostics point into. The allowlist's node flags are legal in the graphs.
+/// A file read for a command: its source, its graphs, and the front end and mode it resolved to.
+pub struct Loaded {
+    pub source: String,
+    pub graphs: Vec<CompiledGraph>,
+    pub front_end: &'static Target,
+}
+
+/// Reads `path` with no front end or mode named on the command line.
 pub fn graphs(path: &Path, allow: Option<&Path>) -> Result<(String, Vec<CompiledGraph>), String> {
     let allowlist = allow.map(Allowlist::load).transpose()?;
     graphs_with(path, allowlist.as_ref())
@@ -21,18 +29,47 @@ pub fn graphs_with(
     path: &Path,
     allowlist: Option<&Allowlist>,
 ) -> Result<(String, Vec<CompiledGraph>), String> {
+    let loaded = read(path, allowlist, None, false, Output::Unused)?;
+    Ok((loaded.source, loaded.graphs))
+}
+
+/// Reads `path`, resolving its front end from `front_end` (the `--frontend` flag), `pure` (the
+/// `--pure` flag), its name and its directives. The allowlist's node flags are legal in the graphs.
+/// `output` says whether the command writes front-end output. See [`Output`].
+pub fn read(
+    path: &Path,
+    allowlist: Option<&Allowlist>,
+    front_end: Option<&str>,
+    pure: bool,
+    output: Output,
+) -> Result<Loaded, String> {
     let source =
         std::fs::read_to_string(path).map_err(|error| format!("{}: {error}", path.display()))?;
     let node_flags = allowlist.map_or(Vec::new(), Allowlist::node_flags);
-    let schema = Schema {
-        node_flags: &node_flags,
+    let select = |name: &str, directives: &Directives<'_>| {
+        resolve::resolve(name, front_end, pure, directives, output)
     };
-    let graphs =
-        compile(&source, &schema).map_err(|error| error.diagnostic(&source).to_string())?;
+    let (chosen, graphs) = compile_file(&source, path, &node_flags, &select)?;
     if let Some(allowlist) = allowlist {
         allowlist.check(&graphs)?;
     }
-    Ok((source, graphs))
+    Ok(Loaded {
+        source,
+        graphs,
+        front_end: chosen.target,
+    })
+}
+
+/// Refuses a pure file for a command that runs machine graphs: `run` and `debug`.
+pub fn require_runnable(graphs: &[CompiledGraph], path: &Path) -> Result<(), String> {
+    match graphs.first() {
+        Some(graph) if !graph.kind.runnable() => Err(format!(
+            "{} is a {} file; `graphite run` and `graphite debug` run machine graphs",
+            path.display(),
+            graph.kind.label()
+        )),
+        _ => Ok(()),
+    }
 }
 
 pub fn front_end(key: &str) -> Result<&'static Target, String> {

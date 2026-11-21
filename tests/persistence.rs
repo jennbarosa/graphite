@@ -7,6 +7,9 @@ mod bun;
 #[allow(dead_code)]
 #[path = "support/cli.rs"]
 mod cli;
+#[allow(dead_code)]
+#[path = "support/tools.rs"]
+mod tools;
 
 use std::path::{Path, PathBuf};
 
@@ -22,6 +25,7 @@ fn compile_workflow(name: &str, path: &Path) -> PathBuf {
         &source,
         &Schema {
             node_flags: &["retry"],
+            ..Default::default()
         },
     )
     .unwrap();

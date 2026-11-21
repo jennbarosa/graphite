@@ -49,11 +49,16 @@ pub fn run(input: &Path, state: Option<&Path>, options: &Options<'_>) -> Result<
         .transpose()?;
     let allowlist = resolve_allowlist(options.allow, manifest.as_ref())?;
     let (_, graphs) = load::graphs_with(input, allowlist.as_ref())?;
+    load::require_runnable(&graphs, input)?;
     let entry = load::select(&graphs, None)?;
     let item_graphs = options
         .fan_out
         .as_ref()
-        .map(|fan| load::graphs_with(fan.each, allowlist.as_ref()).map(|(_, graphs)| graphs))
+        .map(|fan| {
+            let (_, graphs) = load::graphs_with(fan.each, allowlist.as_ref())?;
+            load::require_runnable(&graphs, fan.each)?;
+            Ok::<_, String>(graphs)
+        })
         .transpose()?;
     let frontend = load::front_end(registry::DURABLE_FRONT_END)?.frontend;
     let state = state.map_or_else(|| input.with_extension("state.json"), Path::to_path_buf);

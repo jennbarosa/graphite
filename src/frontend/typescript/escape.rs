@@ -1,30 +1,25 @@
 use std::io::{self, Write};
 
+use crate::frontend::escape::{Escape, quoted};
+
 /// Write ordinary UTF-8 in borrowed chunks, escaping only JS string delimiters.
 pub(super) fn string(value: &str, output: &mut dyn Write) -> io::Result<()> {
-    output.write_all(b"\"")?;
-    let mut start = 0;
-    for (index, ch) in value.char_indices() {
-        let escaped = match ch {
-            '"' => Some("\\\""),
-            '\\' => Some("\\\\"),
-            '\u{2028}' => Some("\\u2028"),
-            '\u{2029}' => Some("\\u2029"),
-            _ => None,
-        };
-        if escaped.is_none() && ch > '\u{001f}' {
-            continue;
-        }
-        output.write_all(&value.as_bytes()[start..index])?;
-        if let Some(escaped) = escaped {
-            output.write_all(escaped.as_bytes())?;
-        } else {
-            write!(output, "\\u{:04x}", ch as u32)?;
-        }
-        start = index + ch.len_utf8();
+    quoted(value, output, rule)
+}
+
+/// The JavaScript rule: the delimiters, backslash, the two line separators, and every C0 control.
+fn rule(ch: char) -> Escape {
+    match ch {
+        '"' => Escape::Text("\\\""),
+        '\\' => Escape::Text("\\\\"),
+        '\u{2028}' => Escape::Text("\\u2028"),
+        '\u{2029}' => Escape::Text("\\u2029"),
+        ch if ch <= '\u{001f}' => Escape::Hex {
+            prefix: "\\u",
+            width: 4,
+        },
+        _ => Escape::Keep,
     }
-    output.write_all(&value.as_bytes()[start..])?;
-    output.write_all(b"\"")
 }
 
 #[cfg(test)]

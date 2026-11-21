@@ -27,13 +27,19 @@ anything, for every front end.
 
 ## Choosing a front end
 
-`check`, `compile` and `debug` take `--frontend <key>`:
+`check`, `compile` and `debug` take `--frontend <key>`. Without it, `check` and `compile` pick the
+front end from the file's name and directives, as the [CLI reference](cli.md#choosing-the-front-end-and-mode)
+describes:
 
 ```sh
 graphite compile door.graphite --frontend typescript
+graphite compile combat.pure.graphite          # PureScript, from the name
 ```
 
 In Rust, `graphite::frontend::registry::lookup` finds a front end by its key.
+
+A front end writes machine graphs (`Kind::Machine`, the default) or pure graphs (`Kind::Pure`). The
+pipeline refuses a graph whose kind differs from its front end before it writes anything.
 
 ## The Rust front end
 
@@ -87,6 +93,29 @@ Then register the front end:
 2. Add the `Target` to `TARGETS` in [`src/frontend/registry.rs`](../src/frontend/registry.rs).
 
 The new front end then works with `--frontend <key>` and with the Rust API.
+
+### Adding a pure language
+
+A pure language is one `Language`, one `PureSyntax` and one `TARGETS` entry. The shared pure front
+end, `Pure<S>` in `src/frontend/pure/`, does the rest: it lowers the graph, checks the names, and
+names the file.
+
+1. **`src/frontend/lang/<language>.rs`**: a `Language` impl with the language's facts only: its
+   extension, its string escape rule, its `none` and `some` literals, its keywords, `spell` (one
+   of the case converters `pascal`, `camel` or `snake`), `escape_keyword`, and `namespace`. The
+   string, identifier and annotation literals are provided methods, so no language copies them.
+   Two optional methods: `is_valid` refuses a spelling the language cannot use (the default
+   accepts any plain identifier), and `imported` on `PureSyntax` lists the names the module
+   imports, so a source name cannot clash with them.
+2. **`src/frontend/pure/<language>.rs`**: a `PureSyntax` impl with the layout (`module`) and the
+   names the layout generates (`generated`), so the collision check sees them. Its `Target` goes
+   next to it.
+3. **One entry** in `TARGETS`. Inference finds the target by its extension and kind, so nothing
+   else changes.
+
+[`src/frontend/pure/tests.rs`](../src/frontend/pure/tests.rs) holds a test-only language that does
+exactly these three steps. [PureScript](purescript.md) is the worked example. The `namespace` method says which names a language keeps apart, and the
+[PureScript](purescript.md) entry shows the answer for one language.
 
 ## What a front end does not decide
 

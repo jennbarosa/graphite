@@ -1,0 +1,10 @@
+# The project the PureScript test builds the generated modules in. The tests copy this file into
+# a scratch directory and add the generated modules to it, so the repository stays clean.
+package:
+  name: graphite-pure-check
+  dependencies:
+    - prelude
+    - maybe
+workspace:
+  packageSet:
+    registry: 66.0.0

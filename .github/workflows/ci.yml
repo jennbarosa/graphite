@@ -2,6 +2,7 @@ name: CI
 
 on:
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -14,15 +15,19 @@ jobs:
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v4
         with:
-          bun-version: 1.4.4
-      - name: Install the TypeScript compiler
-        run: npm install --global typescript@6.0.3
+          node-version: 22
+      # Bun, purs, spago and tsc at the versions the tests pin (see scripts/setup-tools.py).
+      - name: Install the test tools
+        run: python3 scripts/setup-tools.py
+      # The graphite CLI finds Bun on the PATH, so the pinned copy must be there too.
+      - name: Put the pinned tools on the PATH
+        run: echo "$GITHUB_WORKSPACE/tools/bin" >> "$GITHUB_PATH"
       # src/generated/ must match what the converter writes from the .graphite rule files.
       - name: Check the generated rule data is current
         run: |
-          for rule in lex grammar structure build; do
+          for rule in lex grammar structure build directive; do
             cargo run --quiet --example bootstrap_dump -- "src/graphs/$rule.graphite" "src/generated/$rule.rs"
           done
           git diff --exit-code -- src/generated
@@ -30,3 +35,23 @@ jobs:
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
       - run: cargo test --no-default-features
+
+  # Fails when line coverage of the crate, its front ends included, drops under 90%.
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install the test tools
+        run: python3 scripts/setup-tools.py
+      - name: Put the pinned tools on the PATH
+        run: echo "$GITHUB_WORKSPACE/tools/bin" >> "$GITHUB_PATH"
+      - name: Check line coverage is at least 90%
+        run: cargo llvm-cov --all-targets --fail-under-lines 90

@@ -1,11 +1,14 @@
 //! Compile grammar forms directly into preallocated graph arrays.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::num::NonZeroU32;
 use std::ops::Range;
 
-use crate::graph::{Annotation, Arm, Choice, CompiledGraph, Edge, Node, Span, narrow};
+use crate::graph::{
+    Annotation, Arm, Choice, CompiledGraph, Edge, Enum, Input, Member, Node, Span, Test, Ty, narrow,
+};
 use crate::interner::StringId;
+use crate::kind::Kind;
 use crate::lexer::TokenKind;
 
 use super::capacity::{buffer, push};
@@ -16,7 +19,23 @@ use super::{Capacity, ParseError};
 pub(super) const GRAPH_FORM: &str = "expected `default`, `node`, `edge`, or `choose` line";
 /// The arms allowed inside a choose block.
 pub(super) const CHOOSE_ARM: &str = "expected `when` or a final `else` arm";
+/// The refusal of a choose block with no `when` arm, whether it is empty or opens with `else`.
+pub(super) const CHOOSE_NEEDS_WHEN: &str = "choose needs at least one `when` arm";
 const STRINGS_FULL: &str = "string capacity exhausted; raise the graph's `strings` hint";
+const ENUM_DUPLICATE: &str = "enum name is already declared in this graph";
+const MEMBER_DUPLICATE: &str = "member is already declared in this enum";
+const INPUT_DUPLICATE: &str = "input name is already declared in this graph";
+const ENUM_EMPTY: &str = "an enum needs at least one member";
+const INPUT_TYPE: &str = "unknown type; expected `bool` or an enum declared above this input";
+const INPUT_COLON: &str = "expected `:` and `bool` or an enum after the input name";
+const CHOOSE_ENUM: &str = "a choose in a pure file needs `: ENUM` naming its enum";
+const CHOOSE_UNKNOWN_ENUM: &str = "unknown enum; declare it with `enum` above this choose";
+const WHEN_UNKNOWN_INPUT: &str = "unknown input; declare it with `input` above its `when`";
+const WHEN_BOOL_MEMBER: &str = "`:MEMBER` tests an enum input; this input is a bool";
+const WHEN_ENUM_MEMBER: &str = "an enum input needs `:MEMBER` after its name";
+const WHEN_NOT_MEMBER: &str = "not a member of this enum";
+const WHEN_REPEATED: &str = "this test is already an arm above, so this arm can never be chosen";
+const TAG_NOT_MEMBER: &str = "the arm's tag must be a member of the choose's enum";
 const ANNOTATION_KEY: &str =
     "invalid annotation key: use letters, digits, `_`, or `-`, separated by `.`";
 
@@ -24,8 +43,21 @@ pub(super) struct Builder<'s> {
     pub(super) graph: CompiledGraph,
     bindings: Vec<NameBindings>,
     flags: &'s HashSet<&'s str>,
-    /// Annotations from `default` lines, added to every node that does not set the same key.
+    /// Annotations from `default` lines, added to every node that does not set the same key
+    /// (and, in a pure file, to every arm).
     defaults: Vec<Annotation>,
+    kind: Kind,
+    /// Position of each member within its enum, keyed by (enum index, name index). One lookup
+    /// answers the duplicate check, the `when` test and the arm's tag check, so none scans a list.
+    member_positions: HashMap<(u32, usize), u32>,
+    /// The enum being declared, whose members the member lines add to.
+    current_enum: Option<u32>,
+    /// The enum and annotations of the choose block being read.
+    choice_ty: Option<u32>,
+    choice_annotations: Span,
+    /// The condition ids that the `when` arms of the choose being read already use. A pure
+    /// choose refuses a repeat, since the later arm could never be chosen.
+    choice_tests: HashSet<u32>,
 }
 
 /// Independent namespaces indexed by the interner's dense string IDs.
@@ -34,7 +66,10 @@ struct NameBindings {
     node: Option<NonZeroU32>,
     condition: Option<NonZeroU32>,
     choice: bool,
-    annotation_key: bool,
+    /// Index plus one into `graph.enums`.
+    enum_: Option<NonZeroU32>,
+    /// Index plus one into `graph.inputs`.
+    input: Option<NonZeroU32>,
 }
 
 impl<'s> Builder<'s> {
@@ -43,8 +78,10 @@ impl<'s> Builder<'s> {
         name: &str,
         tokens: &mut Tokens<'_>,
         flags: &'s HashSet<&'s str>,
+        kind: Kind,
     ) -> Result<Self, ParseError> {
-        let graph = c.allocate(name, tokens.offset())?;
+        let mut graph = c.allocate(name, tokens.offset())?;
+        graph.kind = kind;
         let mut bindings = buffer(c.strings)?;
         bindings.resize_with(c.strings, NameBindings::default);
         Ok(Self {
@@ -52,6 +89,12 @@ impl<'s> Builder<'s> {
             bindings,
             flags,
             defaults: Vec::new(),
+            kind,
+            member_positions: HashMap::new(),
+            current_enum: None,
+            choice_ty: None,
+            choice_annotations: 0..0,
+            choice_tests: HashSet::new(),
         })
     }
 
@@ -304,13 +347,14 @@ impl<'s> Builder<'s> {
         Ok(())
     }
 
-    /// Reads `choose NAME` and its indented block's opening, after the `choose` keyword.
+    /// Reads `choose NAME` and its indented block's opening, after the `choose` keyword. A pure
+    /// choose names its enum as `: ENUM`, and may carry annotations on the line.
     pub(super) fn choice_head(
         &mut self,
         tokens: &mut Tokens<'_>,
     ) -> Result<(StringId, usize), ParseError> {
-        let (name, offset) = tokens.name("expected a choose name after `choose`")?;
-        let name = self.intern(tokens, name)?;
+        let (word, offset) = tokens.name("expected a choose name after `choose`")?;
+        let name = self.intern(tokens, word)?;
         let binding = &mut self.bindings[name.index()].choice;
         if *binding {
             return Err(ParseError::new(
@@ -319,9 +363,210 @@ impl<'s> Builder<'s> {
             ));
         }
         *binding = true;
-        tokens.expect(TokenKind::Newline)?;
+        self.choice_tests.clear();
+        if self.kind == Kind::Pure {
+            if !tokens.at(TokenKind::Colon)? {
+                return Err(ParseError::new(CHOOSE_ENUM, offset));
+            }
+            tokens.expect(TokenKind::Colon)?;
+            let (ty, ty_offset) = tokens.word_or("expected an enum name after `:`")?;
+            self.choice_ty = Some(
+                self.enum_index(ty)
+                    .ok_or(ParseError::new(CHOOSE_UNKNOWN_ENUM, ty_offset))?,
+            );
+            self.choice_annotations = narrow(self.annotations(tokens)?);
+        } else {
+            tokens.expect(TokenKind::Newline)?;
+        }
         tokens.expect(TokenKind::Indent)?;
         Ok((name, offset))
+    }
+
+    /// The index in `graph.enums` of the enum named `word`, if one is declared.
+    fn enum_index(&self, word: &str) -> Option<u32> {
+        let id = self.graph.strings.find(word)?;
+        self.bindings[id.index()].enum_.map(|index| index.get() - 1)
+    }
+
+    /// The index in `graph.inputs` of the input named `word`, if one is declared.
+    fn input_index(&self, word: &str) -> Option<u32> {
+        let id = self.graph.strings.find(word)?;
+        self.bindings[id.index()].input.map(|index| index.get() - 1)
+    }
+
+    /// Reads `enum NAME MEMBER...` (one line) or `enum NAME` (a head whose members follow in an
+    /// indented block). Returns `true` for the block form, whose members are read next.
+    pub(super) fn enum_head<'a>(&mut self, tokens: &mut Tokens<'a>) -> Result<bool, ParseError> {
+        let (word, offset) = tokens.name("expected an enum name after `enum`")?;
+        let name = self.intern(tokens, word)?;
+        if self.bindings[name.index()].enum_.is_some() {
+            return Err(ParseError::new(ENUM_DUPLICATE, offset));
+        }
+        let id = self.graph.enums.len() as u32;
+        self.bindings[name.index()].enum_ = NonZeroU32::new(id + 1);
+        let start = self.graph.members.len();
+        push(
+            &mut self.graph.enums,
+            Enum {
+                name,
+                annotations: 0..0,
+                members: narrow(start..start),
+                offset,
+            },
+            offset,
+        )?;
+        self.current_enum = Some(id);
+        let mut inline = false;
+        while tokens.at_word()? {
+            let (member, member_offset) = tokens.name("expected a member name")?;
+            self.add_member(tokens, member, member_offset, 0..0)?;
+            inline = true;
+        }
+        let own = self.annotations(tokens)?;
+        self.graph.enums[id as usize].annotations = narrow(own);
+        if inline {
+            self.current_enum = None;
+            return Ok(false);
+        }
+        if tokens.at(TokenKind::Indent)? {
+            tokens.expect(TokenKind::Indent)?;
+            return Ok(true);
+        }
+        Err(tokens.error(ENUM_EMPTY))
+    }
+
+    /// Reads one member line of a block enum: its name and annotations.
+    pub(super) fn member<'a>(&mut self, tokens: &mut Tokens<'a>) -> Result<(), ParseError> {
+        let (word, offset) = tokens.name("expected a member name")?;
+        let own = self.annotations(tokens)?;
+        self.add_member(tokens, word, offset, narrow(own))
+    }
+
+    /// Adds `word` to the enum being declared, refusing a second member with the same name.
+    fn add_member<'a>(
+        &mut self,
+        tokens: &mut Tokens<'a>,
+        word: &str,
+        offset: usize,
+        annotations: Span,
+    ) -> Result<(), ParseError> {
+        let id = self.current_enum.expect("a member is read inside an enum") as usize;
+        let name = self.intern(tokens, word)?;
+        let key = (id as u32, name.index());
+        if self.member_positions.contains_key(&key) {
+            return Err(ParseError::new(MEMBER_DUPLICATE, offset));
+        }
+        let position = self.graph.members.len() as u32 - self.graph.enums[id].members.start;
+        push(
+            &mut self.graph.members,
+            Member {
+                name,
+                annotations,
+                offset,
+            },
+            offset,
+        )?;
+        self.member_positions.insert(key, position);
+        self.graph.enums[id].members.end = self.graph.members.len() as u32;
+        Ok(())
+    }
+
+    /// Ends a block enum: its closing dedent, and at least one member.
+    pub(super) fn enum_end<'a>(&mut self, tokens: &mut Tokens<'a>) -> Result<(), ParseError> {
+        let id = self
+            .current_enum
+            .take()
+            .expect("an enum block ends inside an enum") as usize;
+        if self.graph.enums[id].members.is_empty() {
+            return Err(tokens.error(ENUM_EMPTY));
+        }
+        tokens.expect(TokenKind::Dedent)
+    }
+
+    /// Reads `input NAME : bool|ENUM` and its annotations, after the `input` keyword.
+    pub(super) fn input<'a>(&mut self, tokens: &mut Tokens<'a>) -> Result<(), ParseError> {
+        let (word, offset) = tokens.name("expected an input name after `input`")?;
+        let name = self.intern(tokens, word)?;
+        if self.bindings[name.index()].input.is_some() {
+            return Err(ParseError::new(INPUT_DUPLICATE, offset));
+        }
+        if !tokens.at(TokenKind::Colon)? {
+            return Err(tokens.error(INPUT_COLON));
+        }
+        tokens.expect(TokenKind::Colon)?;
+        let (ty_word, ty_offset) = tokens.word_or(INPUT_COLON)?;
+        let ty = if ty_word == "bool" {
+            Ty::Bool
+        } else {
+            Ty::Enum(
+                self.enum_index(ty_word)
+                    .ok_or(ParseError::new(INPUT_TYPE, ty_offset))?,
+            )
+        };
+        let annotations = narrow(self.annotations(tokens)?);
+        let id = self.graph.inputs.len() as u32;
+        self.bindings[name.index()].input = NonZeroU32::new(id + 1);
+        push(
+            &mut self.graph.inputs,
+            Input {
+                name,
+                ty,
+                annotations,
+                offset,
+            },
+            offset,
+        )
+    }
+
+    /// Reads the condition of a `when` arm. A machine names a free condition; a pure file names a
+    /// declared input: `NAME` for a bool, `NAME:MEMBER` for an enum.
+    pub(super) fn when_condition(&mut self, tokens: &mut Tokens<'_>) -> Result<u32, ParseError> {
+        if self.kind == Kind::Machine {
+            return self.condition(tokens);
+        }
+        let (word, offset) = tokens.word_or("expected an input name after `when`")?;
+        let input = self
+            .input_index(word)
+            .ok_or(ParseError::new(WHEN_UNKNOWN_INPUT, offset))?;
+        let member = if tokens.at(TokenKind::Colon)? {
+            tokens.expect(TokenKind::Colon)?;
+            Some(tokens.word_or("expected a member name after `:`")?)
+        } else {
+            None
+        };
+        let (test, text) = match (self.graph.inputs[input as usize].ty, member) {
+            (Ty::Bool, None) => (Test::Flag(input), word.to_owned()),
+            (Ty::Bool, Some(_)) => return Err(ParseError::new(WHEN_BOOL_MEMBER, offset)),
+            (Ty::Enum(_), None) => return Err(ParseError::new(WHEN_ENUM_MEMBER, offset)),
+            (Ty::Enum(ty), Some((member, member_offset))) => {
+                let position = self
+                    .member_position(ty, member)
+                    .ok_or(ParseError::new(WHEN_NOT_MEMBER, member_offset))?;
+                (Test::Is(input, position), format!("{word}:{member}"))
+            }
+        };
+        let name = self.intern(tokens, &text)?;
+        let binding = &mut self.bindings[name.index()].condition;
+        let id = match *binding {
+            Some(id) => id.get() - 1,
+            None => {
+                let id = self.graph.conditions.len() as u32;
+                push(&mut self.graph.conditions, name, offset)?;
+                push(&mut self.graph.tests, test, offset)?;
+                self.bindings[name.index()].condition = NonZeroU32::new(id + 1);
+                id
+            }
+        };
+        if !self.choice_tests.insert(id) {
+            return Err(ParseError::new(WHEN_REPEATED, offset));
+        }
+        Ok(id)
+    }
+
+    /// The position of the member named `word` within enum `ty`.
+    fn member_position(&self, ty: u32, word: &str) -> Option<u32> {
+        let name = self.graph.strings.find(word)?;
+        self.member_positions.get(&(ty, name.index())).copied()
     }
 
     /// Ends a choose block: it needs an arm, and its closing dedent. Stores the choice.
@@ -333,29 +578,30 @@ impl<'s> Builder<'s> {
         offset: usize,
     ) -> Result<(), ParseError> {
         if self.graph.arms.len() == start {
-            return Err(tokens.error("choose needs at least one `when` arm"));
+            return Err(tokens.error(CHOOSE_NEEDS_WHEN));
         }
         tokens.expect(TokenKind::Dedent)?;
-        push(
-            &mut self.graph.choices,
-            Choice {
-                name,
-                arms: narrow(start..self.graph.arms.len()),
-            },
+        let choice = Choice {
+            name,
+            arms: narrow(start..self.graph.arms.len()),
+            ty: self.choice_ty.take(),
+            annotations: std::mem::take(&mut self.choice_annotations),
             offset,
-        )?;
+        };
+        push(&mut self.graph.choices, choice, offset)?;
         Ok(())
     }
 
-    /// Ends the graph body: it needs a node, and its closing dedent.
+    /// Ends the graph body: a machine needs a node, and both need the closing dedent.
     pub(super) fn body_end(&mut self, tokens: &mut Tokens<'_>) -> Result<(), ParseError> {
-        if self.graph.nodes.is_empty() {
+        if self.kind == Kind::Machine && self.graph.nodes.is_empty() {
             return Err(tokens.error("graph needs at least one node; the first is its entry"));
         }
         tokens.expect(TokenKind::Dedent)
     }
 
-    /// Reads one arm's `-> tag` and annotations, then stores it.
+    /// Reads one arm's `-> tag` and annotations, then stores it. A pure arm's tag must be a
+    /// member of its choose's enum, and the defaults apply to it.
     pub(super) fn arm(
         &mut self,
         tokens: &mut Tokens<'_>,
@@ -363,15 +609,28 @@ impl<'s> Builder<'s> {
         offset: usize,
     ) -> Result<(), ParseError> {
         tokens.expect(TokenKind::Arrow)?;
-        let (tag, _) = tokens.word_or("expected a tag name after `->`")?;
-        let tag = self.intern(tokens, tag)?;
-        let annotations = narrow(self.annotations(tokens)?);
+        let (word, tag_offset) = tokens.word_or("expected a tag name after `->`")?;
+        let tag = self.intern(tokens, word)?;
+        let member = match self.choice_ty {
+            Some(ty) => *self
+                .member_positions
+                .get(&(ty, tag.index()))
+                .ok_or(ParseError::new(TAG_NOT_MEMBER, tag_offset))?,
+            None => 0,
+        };
+        let own = self.annotations(tokens)?;
+        let annotations = if self.kind == Kind::Pure {
+            narrow(self.with_defaults(own, offset)?)
+        } else {
+            narrow(own)
+        };
         push(
             &mut self.graph.arms,
             Arm {
                 condition,
                 tag,
                 annotations,
+                member,
             },
             offset,
         )
@@ -414,8 +673,6 @@ impl<'s> Builder<'s> {
         if !key.split('.').all(valid_name) {
             return Err(ParseError::new(ANNOTATION_KEY, offset));
         }
-        let id = self.intern(tokens, key)?;
-        self.bindings[id.index()].annotation_key = true;
-        Ok(id)
+        self.intern(tokens, key)
     }
 }
