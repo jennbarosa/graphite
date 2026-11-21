@@ -66,7 +66,6 @@ struct NameBindings {
     node: Option<NonZeroU32>,
     condition: Option<NonZeroU32>,
     choice: bool,
-    annotation_key: bool,
     /// Index plus one into `graph.enums`.
     enum_: Option<NonZeroU32>,
     /// Index plus one into `graph.inputs`.
@@ -674,8 +673,6 @@ impl<'s> Builder<'s> {
         if !key.split('.').all(valid_name) {
             return Err(ParseError::new(ANNOTATION_KEY, offset));
         }
-        let id = self.intern(tokens, key)?;
-        self.bindings[id.index()].annotation_key = true;
-        Ok(id)
+        self.intern(tokens, key)
     }
 }

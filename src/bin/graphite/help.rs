@@ -3,11 +3,11 @@
 pub const OVERVIEW: &str = "usage:
   graphite --version                                     print the version
   graphite init <file.graphite>                               write a starter graph
-  graphite check <file.graphite> [--allow <list.toml>] [--json]  validate a graph
+  graphite check <file.graphite> [--frontend <key>] [--pure] [--allow <list.toml>] [--json]  validate a graph
   graphite compile <file.graphite> [--out <dir>] [--frontend <key>] [--pure]  generate the graph's modules
   graphite run <file.graphite> [--state <file.json>] [--tasks <tasks.toml> | --runner <tasks.ts>] [--input <data.json>] [--allow <list.toml>]
   graphite debug <file.graphite> [command...]                 step through a graph in the terminal
-  graphite inspect <file.graphite> [--json]                   print the compiled graph
+  graphite inspect <file.graphite> [--json] [--pure]          print the compiled graph
   graphite doctor [--json]                               report this build, its front ends, and what works here
   graphite completions <bash|zsh|fish>                  print a shell completion script
   graphite man                                          print the manual page

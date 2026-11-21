@@ -236,26 +236,10 @@ fn parse_options(args: &[String]) -> Result<(Options, Vec<String>), String> {
 
 /// The options each command accepts. Any other option given to that command is refused.
 fn accepted_flags(verb: &str) -> &'static [&'static str] {
-    match verb {
-        "init" => &[],
-        "compile" => &["--out", "--frontend", "--allow", "--pure"],
-        "check" => &["--frontend", "--allow", "--json", "--pure"],
-        "inspect" => &["--json", "--pure"],
-        "run" => &[
-            "--allow",
-            "--state",
-            "--runner",
-            "--input",
-            "--tasks",
-            "--each",
-            "--key",
-            "--seen",
-            "--until-passed",
-            "--retry",
-        ],
-        "debug" => &["--frontend", "--graph", "--out", "--allow", "--simulate"],
-        _ => &[],
-    }
+    help::COMMANDS
+        .iter()
+        .find(|(name, _)| *name == verb)
+        .map_or(&[], |(_, flags)| *flags)
 }
 
 /// Builds the command for `verb` from its file and options, refusing any option it does not accept.

@@ -49,7 +49,7 @@ graphite --version                                     print the version
 | `--seen <file.json>` | `run` | Item keys already started. A later run with the same `--state` resumes those items without running finished tasks again. A key started under another `--state` is skipped. Defaults beside the state file. |
 | `--until-passed <N>` | `run` | Stops starting items once N have passed. |
 | `--retry <key>` | `run` | Clears the stored error of the task with that key, so this run runs it again. Not used with `--each`. See [retrying a failed task](durable-workflows.md#retrying-a-failed-task). |
-| `--frontend <key>` | `check`, `compile`, `debug` | The front end to use. Without it, the file's name and directives pick one; see [choosing the front end](#choosing-the-front-end-and-mode). `debug` defaults to `typescript`. |
+| `--frontend <key>` | `check`, `compile`, `debug` | The front end to use. Without it, the file's name and directives pick one; see [choosing the front end](#choosing-the-front-end-and-mode). `debug` defaults to `typescript`. `pure` is not a front end name: use `--pure`, or `@!frontend:pure`, to make a file pure. |
 | `--pure` | `check`, `compile`, `inspect` | Reads the file as a pure file, as an `@!pure` directive does. Refused by `run` and `debug`, which run machine graphs only. |
 
 ## Choosing the front end and mode
