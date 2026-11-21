@@ -1,6 +1,6 @@
 # PureScript front end
 
-A pure file (`.purs` or `.pure.graphite`, or any file with `@!pure`) becomes one PureScript module.
+A pure file (one whose front end is `purescript`: a `.purs` name, or `@!frontend:purescript`) becomes one PureScript module.
 The module is a decision table: it takes the file's inputs as a record and returns the tag each
 choice picks, along with the annotations of the arm it picked. There is no runtime and no state.
 
@@ -33,8 +33,8 @@ graph combat @owner:ai
     else          -> north
 ```
 
-The full file, with its expected output, is [`examples/combat.pure.graphite`](../examples/combat.pure.graphite).
-Build it with `graphite compile examples/combat.pure.graphite`.
+The full file, with its expected output, is [`examples/combat.purs.graphite`](../examples/combat.purs.graphite).
+Build it with `graphite compile examples/combat.purs.graphite`.
 
 ## What the module contains
 

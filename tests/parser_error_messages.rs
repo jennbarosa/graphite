@@ -213,12 +213,13 @@ const CASES: &[(&str, &str, bool, &str)] = &[
 fn each_parser_error_names_its_problem() {
     let mut failures = Vec::new();
     for (index, (name, source, pure, message)) in CASES.iter().enumerate() {
-        let file = dsl(&format!("parser_error_{index}_{name}.graphite"), source);
-        let mut args = vec!["check".as_ref(), file.as_os_str(), "--json".as_ref()];
-        if *pure {
-            args.push("--pure".as_ref());
-        }
-        let output = graphite(args);
+        let source = if *pure {
+            format!("@!frontend:purescript\n{source}")
+        } else {
+            source.to_string()
+        };
+        let file = dsl(&format!("parser_error_{index}_{name}.graphite"), &source);
+        let output = graphite(["check".as_ref(), file.as_os_str(), "--json".as_ref()]);
         let text = stdout(&output);
         if output.status.success() || !text.contains(message) {
             failures.push(format!("{name}: expected `{message}`, got {text}"));

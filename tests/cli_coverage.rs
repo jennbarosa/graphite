@@ -159,8 +159,8 @@ fn check_and_inspect_accept_json_and_pure_flags() {
 
 #[test]
 fn check_takes_a_frontend_and_pure_mode() {
-    let pure = fixture("tests/fixtures/pure/lamp_gate.pure.graphite");
-    run_ok(["check".as_ref(), pure.as_os_str(), "--pure".as_ref()]);
+    let pure = fixture("tests/fixtures/pure/lamp_gate.purs.graphite");
+    run_ok(["check".as_ref(), pure.as_os_str()]);
     let spec = walk_spec();
     run_ok([
         "check".as_ref(),
@@ -196,7 +196,7 @@ fn compile_writes_modules_to_the_out_directory() {
 
 #[test]
 fn compile_writes_purescript_modules_for_a_pure_file() {
-    let pure = fixture("tests/fixtures/pure/lamp_gate.pure.graphite");
+    let pure = fixture("tests/fixtures/pure/lamp_gate.purs.graphite");
     let out = scratch("compile/purs");
     run_ok([
         "compile".as_ref(),
@@ -380,7 +380,6 @@ fn a_flag_that_needs_a_value_is_named_for_every_command() {
         [
             "check".as_ref(),
             spec,
-            "--pure".as_ref(),
             "--graph".as_ref(),
         ],
         2,

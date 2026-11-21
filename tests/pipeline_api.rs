@@ -43,7 +43,6 @@ fn compile_file_chooses_a_front_end_and_compiles_its_graphs() {
         Ok(Chosen {
             target: typescript(),
             pure: false,
-            because: None,
         })
     };
     let source = "@!frontend:typescript\ngraph door\n  node a\n  node b end\n  edge a -> b\n";

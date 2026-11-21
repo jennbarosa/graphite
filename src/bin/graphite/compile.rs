@@ -21,7 +21,6 @@ pub fn run(
     out: Option<&Path>,
     front_end: Option<&str>,
     allow: Option<&Path>,
-    pure: bool,
 ) -> Result<(), String> {
     let allowlist = allow.map(Allowlist::load).transpose()?;
     let out = match out {
@@ -36,7 +35,7 @@ pub fn run(
         None => Ok(()),
     };
     let select = |name: &str, directives: &graphite::preprocess::Directives<'_>| {
-        resolve::resolve(name, front_end, pure, directives, Output::Written)
+        resolve::resolve(name, front_end, directives, Output::Written)
     };
     let written = build::run(Request {
         input,

@@ -11,11 +11,13 @@ use std::path::{Path, PathBuf};
 
 pub mod build;
 
+use crate::frontend::registry;
 use crate::frontend::{Frontend, NameClash};
 use crate::graph::CompiledGraph;
+use crate::kind::Kind;
 use crate::lexer::Diagnostic;
 use crate::parser::{Capacity, GRAPH_KEYWORD, ParseError, Schema, parse_body};
-use crate::preprocess::preprocess;
+use crate::preprocess::{Directives, preprocess};
 
 /// Storage bounds for each graph block in `source`, in source order.
 ///
@@ -30,8 +32,17 @@ use crate::preprocess::preprocess;
 pub fn block_capacities(source: &str, schema: &Schema<'_>) -> Vec<Capacity> {
     let directives = preprocess(source).ok();
     let body = directives.as_ref().map_or(0, |found| found.body);
-    let pure = schema.pure || directives.is_some_and(|found| found.is_pure());
+    let pure = schema.pure || directives.as_ref().is_some_and(names_pure_front_end);
     capacities_of(&source[body..], &effective(schema, pure))
+}
+
+/// Whether a file's `@!frontend` directive names a pure front end. A file that picks its front end
+/// by name or by flag is read by the CLI, which passes the mode in `Schema::pure`.
+fn names_pure_front_end(directives: &Directives<'_>) -> bool {
+    directives
+        .frontend
+        .and_then(|(key, _)| registry::lookup(key))
+        .is_some_and(|target| target.frontend.kind() == Kind::Pure)
 }
 
 /// `schema` with its `pure` signal raised when the file's directives make it pure.
@@ -109,7 +120,7 @@ fn opens_graph(line: &str) -> bool {
 /// storage is sized by [`block_capacities`], which counts the same body.
 pub fn compile(source: &str, schema: &Schema<'_>) -> Result<Vec<CompiledGraph>, ParseError> {
     let directives = preprocess(source)?;
-    let schema = effective(schema, schema.pure || directives.is_pure());
+    let schema = effective(schema, schema.pure || names_pure_front_end(&directives));
     compile_body(source, directives.body, &schema)
 }
 

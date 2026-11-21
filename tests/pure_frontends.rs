@@ -9,7 +9,7 @@ use graphite::frontend::lang::{Language, Role};
 use graphite::frontend::pure::PureSyntax;
 use graphite::frontend::pure::decision::lower;
 use graphite::frontend::pure::purescript::PureScriptSyntax;
-use graphite::frontend::registry::{self, DEFAULT_PURE_FRONT_END, lookup};
+use graphite::frontend::registry::{self, lookup};
 use graphite::frontend::{Frontend, Module};
 use graphite::graph::CompiledGraph;
 use graphite::kind::Kind;
@@ -48,7 +48,7 @@ fn emitted(frontend: &dyn Frontend, graph: &CompiledGraph) -> String {
 
 #[test]
 fn the_combat_example_writes_the_expected_module() {
-    let source = std::fs::read_to_string(manifest().join("examples/combat.pure.graphite")).unwrap();
+    let source = std::fs::read_to_string(manifest().join("examples/combat.purs.graphite")).unwrap();
     let graphs = pure_graphs(&source);
     let expected =
         std::fs::read_to_string(manifest().join("tests/fixtures/pure/Combat.purs")).unwrap();
@@ -92,7 +92,7 @@ fn top_level_names(text: &str) -> HashSet<String> {
 
 #[test]
 fn every_top_level_name_is_a_source_name_or_a_generated_one() {
-    let source = std::fs::read_to_string(manifest().join("examples/combat.pure.graphite")).unwrap();
+    let source = std::fs::read_to_string(manifest().join("examples/combat.purs.graphite")).unwrap();
     let graphs = pure_graphs(&source);
     let text = std::fs::read_to_string(manifest().join("tests/fixtures/pure/Combat.purs")).unwrap();
     let decisions = lower(&graphs[0]);
@@ -152,13 +152,12 @@ fn every_top_level_name_is_a_source_name_or_a_generated_one() {
 }
 
 #[test]
-fn the_purescript_target_is_inferred_for_its_extension_and_kind() {
+fn the_purescript_target_is_inferred_for_its_extension() {
     assert_eq!(
-        registry::for_infix("purs", Kind::Pure).map(|target| target.key),
+        registry::for_infix("purs").map(|target| target.key),
         Some("purescript")
     );
-    assert_eq!(DEFAULT_PURE_FRONT_END, "purescript");
-    assert!(lookup(DEFAULT_PURE_FRONT_END).is_some());
+    assert!(lookup("purescript").is_some());
 }
 
 #[test]

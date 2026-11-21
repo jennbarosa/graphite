@@ -13,10 +13,9 @@ pub fn run(
     input: &Path,
     front_end: Option<&str>,
     allow: Option<&Path>,
-    pure: bool,
     json: bool,
 ) -> Result<(), Failure> {
-    let graphs = count(input, front_end, allow, pure)?;
+    let graphs = count(input, front_end, allow)?;
     if json {
         println!(
             "{}",
@@ -30,14 +29,9 @@ pub fn run(
 }
 
 /// Checks the file and returns how many graphs it holds.
-fn count(
-    input: &Path,
-    front_end: Option<&str>,
-    allow: Option<&Path>,
-    pure: bool,
-) -> Result<usize, String> {
+fn count(input: &Path, front_end: Option<&str>, allow: Option<&Path>) -> Result<usize, String> {
     let allowlist = allow.map(Allowlist::load).transpose()?;
-    let loaded = load::read(input, allowlist.as_ref(), front_end, pure, Output::Written)?;
+    let loaded = load::read(input, allowlist.as_ref(), front_end, Output::Written)?;
     check_outputs(loaded.front_end.frontend, &loaded.graphs)
         .map_err(|collision| collision.diagnostic(&loaded.source).to_string())?;
     Ok(loaded.graphs.len())

@@ -3,11 +3,11 @@
 pub const OVERVIEW: &str = "usage:
   graphite --version                                     print the version
   graphite init <file.graphite>                               write a starter graph
-  graphite check <file.graphite> [--frontend <key>] [--pure] [--allow <list.toml>] [--json]  validate a graph
-  graphite compile <file.graphite> [--out <dir>] [--frontend <key>] [--pure]  generate the graph's modules
+  graphite check <file.graphite> [--frontend <key>] [--allow <list.toml>] [--json]  validate a graph
+  graphite compile <file.graphite> [--out <dir>] [--frontend <key>]  generate the graph's modules
   graphite run <file.graphite> [--state <file.json>] [--tasks <tasks.toml> | --runner <tasks.ts>] [--input <data.json>] [--allow <list.toml>]
   graphite debug <file.graphite> [command...]                 step through a graph in the terminal
-  graphite inspect <file.graphite> [--json] [--pure]          print the compiled graph
+  graphite inspect <file.graphite> [--json]                   print the compiled graph
   graphite doctor [--json]                               report this build, its front ends, and what works here
   graphite completions <bash|zsh|fish>                  print a shell completion script
   graphite man                                          print the manual page
@@ -18,9 +18,9 @@ Run `graphite help <command>` for a command's options.";
 /// table; a unit test checks each option against the command's help text.
 pub const COMMANDS: &[(&str, &[&str])] = &[
     ("init", &[]),
-    ("check", &["--frontend", "--pure", "--allow", "--json"]),
-    ("compile", &["--out", "--frontend", "--pure", "--allow"]),
-    ("inspect", &["--json", "--pure"]),
+    ("check", &["--frontend", "--allow", "--json"]),
+    ("compile", &["--out", "--frontend", "--allow"]),
+    ("inspect", &["--json"]),
     (
         "debug",
         &["--frontend", "--graph", "--out", "--allow", "--simulate"],
@@ -77,16 +77,15 @@ Writes a starter graph to <file.graphite>. It refuses to overwrite an existing f
 Next: `graphite check <file.graphite>`, then `graphite compile <file.graphite>`."
         }
         "check" => {
-            "usage: graphite check <file.graphite> [--frontend <key>] [--pure] [--allow <list.toml>] [--json]
+            "usage: graphite check <file.graphite> [--frontend <key>] [--allow <list.toml>] [--json]
 
 Parses and validates the graph, and checks that the generated file names do not collide.
 The front end is --frontend, else an @!frontend directive, else the file's infix (door.ts.graphite
-is TypeScript), else the default. A pure file (--pure, an @!pure directive, or a .pure name) is
-checked as a pure graph. Prints `ok: N graphs` when the file is valid. With --json, prints
+is TypeScript), else the default. A pure front end (such as purescript) makes the file a pure graph. Prints `ok: N graphs` when the file is valid. With --json, prints
 {\"ok\":true,\"graphs\":N}, or {\"ok\":false,\"error\":...} on failure. Writes nothing."
         }
         "compile" => {
-            "usage: graphite compile <file.graphite> [--out <dir>] [--frontend <key>] [--pure] [--allow <list.toml>]
+            "usage: graphite compile <file.graphite> [--out <dir>] [--frontend <key>] [--allow <list.toml>]
 
 Writes the modules of each graph for its front end: TypeScript writes an index module, its chunk
 modules and the runtime (graphite.ts); PureScript writes one module per file. The front end is
@@ -129,11 +128,11 @@ The run prints each stage it enters and each task's outcome, then how it ended. 
 the run ends, and 1 when it stalls or errors. A stall names the node with no route taken."
         }
         "inspect" => {
-            "usage: graphite inspect <file.graphite> [--json] [--pure]
+            "usage: graphite inspect <file.graphite> [--json]
 
 Prints the compiled nodes, edges, conditions, choices and annotations, for checking what the
 parser understood. A pure graph prints its kind, enums and inputs. --json prints the same facts
-as one JSON object. --pure reads the file as a pure file, as `check` does."
+as one JSON object. A pure file is read as its front end makes it, as `check` does."
         }
         "doctor" => {
             "usage: graphite doctor [--json]

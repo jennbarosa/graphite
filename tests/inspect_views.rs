@@ -59,7 +59,7 @@ fn json_view_of_a_machine_graph_keeps_its_fields_and_omits_pure_ones() {
 
 #[test]
 fn text_view_of_a_pure_graph_lists_enums_inputs_and_choices() {
-    let text = inspect(&["inspect", &example("examples/combat.pure.graphite")]);
+    let text = inspect(&["inspect", &example("examples/combat.purs.graphite")]);
     assert!(
         text.starts_with("graph combat @owner:ai\n  kind pure\n  enums\n"),
         "{text}"
@@ -81,7 +81,7 @@ fn text_view_of_a_pure_graph_lists_enums_inputs_and_choices() {
 fn json_view_of_a_pure_graph_carries_kind_enums_and_inputs() {
     let json = inspect(&[
         "inspect",
-        &example("tests/fixtures/pure/notes.pure.graphite"),
+        &example("tests/fixtures/pure/notes.purs.graphite"),
         "--json",
     ]);
     assert!(json.contains(r#""kind":"pure""#), "{json}");
@@ -97,12 +97,14 @@ fn json_view_of_a_pure_graph_carries_kind_enums_and_inputs() {
 }
 
 #[test]
-fn the_pure_flag_reads_a_file_as_pure_and_refuses_nodes() {
+fn a_pure_directive_reads_a_file_as_pure_and_refuses_nodes() {
     let file = dsl(
-        "inspect_pure_flag.graphite",
-        "graph door\n  node a\n  node b end\n  edge a -> b\n",
+        "inspect_pure_directive.graphite",
+        "@!frontend:purescript\ngraph door\n  node a\n  node b end\n  edge a -> b\n",
     );
-    let output = graphite(["inspect".as_ref(), file.as_os_str(), "--pure".as_ref()]);
+    let output = graphite(["inspect".as_ref(), file.as_os_str()]);
     assert!(!output.status.success());
-    assert!(stderr(&output).contains("`node` is not allowed in a pure file (pure by `--pure`)"));
+    assert!(stderr(&output).contains(
+        "`node` is not allowed in a pure file (the `purescript` front end writes pure files)"
+    ));
 }

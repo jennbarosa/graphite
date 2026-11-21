@@ -17,36 +17,20 @@ const PREFIX: &str = "@!";
 /// The byte-order mark some editors write first. It is skipped, so a directive on line 1 still counts.
 const BOM: &str = "\u{feff}";
 
-const UNKNOWN: &str = "unknown directive: the directives are `@!pure` and `@!frontend:KEY`";
-const TAKES_NO_VALUE: &str = "`@!pure` takes no value";
+const UNKNOWN: &str = "unknown directive: the only directive is `@!frontend:KEY`";
 const NEEDS_VALUE: &str = "`@!frontend` needs a value: `@!frontend:KEY`";
 const ONE_WORD: &str = "a directive is one word: `@!NAME` or `@!NAME:VALUE`";
-const PURE_REPEATED: &str = "`@!pure` is repeated";
 const FRONTEND_REPEATED: &str = "`@!frontend` is repeated";
 const AFTER_GRAPH: &str = "directives go at the top of the file, before the first `graph`";
 
 /// The directives at the top of a file, and where the body starts.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Directives<'a> {
-    /// The offset of `@!pure`, if the file has it.
-    pub pure: Option<usize>,
     /// The value and offset of `@!frontend:VALUE`, if the file has it. The value is text: the CLI
     /// checks it against the registered targets, so the library knows no front ends.
     pub frontend: Option<(&'a str, usize)>,
     /// The offset where the graphs start. Lexing and parsing begin here.
     pub body: usize,
-}
-
-impl Directives<'_> {
-    /// Whether a directive makes the file pure: `@!pure`, or `@!frontend:pure`.
-    pub fn is_pure(&self) -> bool {
-        self.pure.is_some() || self.frontend_is_pure()
-    }
-
-    /// Whether `@!frontend:pure` is set. It names no target, so it always makes the file pure.
-    pub fn frontend_is_pure(&self) -> bool {
-        self.frontend.is_some_and(|(value, _)| value == "pure")
-    }
 }
 
 fn directive_graph() -> &'static CompiledGraph {
@@ -63,7 +47,6 @@ pub fn preprocess(source: &str) -> Result<Directives<'_>, ParseError> {
         } else {
             0
         },
-        pure: None,
         frontend: None,
         body: 0,
         error: None,
@@ -77,7 +60,6 @@ pub fn preprocess(source: &str) -> Result<Directives<'_>, ParseError> {
             .unwrap_or_else(|| ParseError::new("the directive reader stopped", 0)));
     }
     Ok(Directives {
-        pure: reader.pure,
         frontend: reader.frontend,
         body: reader.body,
     })
@@ -88,7 +70,6 @@ struct Reader<'a> {
     source: &'a str,
     /// Offset of the line the next task reads.
     cursor: usize,
-    pure: Option<usize>,
     frontend: Option<(&'a str, usize)>,
     body: usize,
     error: Option<ParseError>,
@@ -144,7 +125,7 @@ impl<'a> Reader<'a> {
         let offset = self.cursor;
         let (text, next) = self.current_line();
         // A trailing space is invisible in an editor, so it is not a second word. A tab is still
-        // refused, as the test of `@!pure\t` requires.
+        // refused.
         let word = text[PREFIX.len()..].trim_end_matches(' ');
         if word.contains(char::is_whitespace) {
             return Err(ParseError::new(ONE_WORD, offset));
@@ -154,15 +135,6 @@ impl<'a> Reader<'a> {
             None => (word, None),
         };
         match name {
-            "pure" => {
-                if value.is_some() {
-                    return Err(ParseError::new(TAKES_NO_VALUE, offset));
-                }
-                if self.pure.is_some() {
-                    return Err(ParseError::new(PURE_REPEATED, offset));
-                }
-                self.pure = Some(offset);
-            }
             "frontend" => {
                 let value = value
                     .filter(|value| !value.is_empty())

@@ -24,9 +24,9 @@ type Input = HashMap<String, String>;
 
 /// The samples: the bundled example, and two fixtures for the cases the example leaves out.
 const SAMPLES: [(&str, &str); 3] = [
-    ("combat", "examples/combat.pure.graphite"),
-    ("lamp_gate", "tests/fixtures/pure/lamp_gate.pure.graphite"),
-    ("notes", "tests/fixtures/pure/notes.pure.graphite"),
+    ("combat", "examples/combat.purs.graphite"),
+    ("lamp_gate", "tests/fixtures/pure/lamp_gate.purs.graphite"),
+    ("notes", "tests/fixtures/pure/notes.purs.graphite"),
 ];
 
 fn flag(input: &Input, name: &str) -> bool {
@@ -228,7 +228,7 @@ fn sample_has(name: &str, module: &str) -> bool {
 #[test]
 fn a_file_with_several_graphs_writes_one_module_per_graph_and_no_runtime() {
     let out = scratch("pure-several");
-    compile("tests/fixtures/pure/lamp_gate.pure.graphite", &out);
+    compile("tests/fixtures/pure/lamp_gate.purs.graphite", &out);
     let mut names: Vec<String> = std::fs::read_dir(&out)
         .unwrap()
         .map(|entry| entry.unwrap().file_name().into_string().unwrap())
@@ -241,8 +241,8 @@ fn a_file_with_several_graphs_writes_one_module_per_graph_and_no_runtime() {
 fn compiling_a_pure_file_twice_gives_the_same_bytes() {
     let first = scratch("pure-repeat-a");
     let second = scratch("pure-repeat-b");
-    compile("examples/combat.pure.graphite", &first);
-    compile("examples/combat.pure.graphite", &second);
+    compile("examples/combat.purs.graphite", &first);
+    compile("examples/combat.purs.graphite", &second);
     assert_eq!(
         std::fs::read(first.join("Combat.purs")).unwrap(),
         std::fs::read(second.join("Combat.purs")).unwrap()
@@ -254,7 +254,7 @@ fn a_pure_file_reports_its_declarations_as_json() {
     let output = graphite([
         "inspect".as_ref(),
         "--json".as_ref(),
-        manifest().join("examples/combat.pure.graphite").as_os_str(),
+        manifest().join("examples/combat.purs.graphite").as_os_str(),
     ]);
     assert!(output.status.success(), "{}", stderr(&output));
     let text = stdout(&output);

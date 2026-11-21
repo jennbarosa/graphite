@@ -17,22 +17,19 @@ pub enum Command {
         input: PathBuf,
         /// `None` means `graphite-out/<file stem>`, resolved by the command.
         out: Option<PathBuf>,
-        /// `None` lets the file's name, directives and `--pure` pick the front end.
+        /// `None` lets the file's directives and name pick the front end.
         front_end: Option<String>,
         allow: Option<PathBuf>,
-        pure: bool,
     },
     Check {
         input: PathBuf,
         front_end: Option<String>,
         allow: Option<PathBuf>,
-        pure: bool,
         json: bool,
     },
     Inspect {
         input: PathBuf,
         json: bool,
-        pure: bool,
     },
     Debug {
         input: PathBuf,
@@ -89,7 +86,6 @@ struct Options {
     given: Vec<String>,
     out: Option<PathBuf>,
     front_end: Option<String>,
-    pure: bool,
     graph: Option<String>,
     allow: Option<PathBuf>,
     state: Option<PathBuf>,
@@ -207,7 +203,6 @@ fn parse_options(args: &[String]) -> Result<(Options, Vec<String>), String> {
         match arg.as_str() {
             "--out" => options.out = Some(PathBuf::from(value(&mut words, "--out")?)),
             "--frontend" => options.front_end = Some(value(&mut words, "--frontend")?),
-            "--pure" => options.pure = true,
             "--graph" => options.graph = Some(value(&mut words, "--graph")?),
             "--allow" => options.allow = Some(PathBuf::from(value(&mut words, "--allow")?)),
             "--state" => options.state = Some(PathBuf::from(value(&mut words, "--state")?)),
@@ -269,7 +264,6 @@ fn command(
                 out: options.out,
                 front_end: options.front_end,
                 allow: options.allow,
-                pure: options.pure,
             })
         }
         "check" => {
@@ -278,7 +272,6 @@ fn command(
                 input,
                 front_end: options.front_end,
                 allow: options.allow,
-                pure: options.pure,
                 json: options.json,
             })
         }
@@ -287,7 +280,6 @@ fn command(
             Ok(Command::Inspect {
                 input,
                 json: options.json,
-                pure: options.pure,
             })
         }
         "run" => {

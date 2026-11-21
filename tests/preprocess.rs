@@ -17,33 +17,31 @@ fn error_of(source: &str) -> ParseError {
 
 #[test]
 fn directives_are_read_with_blank_lines_between_them() {
-    let source = format!("@!pure\n\n@!frontend:purescript\n\n{GRAPH}");
+    let source = format!("\n@!frontend:purescript\n\n{GRAPH}");
     let directives = preprocess(&source).unwrap();
-    assert_eq!(directives.pure, Some(0));
-    assert_eq!(directives.frontend, Some(("purescript", 8)));
+    assert_eq!(directives.frontend, Some(("purescript", 1)));
     assert_eq!(directives.body, source.find("graph").unwrap());
 }
 
 #[test]
 fn a_file_without_directives_has_no_signals_and_its_body_starts_at_zero() {
     let directives = preprocess(GRAPH).unwrap();
-    assert_eq!(directives.pure, None);
     assert_eq!(directives.frontend, None);
     assert_eq!(directives.body, 0);
 }
 
 #[test]
 fn a_file_of_only_directives_has_an_empty_body_at_its_end() {
-    let source = "@!pure\n";
+    let source = "@!frontend:typescript\n";
     let directives = preprocess(source).unwrap();
     assert_eq!(directives.body, source.len());
 }
 
 #[test]
 fn a_byte_order_mark_before_the_first_directive_is_skipped() {
-    let source = format!("\u{feff}@!pure\n{GRAPH}");
+    let source = format!("\u{feff}@!frontend:typescript\n{GRAPH}");
     let directives = preprocess(&source).unwrap();
-    assert_eq!(directives.pure, Some(3));
+    assert_eq!(directives.frontend, Some(("typescript", 3)));
     assert_eq!(directives.body, source.find("graph").unwrap());
 }
 
@@ -53,7 +51,7 @@ fn an_unknown_directive_is_refused_on_its_line() {
     assert_eq!(error.offset, 0);
     assert_eq!(
         error.message,
-        "unknown directive: the directives are `@!pure` and `@!frontend:KEY`"
+        "unknown directive: the only directive is `@!frontend:KEY`"
     );
 }
 
@@ -77,15 +75,22 @@ fn an_empty_frontend_value_is_a_missing_value() {
 }
 
 #[test]
-fn pure_refuses_a_value() {
-    let error = preprocess(&format!("@!pure:yes\n{GRAPH}")).unwrap_err();
+fn the_old_pure_directive_is_an_unknown_directive() {
+    let error = preprocess(&format!("@!pure\n{GRAPH}")).unwrap_err();
     assert_eq!(error.offset, 0);
-    assert_eq!(error.message, "`@!pure` takes no value");
+    assert_eq!(
+        error.message,
+        "unknown directive: the only directive is `@!frontend:KEY`"
+    );
 }
 
 #[test]
 fn a_directive_is_one_word_with_nothing_else_on_its_line() {
-    for line in ["@!frontend: typescript", "@!pure extra", "@!pure\t"] {
+    for line in [
+        "@!frontend: typescript",
+        "@!frontend:typescript extra",
+        "@!frontend:typescript\t",
+    ] {
         let error = preprocess(&format!("{line}\n{GRAPH}")).unwrap_err();
         assert_eq!(error.offset, 0, "{line}");
         assert_eq!(
@@ -97,19 +102,14 @@ fn a_directive_is_one_word_with_nothing_else_on_its_line() {
 
 #[test]
 fn a_trailing_space_after_a_directive_is_not_a_second_word() {
-    let source = format!("@!pure  \n{GRAPH}");
+    let source = format!("@!frontend:typescript  \n{GRAPH}");
     let directives = preprocess(&source).unwrap();
-    assert!(directives.pure.is_some());
-    assert_eq!(directives.body, "@!pure  \n".len());
+    assert!(directives.frontend.is_some());
+    assert_eq!(directives.body, "@!frontend:typescript  \n".len());
 }
 
 #[test]
 fn a_repeated_directive_is_refused_at_the_second_copy() {
-    let source = format!("@!pure\n@!pure\n{GRAPH}");
-    let error = preprocess(&source).unwrap_err();
-    assert_eq!(error.offset, 7);
-    assert_eq!(error.message, "`@!pure` is repeated");
-
     let source = format!("@!frontend:rust\n@!frontend:rust\n{GRAPH}");
     let error = preprocess(&source).unwrap_err();
     assert_eq!(error.offset, 16);
@@ -118,9 +118,9 @@ fn a_repeated_directive_is_refused_at_the_second_copy() {
 
 #[test]
 fn a_directive_after_the_first_graph_is_refused_at_its_line() {
-    let source = format!("{GRAPH}@!pure\n");
+    let source = format!("{GRAPH}@!frontend:typescript\n");
     let error = preprocess(&source).unwrap_err();
-    assert_eq!(error.offset, source.find("@!pure").unwrap());
+    assert_eq!(error.offset, source.find("@!frontend").unwrap());
     assert_eq!(
         error.message,
         "directives go at the top of the file, before the first `graph`"
@@ -129,9 +129,9 @@ fn a_directive_after_the_first_graph_is_refused_at_its_line() {
 
 #[test]
 fn a_directive_after_other_text_is_refused_too() {
-    let source = "graph door\n  node a end\n\n@!pure\n";
+    let source = "graph door\n  node a end\n\n@!frontend:typescript\n";
     let error = preprocess(source).unwrap_err();
-    assert_eq!(error.offset, source.find("@!pure").unwrap());
+    assert_eq!(error.offset, source.find("@!frontend").unwrap());
 }
 
 #[test]
@@ -164,7 +164,7 @@ fn block_capacities_of_a_header_match_its_body_alone() {
 #[test]
 fn a_direct_parse_of_a_directive_header_fails_at_the_at_sign() {
     // `parse` lexes from byte 0 and does not read directives, so the header is a parse error.
-    let source = format!("@!pure\n{GRAPH}");
+    let source = format!("@!frontend:typescript\n{GRAPH}");
     let capacities = block_capacities(&source, &Schema::default());
     let error = match parse(&source, &Schema::default(), &capacities) {
         Err(error) => error,
@@ -175,7 +175,7 @@ fn a_direct_parse_of_a_directive_header_fails_at_the_at_sign() {
 
 #[test]
 fn a_lexer_started_at_the_body_gives_absolute_offsets() {
-    let source = format!("@!pure\n\n{GRAPH}");
+    let source = format!("@!frontend:typescript\n\n{GRAPH}");
     let body = source.find("graph").unwrap();
     let from_body: Vec<(usize, TokenKind<'_>)> = Lexer::at(&source, body)
         .map(|token| token.unwrap())

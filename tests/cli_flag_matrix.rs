@@ -74,7 +74,7 @@ const REFUSED: &[(&str, &[&str])] = &[
     (
         "debug",
         &[
-            "--pure", "--json", "--state", "--runner", "--tasks", "--input", "--each", "--key",
+            "--json", "--state", "--runner", "--tasks", "--input", "--each", "--key",
             "--seen",
         ],
     ),

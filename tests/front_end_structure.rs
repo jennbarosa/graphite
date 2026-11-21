@@ -303,7 +303,7 @@ fn every_front_end_describes_each_graph_the_same() {
     for file in &files {
         let name = file.file_stem().unwrap().to_string_lossy().into_owned();
         // A pure file compiles only to PureScript, so no machine front end has it to compare.
-        if name.ends_with(".pure") {
+        if name.ends_with(".purs") {
             continue;
         }
         let ts_dir = scratch(&format!("structure-ts-{name}"));

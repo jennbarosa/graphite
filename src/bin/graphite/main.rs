@@ -86,10 +86,9 @@ fn run(command: Command) -> Result<(), Failure> {
             input,
             front_end,
             allow,
-            pure,
             json,
-        } => check::run(&input, front_end.as_deref(), allow.as_deref(), pure, json),
-        Command::Inspect { input, json, pure } => inspect::run(&input, json, pure),
+        } => check::run(&input, front_end.as_deref(), allow.as_deref(), json),
+        Command::Inspect { input, json } => inspect::run(&input, json),
         other => dispatch(other).map_err(Failure::Message),
     }
 }
@@ -123,13 +122,11 @@ fn dispatch(command: Command) -> Result<(), String> {
             out,
             front_end,
             allow,
-            pure,
         } => compile::run(
             &input,
             out.as_deref(),
             front_end.as_deref(),
             allow.as_deref(),
-            pure,
         ),
         Command::Run {
             input,

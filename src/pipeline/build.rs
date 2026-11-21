@@ -19,12 +19,10 @@ pub type Verify<'a> = dyn Fn(&[CompiledGraph]) -> Result<(), String> + 'a;
 /// build with its message.
 pub type Select<'a> = dyn Fn(&str, &Directives<'_>) -> Result<Chosen, String> + 'a;
 
-/// The front end a file builds with, and whether the file is pure. `because` says what made it
-/// pure, for a diagnostic.
+/// The front end a file builds with. Its mode is the front end's kind, so `pure` is that kind.
 pub struct Chosen {
     pub target: &'static Target,
     pub pure: bool,
-    pub because: Option<String>,
 }
 
 /// Reads a file and compiles it: the directives are read, `select` chooses the front end and mode
@@ -43,7 +41,7 @@ pub fn compile_file(
         pure: chosen.pure,
     };
     let graphs = compile_body(source, directives.body, &schema)
-        .map_err(|error| explain_pure(error, source, chosen.because.as_deref()))?;
+        .map_err(|error| explain_pure(error, source, &chosen))?;
     Ok((chosen, graphs))
 }
 
@@ -96,7 +94,7 @@ impl Job<'_> {
         Ok(())
     }
 
-    /// The front end the parse chose. The graph runs `parse` before every stage that needs it.
+    /// The front end the parse chose. The parse runs before every stage that needs it.
     fn chosen(&self) -> Result<&Chosen, String> {
         self.chosen
             .as_ref()
@@ -155,15 +153,16 @@ impl Job<'_> {
     }
 }
 
-/// The diagnostic for a parse error. A machine line in a pure file gets the reason the file is
-/// pure, so the fix is clear.
-fn explain_pure(error: ParseError, source: &str, because: Option<&str>) -> String {
-    let machine_line = is_machine_line_refusal(error.message);
-    match (because, machine_line) {
-        (Some(because), true) => {
-            let message = format!("{} (pure {because})", error.message);
-            Diagnostic::new(Cow::Owned(message), error.offset, source).to_string()
-        }
-        _ => error.diagnostic(source).to_string(),
+/// The diagnostic for a parse error. A machine line in a pure file names the front end that made
+/// the file pure, so the fix is clear.
+fn explain_pure(error: ParseError, source: &str, chosen: &Chosen) -> String {
+    if chosen.pure && is_machine_line_refusal(error.message) {
+        let message = format!(
+            "{} (the `{}` front end writes pure files)",
+            error.message, chosen.target.key
+        );
+        Diagnostic::new(Cow::Owned(message), error.offset, source).to_string()
+    } else {
+        error.diagnostic(source).to_string()
     }
 }

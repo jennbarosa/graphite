@@ -28,7 +28,7 @@ The words Graphite uses, in the order you meet them.
 | **Front end** | The part that turns a checked graph into code for one host language, selected with `--frontend`. TypeScript is the only one shipped today. See [front ends](front-ends.md). |
 | **Machine file** | A file of states, edges and choices, which `run` and `debug` can execute. The default. |
 | **Pure file** | A file of enums, inputs and choices, with no states. It compiles to plain functions and cannot run. |
-| **Directive** | A line at the top of a file that starts with `@!`, such as `@!pure` or `@!frontend:purescript`. |
+| **Directive** | A line at the top of a file that starts with `@!`, such as `@!frontend:purescript`. |
 | **Enum** | A named set of members, declared with `enum`. A pure file's inputs and tags come from enums. |
 | **Input** | A value a pure file's choices test: a `bool`, or one enum. Declared with `input`. |
 | **Arm** | One line of a choose: a `when` test (or the final `else`) and the tag it picks. |

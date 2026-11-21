@@ -11,7 +11,7 @@ const PURE: &str =
     "graph g\n  enum E a\n  input x : bool\n  choose c : E\n    when x -> a\n    else -> a\n";
 
 fn combat() -> std::path::PathBuf {
-    manifest().join("examples/combat.pure.graphite")
+    manifest().join("examples/combat.purs.graphite")
 }
 
 #[test]
@@ -29,14 +29,19 @@ fn a_purs_infix_is_pure_by_rule_five() {
 }
 
 #[test]
-fn a_pure_name_with_a_machine_infix_is_refused() {
-    let source = dsl("pure-infix/combat.ts.pure.graphite", PURE);
+fn only_the_last_infix_names_the_front_end() {
+    let source = dsl("pure-infix/combat.ts.purs.graphite", PURE);
+    let output = graphite(["check".as_ref(), source.as_os_str()]);
+    assert!(output.status.success(), "{}", stderr(&output));
+}
+
+#[test]
+fn a_pure_name_is_no_longer_a_pure_signal() {
+    let source = dsl("pure-infix/combat.pure.graphite", PURE);
     let output = graphite(["check".as_ref(), source.as_os_str()]);
     assert!(!output.status.success());
     assert!(
-        stderr(&output).contains(
-            "`combat.ts.pure.graphite` is pure (by its `.pure` name), but no pure front end writes `.ts` (pure front ends: purescript)"
-        ),
+        stderr(&output).contains("no front end for the infix `.pure`"),
         "{}",
         stderr(&output)
     );
@@ -67,7 +72,7 @@ fn a_machine_node_in_a_purescript_file_says_why_it_is_pure() {
     assert!(!output.status.success());
     assert!(
         stderr(&output).contains(
-            "`node` is not allowed in a pure file (pure because of `--frontend purescript`)"
+            "`node` is not allowed in a pure file (the `purescript` front end writes pure files)"
         ),
         "{}",
         stderr(&output)
@@ -75,23 +80,17 @@ fn a_machine_node_in_a_purescript_file_says_why_it_is_pure() {
 }
 
 #[test]
-fn pure_with_a_machine_front_end_names_both_sides() {
-    let source = dsl("pure-flag/conflict.graphite", "graph door\n  node a end\n");
-    let output = graphite([
-        "check".as_ref(),
-        source.as_os_str(),
-        "--pure".as_ref(),
-        "--frontend".as_ref(),
-        "typescript".as_ref(),
-    ]);
-    assert!(!output.status.success());
-    assert!(
-        stderr(&output).contains(
-            "pure (by `--pure`), but `typescript` is a machine front end (pure front ends: purescript)"
-        ),
-        "{}",
-        stderr(&output)
-    );
+fn the_pure_flag_is_gone_from_every_command_that_had_it() {
+    let source = dsl("pure-flag/gone.graphite", PURE);
+    for command in ["check", "compile", "inspect"] {
+        let output = graphite([command.as_ref(), source.as_os_str(), "--pure".as_ref()]);
+        assert_eq!(output.status.code(), Some(2), "{command}");
+        assert!(
+            stderr(&output).contains("unknown option --pure"),
+            "{command}: {}",
+            stderr(&output)
+        );
+    }
 }
 
 #[test]
@@ -168,11 +167,11 @@ fn run_and_debug_refuse_a_pure_file() {
 }
 
 #[test]
-fn run_refuses_the_pure_flag() {
+fn run_refuses_the_removed_pure_flag() {
     let output = graphite(["run".as_ref(), combat().as_os_str(), "--pure".as_ref()]);
-    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(2));
     assert!(
-        stderr(&output).contains("run does not take --pure"),
+        stderr(&output).contains("unknown option --pure"),
         "{}",
         stderr(&output)
     );
@@ -209,7 +208,7 @@ fn an_allowlist_refuses_a_disallowed_value_on_an_input_line() {
         "[annotations]\nsource = [\"stats\"]\n",
     );
     let source = dsl(
-        "pure-allow/bad.pure.graphite",
+        "pure-allow/bad.purs.graphite",
         "graph g\n  enum E a\n  input x : bool @source:guess\n  choose c : E\n    when x -> a\n    else -> a\n",
     );
     let output = graphite([
@@ -251,7 +250,7 @@ fn inspect_reads_a_dotted_name_with_an_unknown_infix_without_a_flag() {
 #[test]
 fn check_refuses_a_name_clash_that_compile_refuses() {
     let path = dsl(
-        "clash/clash.pure.graphite",
+        "clash/clash.purs.graphite",
         "graph g\n  enum E a b\n  input home-east : bool\n  input home_east : bool\n  choose c : E\n    when home-east -> a\n    else -> b\n",
     );
     let output = graphite(["check".as_ref(), path.as_os_str()]);
@@ -266,7 +265,7 @@ fn check_refuses_a_name_clash_that_compile_refuses() {
 #[test]
 fn a_name_clash_points_at_the_later_declaration() {
     let path = dsl(
-        "clash-line/clash.pure.graphite",
+        "clash-line/clash.purs.graphite",
         "graph g\n  enum E a b\n  input home-east : bool\n  input home_east : bool\n  choose c : E\n    when home-east -> a\n    else -> b\n",
     );
     let output = graphite(["check".as_ref(), path.as_os_str()]);
@@ -281,7 +280,7 @@ fn a_name_clash_points_at_the_later_declaration() {
 #[test]
 fn a_name_clash_gets_no_remove_the_output_hint() {
     let path = dsl(
-        "clash-hint/clash.pure.graphite",
+        "clash-hint/clash.purs.graphite",
         "graph g\n  enum Tactic flee\n  input x : bool\n  choose tactic : Tactic\n    when x -> flee\n    else -> flee\n  choose tacticArm : Tactic\n    when x -> flee\n    else -> flee\n",
     );
     let out = scratch("clash-hint-out");
