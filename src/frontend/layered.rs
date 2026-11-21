@@ -126,8 +126,8 @@ impl<S: Syntax, const SHIFT: u32> Frontend for Layered<S, SHIFT> {
         output.write_all(self.syntax.runtime().as_bytes())
     }
 
-    fn runtime_file_name(&self) -> &'static str {
-        self.syntax.runtime_file_name()
+    fn runtime_file_name(&self) -> Option<&'static str> {
+        Some(self.syntax.runtime_file_name())
     }
 
     fn extension(&self) -> &'static str {

@@ -26,9 +26,7 @@ pub fn resolve(
     directives: &Directives<'_>,
     output: Output,
 ) -> Result<Chosen, String> {
-    let directive_pure = directives
-        .frontend
-        .is_some_and(|(value, _)| value == "pure");
+    let directive_pure = directives.frontend_is_pure();
     // A directive loses to the flag, so it is ignored completely unless it is `@!frontend:pure`,
     // which names no target and always counts.
     let explicit = match (flag_front_end, directives.frontend) {
@@ -60,9 +58,10 @@ pub fn resolve(
         flag_pure,
         directives,
         directive_pure,
-        explicit_pure
-            .then(|| explicit.as_ref().map(|named| named.spelled.as_str()))
-            .flatten(),
+        explicit
+            .as_ref()
+            .filter(|_| explicit_pure)
+            .map(|named| named.spelled.as_str()),
         infix,
     );
 

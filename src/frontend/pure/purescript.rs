@@ -29,6 +29,8 @@ pub struct PureScriptSyntax;
 /// exactly when `module` writes that value.
 pub struct Layout<'d> {
     graph_annotations: bool,
+    /// Whether any declaration carries an annotation, so the module imports `Maybe`'s constructors.
+    constructors: bool,
     enums: Vec<EnumNames<'d>>,
     inputs: Vec<InputNames<'d>>,
     choices: Vec<ChoiceNames<'d>>,
@@ -63,12 +65,14 @@ struct ChoiceNames<'d> {
 
 impl<'d> Layout<'d> {
     fn new(language: &dyn Language, decisions: &Decisions<'d>) -> Self {
+        let mut constructors = !decisions.notes.is_empty();
         let enums = decisions
             .enums
             .iter()
             .map(|item| {
                 let base = language.ident(Role::Constant, item.name);
                 let any_member = item.members.iter().any(|member| !member.notes.is_empty());
+                constructors |= !item.notes.is_empty() || any_member;
                 EnumNames {
                     source: Source {
                         name: item.name,
@@ -91,6 +95,7 @@ impl<'d> Layout<'d> {
             .inputs
             .iter()
             .map(|input| {
+                constructors |= !input.notes.is_empty();
                 let base = language.ident(Role::Field, input.name);
                 InputNames {
                     source: Source {
@@ -107,6 +112,8 @@ impl<'d> Layout<'d> {
             .functions
             .iter()
             .map(|function| {
+                constructors |= function.cases.iter().any(|case| !case.notes.is_empty())
+                    || !function.notes.is_empty();
                 let base = language.ident(Role::Function, function.name);
                 ChoiceNames {
                     source: Source {
@@ -125,6 +132,7 @@ impl<'d> Layout<'d> {
             .collect();
         Self {
             graph_annotations: !decisions.notes.is_empty(),
+            constructors,
             enums,
             inputs,
             choices,
@@ -151,6 +159,60 @@ fn push_optional<'d>(
 ) {
     out.extend(name.map(|name| generated_name(role, name, source)));
 }
+
+/// The names the module imports or uses from Prelude and `Data.Maybe`. Written once, so the list is
+/// not rebuilt for every module.
+const IMPORTED: &[(Role, &str)] = &[
+    // The module names: a graph named `prelude` would import itself. `Prim` is built in, and its
+    // types are in scope in every module.
+    (Role::Module, "Prelude"),
+    (Role::Module, "Prim"),
+    (Role::Type, "Char"),
+    (Role::Type, "Constraint"),
+    (Role::Type, "Function"),
+    (Role::Type, "Int"),
+    (Role::Type, "Number"),
+    (Role::Type, "Partial"),
+    (Role::Type, "Record"),
+    (Role::Type, "Symbol"),
+    (Role::Type, "Type"),
+    // The types and classes of Prelude, which `import Prelude` brings in: a local type with one of
+    // these names shadows it, and `purs --strict` refuses the shadowing.
+    (Role::Type, "Applicative"),
+    (Role::Type, "Apply"),
+    (Role::Type, "Bind"),
+    (Role::Type, "Boolean"),
+    (Role::Type, "BooleanAlgebra"),
+    (Role::Type, "Bounded"),
+    (Role::Type, "Category"),
+    (Role::Type, "CommutativeRing"),
+    (Role::Type, "DivisionRing"),
+    (Role::Type, "Discard"),
+    (Role::Type, "Eq"),
+    (Role::Type, "EuclideanRing"),
+    (Role::Type, "Field"),
+    (Role::Type, "Functor"),
+    (Role::Type, "HeytingAlgebra"),
+    (Role::Type, "Monad"),
+    (Role::Type, "Monoid"),
+    (Role::Type, "Ord"),
+    (Role::Type, "Ordering"),
+    (Role::Type, "Ring"),
+    (Role::Type, "Semigroup"),
+    (Role::Type, "Semigroupoid"),
+    (Role::Type, "Semiring"),
+    (Role::Type, "Show"),
+    (Role::Type, "Unit"),
+    (Role::Type, "Void"),
+    (Role::Type, "Maybe"),
+    (Role::Type, "String"),
+    (Role::Type, "Array"),
+    (Role::Member, "Just"),
+    (Role::Member, "Nothing"),
+    (Role::Function, "otherwise"),
+    // The parameter of every choice's dispatch function, which would shadow a choice named `i`.
+    (Role::Function, "i"),
+];
 
 impl PureSyntax for PureScriptSyntax {
     type Layout<'d> = Layout<'d>;
@@ -217,68 +279,8 @@ impl PureSyntax for PureScriptSyntax {
 
     /// Every name the module imports or uses from Prelude and `Data.Maybe`. Source names must not
     /// spell them, or the references in the module would be ambiguous.
-    fn imported(&self) -> Vec<(Role, &'static str)> {
-        // The module names: a graph named `prelude` would import itself. `Prim` is built in, and
-        // its types are in scope in every module.
-        let mut names = vec![(Role::Module, "Prelude"), (Role::Module, "Prim")];
-        names.extend(
-            [
-                "Char",
-                "Constraint",
-                "Function",
-                "Int",
-                "Number",
-                "Partial",
-                "Record",
-                "Symbol",
-                "Type",
-            ]
-            .map(|name| (Role::Type, name)),
-        );
-        // The types and classes of Prelude, which `import Prelude` brings in: a local type with one
-        // of these names shadows it, and `purs --strict` refuses the shadowing.
-        names.extend(
-            [
-                "Applicative",
-                "Apply",
-                "Bind",
-                "Boolean",
-                "BooleanAlgebra",
-                "Bounded",
-                "Category",
-                "CommutativeRing",
-                "DivisionRing",
-                "Discard",
-                "Eq",
-                "EuclideanRing",
-                "Field",
-                "Functor",
-                "HeytingAlgebra",
-                "Monad",
-                "Monoid",
-                "Ord",
-                "Ordering",
-                "Ring",
-                "Semigroup",
-                "Semigroupoid",
-                "Semiring",
-                "Show",
-                "Unit",
-                "Void",
-                "Maybe",
-                "String",
-                "Array",
-            ]
-            .map(|name| (Role::Type, name)),
-        );
-        names.extend([
-            (Role::Member, "Just"),
-            (Role::Member, "Nothing"),
-            (Role::Function, "otherwise"),
-            // The parameter of every choice's dispatch function, which would shadow a choice named `i`.
-            (Role::Function, "i"),
-        ]);
-        names
+    fn imported(&self) -> &'static [(Role, &'static str)] {
+        IMPORTED
     }
 
     fn module<'d>(
@@ -296,7 +298,7 @@ impl PureSyntax for PureScriptSyntax {
         groups.push(&format!(
             "module {} where\n\nimport Prelude\n{}",
             language.ident(Role::Module, decisions.name),
-            maybe_import(decisions)
+            maybe_import(layout)
         ))?;
         groups.push(&types(decisions, layout))?;
         if layout.graph_annotations {
@@ -342,16 +344,8 @@ impl Groups<'_> {
 
 /// The `Data.Maybe` import. The constructors are imported only when some annotation exists, since
 /// `purs` warns about an imported constructor that nothing uses.
-fn maybe_import(decisions: &Decisions) -> &'static str {
-    let mut any = !decisions.notes.is_empty();
-    any |= decisions.enums.iter().any(|item| {
-        !item.notes.is_empty() || item.members.iter().any(|member| !member.notes.is_empty())
-    });
-    any |= decisions.inputs.iter().any(|input| !input.notes.is_empty());
-    any |= decisions.functions.iter().any(|choice| {
-        !choice.notes.is_empty() || choice.cases.iter().any(|case| !case.notes.is_empty())
-    });
-    if any {
+fn maybe_import(layout: &Layout) -> &'static str {
+    if layout.constructors {
         "import Data.Maybe (Maybe(..))"
     } else {
         "import Data.Maybe (Maybe)"

@@ -63,7 +63,7 @@ fn the_file_name_is_the_module_name_with_the_purs_extension() {
     let front = purescript();
     assert_eq!(front.file_name(&graphs[0], Module::Index), "Combat.purs");
     assert_eq!(front.kind(), Kind::Pure);
-    assert_eq!(front.runtime_file_name_opt(), None);
+    assert_eq!(front.runtime_file_name(), None);
 }
 
 /// The top-level names of a module: value signatures, types, and the constructors of `data`.
@@ -130,8 +130,8 @@ fn every_top_level_name_is_a_source_name_or_a_generated_one() {
     // reference from Prelude, `otherwise`, is listed too.
     let imported: HashSet<String> = PureScriptSyntax
         .imported()
-        .into_iter()
-        .map(|(_, name)| name.to_owned())
+        .iter()
+        .map(|&(_, name)| name.to_owned())
         .collect();
     let module_path: HashSet<&str> = ["Prelude", "Data", "Maybe"].into_iter().collect();
     let module_name = language.ident(Role::Module, decisions.name);

@@ -1,10 +1,7 @@
 //! Lowers a pure graph to a neutral form that every pure syntax reads. Syntaxes never touch
 //! `CompiledGraph`, so the arrays and their spans stay inside this module and the parser.
 
-use std::collections::HashMap;
-
 use crate::graph::{CompiledGraph, Span, Test as GraphTest, Ty as GraphTy, index};
-use crate::interner::StringId;
 
 /// Annotations with their values resolved to text. A `None` value is an annotation with no value.
 pub type Notes<'g> = Vec<(&'g str, Option<&'g str>)>;
@@ -79,9 +76,6 @@ pub struct Function<'g> {
 
 /// Lowers a pure graph. Every declaration keeps its notes, so no annotation is lost on the way.
 pub fn lower(graph: &CompiledGraph) -> Decisions<'_> {
-    let positions: Vec<HashMap<StringId, usize>> = (0..graph.enums.len())
-        .map(|ty| member_positions(graph, ty))
-        .collect();
     Decisions {
         name: graph.text(graph.name),
         offset: graph.offset,
@@ -134,7 +128,7 @@ pub fn lower(graph: &CompiledGraph) -> Decisions<'_> {
                                 .map(|condition| test(graph.tests[condition as usize])),
                             tag: graph.text(arm.tag),
                             // The parser refuses a tag that is not a member of its enum.
-                            member: positions[returns][&arm.tag],
+                            member: arm.member as usize,
                             notes: notes(graph, &arm.annotations),
                         })
                         .collect(),
@@ -142,19 +136,6 @@ pub fn lower(graph: &CompiledGraph) -> Decisions<'_> {
             })
             .collect(),
     }
-}
-
-/// Each member's position among the members of enum `ty`, keyed by its name. A name that appears
-/// twice keeps its first position.
-fn member_positions(graph: &CompiledGraph, ty: usize) -> HashMap<StringId, usize> {
-    let mut positions = HashMap::new();
-    for (position, member) in graph.members[index(&graph.enums[ty].members)]
-        .iter()
-        .enumerate()
-    {
-        positions.entry(member.name).or_insert(position);
-    }
-    positions
 }
 
 fn test(test: GraphTest) -> Test {

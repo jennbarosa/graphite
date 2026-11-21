@@ -211,7 +211,7 @@ impl Frontend for FailingOn {
         TYPESCRIPT.emit_runtime(output)
     }
 
-    fn runtime_file_name(&self) -> &'static str {
+    fn runtime_file_name(&self) -> Option<&'static str> {
         TYPESCRIPT.runtime_file_name()
     }
 }

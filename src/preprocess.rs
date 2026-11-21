@@ -38,7 +38,12 @@ pub struct Directives<'a> {
 impl Directives<'_> {
     /// Whether a directive makes the file pure: `@!pure`, or `@!frontend:pure`.
     pub fn is_pure(&self) -> bool {
-        self.pure.is_some() || self.frontend.is_some_and(|(value, _)| value == "pure")
+        self.pure.is_some() || self.frontend_is_pure()
+    }
+
+    /// Whether `@!frontend:pure` is set. It names no target, so it always makes the file pure.
+    pub fn frontend_is_pure(&self) -> bool {
+        self.frontend.is_some_and(|(value, _)| value == "pure")
     }
 }
 

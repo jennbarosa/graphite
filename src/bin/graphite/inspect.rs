@@ -96,18 +96,22 @@ fn enums_json(graph: &CompiledGraph) -> Vec<String> {
         .collect()
 }
 
+/// The type of an input as written in the source: `bool`, or the name of its enum.
+fn ty_name(graph: &CompiledGraph, ty: Ty) -> &str {
+    match ty {
+        Ty::Bool => "bool",
+        Ty::Enum(index) => graph.text(graph.enums[index as usize].name),
+    }
+}
+
 fn inputs_json(graph: &CompiledGraph) -> Vec<String> {
     graph
         .inputs
         .iter()
         .map(|input| {
-            let ty = match input.ty {
-                Ty::Bool => "bool".to_string(),
-                Ty::Enum(index) => graph.text(graph.enums[index as usize].name).to_string(),
-            };
             json::object(&[
                 ("name", json::quote(graph.text(input.name))),
-                ("type", json::quote(&ty)),
+                ("type", json::quote(ty_name(graph, input.ty))),
                 ("annotations", annotations_json(graph, &input.annotations)),
             ])
         })
@@ -222,11 +226,11 @@ fn describe_pure(graph: &CompiledGraph, lines: &mut Vec<String>) {
     }
     lines.push("  inputs".to_string());
     for input in &graph.inputs {
-        let ty = match input.ty {
-            Ty::Bool => "bool".to_string(),
-            Ty::Enum(index) => graph.text(graph.enums[index as usize].name).to_string(),
-        };
-        lines.push(format!("    {} : {ty}", graph.text(input.name)));
+        lines.push(format!(
+            "    {} : {}",
+            graph.text(input.name),
+            ty_name(graph, input.ty)
+        ));
     }
 }
 

@@ -2,6 +2,7 @@
 //! and a constant for each node, condition and choice. Every module imports the runtime types from
 //! `graphite.rs`, so the host crate declares `mod graphite;` next to the generated modules.
 
+use std::collections::HashSet;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -9,7 +10,6 @@ use std::process::Command;
 use super::lang::digit_guard;
 use super::lang::is_plain_ident;
 use super::lang::rust_keywords::RUST_KEYWORDS;
-use super::names::Names;
 use super::{Frontend, Module};
 use crate::frontend::registry::{Debugger, Target};
 use crate::graph::{Annotation, CompiledGraph, Span, index};
@@ -116,8 +116,8 @@ impl Frontend for Rust {
         output.write_all(RUNTIME.as_bytes())
     }
 
-    fn runtime_file_name(&self) -> &'static str {
-        RUNTIME_FILE
+    fn runtime_file_name(&self) -> Option<&'static str> {
+        Some(RUNTIME_FILE)
     }
 
     fn extension(&self) -> &'static str {
@@ -243,10 +243,10 @@ fn constants<'a>(
     entries: impl Iterator<Item = (&'a str, String)>,
 ) -> io::Result<()> {
     writeln!(output, "pub mod {module} {{")?;
-    let mut seen: Names<(), &str> = Names::default();
+    let mut seen = HashSet::new();
     for (name, value) in entries {
         let ident = ident(name);
-        if seen.insert((), ident.clone(), name).is_err() {
+        if !seen.insert(ident.clone()) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 format!("two names in `{module}` both become the Rust constant `{ident}`"),

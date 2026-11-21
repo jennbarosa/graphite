@@ -34,8 +34,7 @@ pub fn parse(
     schema: &Schema<'_>,
     capacities: &[Capacity],
 ) -> Result<Vec<CompiledGraph>, ParseError> {
-    check_source_len(source)?;
-    grammar::parse(source, 0, schema, capacities)
+    parse_body(source, 0, schema, capacities)
 }
 
 /// [`parse`] from byte `body`, past the directives that [`crate::preprocess`] reads. The

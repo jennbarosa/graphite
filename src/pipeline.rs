@@ -209,7 +209,7 @@ fn check_plan(
     directory: Option<&Path>,
 ) -> Result<(), Collision> {
     let exists = |file: &str| directory.is_some_and(|directory| directory.join(file).exists());
-    let runtime = frontend.runtime_file_name_opt();
+    let runtime = frontend.runtime_file_name();
     // The runtime has no source of its own, so a conflict on it points at the first graph.
     let first = graphs.first().map_or(0, |graph| graph.offset);
     if let Some(runtime) = runtime.filter(|runtime| exists(runtime)) {
@@ -320,7 +320,7 @@ fn write_each(
     directory: &Path,
     written: &mut Vec<PathBuf>,
 ) -> io::Result<()> {
-    if let Some(name) = frontend.runtime_file_name_opt() {
+    if let Some(name) = frontend.runtime_file_name() {
         let runtime = directory.join(name);
         write_file(&runtime, |output| frontend.emit_runtime(output))?;
         written.push(runtime);

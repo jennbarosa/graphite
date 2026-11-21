@@ -604,11 +604,13 @@ impl<'s> Builder<'s> {
         tokens.expect(TokenKind::Arrow)?;
         let (word, tag_offset) = tokens.word_or("expected a tag name after `->`")?;
         let tag = self.intern(tokens, word)?;
-        if let Some(ty) = self.choice_ty
-            && !self.member_positions.contains_key(&(ty, tag.index()))
-        {
-            return Err(ParseError::new(TAG_NOT_MEMBER, tag_offset));
-        }
+        let member = match self.choice_ty {
+            Some(ty) => *self
+                .member_positions
+                .get(&(ty, tag.index()))
+                .ok_or(ParseError::new(TAG_NOT_MEMBER, tag_offset))?,
+            None => 0,
+        };
         let own = self.annotations(tokens)?;
         let annotations = if self.kind == Kind::Pure {
             narrow(self.with_defaults(own, offset)?)
@@ -621,6 +623,7 @@ impl<'s> Builder<'s> {
                 condition,
                 tag,
                 annotations,
+                member,
             },
             offset,
         )

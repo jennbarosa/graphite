@@ -75,7 +75,7 @@ impl Kind {
 
 #[cfg(test)]
 mod tests {
-    use super::{Kind, Line, NODE_IN_PURE};
+    use super::{Kind, Line, NODE_IN_PURE, is_machine_line_refusal};
 
     const LINES: [Line; 6] = [
         Line::Default,
@@ -121,6 +121,19 @@ mod tests {
         assert!(!Kind::Pure.runnable());
         assert_eq!(Kind::Machine.label(), "machine");
         assert_eq!(Kind::Pure.label(), "pure");
+    }
+
+    #[test]
+    fn the_pipeline_recognises_exactly_the_machine_line_refusals_of_a_pure_file() {
+        assert!(is_machine_line_refusal(
+            Kind::Pure.allows(Line::Node).unwrap_err()
+        ));
+        assert!(is_machine_line_refusal(
+            Kind::Pure.allows(Line::Edge).unwrap_err()
+        ));
+        assert!(!is_machine_line_refusal(
+            Kind::Machine.allows(Line::Enum).unwrap_err()
+        ));
     }
 
     #[test]

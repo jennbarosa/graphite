@@ -308,8 +308,24 @@ enum Value {
     Member(usize),
 }
 
+/// The most assignments one module may have. Each one runs through `purs`, and the count doubles
+/// with every bool input, so a module past this bound fails here instead of running for minutes.
+const MAX_ASSIGNMENTS: usize = 1024;
+
 /// Every assignment of a module's inputs, with the last input varying fastest.
 fn assignments(decisions: &Decisions) -> Vec<Vec<Value>> {
+    let count: usize = decisions
+        .inputs
+        .iter()
+        .map(|input| match input.ty {
+            Ty::Bool => 2,
+            Ty::Enum(item) => decisions.enums[item].members.len(),
+        })
+        .product();
+    assert!(
+        count <= MAX_ASSIGNMENTS,
+        "a module has {count} input assignments; check fewer inputs or raise MAX_ASSIGNMENTS"
+    );
     let mut all = vec![Vec::new()];
     for input in &decisions.inputs {
         let values: Vec<Value> = match input.ty {

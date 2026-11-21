@@ -135,6 +135,9 @@ pub struct Arm {
     pub condition: Option<u32>,
     pub tag: StringId,
     pub annotations: Span,
+    /// In a pure arm, the position of `tag` among its choose's enum members. Zero in machine
+    /// graphs, which have no enums.
+    pub member: u32,
 }
 
 #[derive(Clone, Copy, Debug)]

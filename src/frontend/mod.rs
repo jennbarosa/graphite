@@ -66,8 +66,9 @@ pub trait Frontend {
     /// The runtime that every graph's index imports.
     fn emit_runtime(&self, output: &mut dyn Write) -> io::Result<()>;
 
-    /// The file name of the runtime, which every index imports.
-    fn runtime_file_name(&self) -> &'static str;
+    /// The file name of the runtime, which every index imports, or `None` when the front end
+    /// writes no runtime.
+    fn runtime_file_name(&self) -> Option<&'static str>;
 
     /// The extension of this front end's files, without the dot. Inference matches on it.
     fn extension(&self) -> &'static str;
@@ -75,11 +76,6 @@ pub trait Frontend {
     /// The kind of graph this front end writes. Machine front ends are the default.
     fn kind(&self) -> Kind {
         Kind::Machine
-    }
-
-    /// The runtime's file name, or `None` when the front end writes no runtime.
-    fn runtime_file_name_opt(&self) -> Option<&'static str> {
-        Some(self.runtime_file_name())
     }
 
     /// Finds what would stop `graph` from being written, such as a name clash, without writing

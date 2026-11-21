@@ -35,8 +35,8 @@ impl Frontend for StringTable {
         Ok(())
     }
 
-    fn runtime_file_name(&self) -> &'static str {
-        "strings.ts"
+    fn runtime_file_name(&self) -> Option<&'static str> {
+        Some("strings.ts")
     }
 }
 

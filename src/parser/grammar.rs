@@ -238,14 +238,22 @@ impl<'a, 's> Session<'a, 's> {
         }
     }
 
-    /// `enum NAME MEMBER...` or `enum NAME`: one line, or a head whose members follow.
-    fn enum_line(&mut self) -> &'static [&'static str] {
-        let tokens = &mut self.tokens;
+    /// Runs one builder step on the open graph. The step reads from the tokens; its error is the
+    /// line's error.
+    fn step<T>(
+        &mut self,
+        read: impl FnOnce(&mut Builder<'s>, &mut Tokens<'a>) -> Result<T, ParseError>,
+    ) -> Result<T, ParseError> {
         let builder = self
             .builder
             .as_mut()
-            .expect("an enum is read inside a graph");
-        match builder.enum_head(tokens) {
+            .expect("a declaration line is read inside a graph");
+        read(builder, &mut self.tokens)
+    }
+
+    /// `enum NAME MEMBER...` or `enum NAME`: one line, or a head whose members follow.
+    fn enum_line(&mut self) -> &'static [&'static str] {
+        match self.step(|builder, tokens| builder.enum_head(tokens)) {
             Ok(true) => &["block"],
             Ok(false) => OK,
             Err(error) => self.fail(error),
@@ -262,36 +270,21 @@ impl<'a, 's> Session<'a, 's> {
     }
 
     fn member(&mut self) -> &'static [&'static str] {
-        let tokens = &mut self.tokens;
-        let builder = self
-            .builder
-            .as_mut()
-            .expect("a member is read inside a graph");
-        match builder.member(tokens) {
+        match self.step(|builder, tokens| builder.member(tokens)) {
             Ok(()) => OK,
             Err(error) => self.fail(error),
         }
     }
 
     fn members_end(&mut self) -> &'static [&'static str] {
-        let tokens = &mut self.tokens;
-        let builder = self
-            .builder
-            .as_mut()
-            .expect("an enum block ends inside a graph");
-        match builder.enum_end(tokens) {
+        match self.step(|builder, tokens| builder.enum_end(tokens)) {
             Ok(()) => OK,
             Err(error) => self.fail(error),
         }
     }
 
     fn input_line(&mut self) -> &'static [&'static str] {
-        let tokens = &mut self.tokens;
-        let builder = self
-            .builder
-            .as_mut()
-            .expect("an input is read inside a graph");
-        match builder.input(tokens) {
+        match self.step(|builder, tokens| builder.input(tokens)) {
             Ok(()) => OK,
             Err(error) => self.fail(error),
         }

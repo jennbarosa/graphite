@@ -42,8 +42,8 @@ pub trait PureSyntax: Sync {
 
     /// Names the module imports and uses, which a source name must not spell. A source name that
     /// clashes with one of them is the error, as with a generated name.
-    fn imported(&self) -> Vec<(Role, &'static str)> {
-        Vec::new()
+    fn imported(&self) -> &'static [(Role, &'static str)] {
+        &[]
     }
 
     /// The layout of one module, written from its decisions and the layout computed for them.
@@ -89,17 +89,12 @@ impl<S: PureSyntax> Frontend for Pure<S> {
         self.syntax.module(&decisions, &layout, output)
     }
 
-    /// A pure front end writes no runtime, so this is never called. See `runtime_file_name_opt`.
+    /// A pure front end writes no runtime, so this is never called. See `runtime_file_name`.
     fn emit_runtime(&self, _: &mut dyn Write) -> io::Result<()> {
         Ok(())
     }
 
-    /// Never read: a pure front end writes no runtime, so `runtime_file_name_opt` is `None`.
-    fn runtime_file_name(&self) -> &'static str {
-        ""
-    }
-
-    fn runtime_file_name_opt(&self) -> Option<&'static str> {
+    fn runtime_file_name(&self) -> Option<&'static str> {
         None
     }
 
@@ -179,7 +174,7 @@ fn check_names<'d, S: PureSyntax>(
         };
         claims.claim_spelled(item.role, &item.name, holder, None)?;
     }
-    for (role, name) in syntax.imported() {
+    for &(role, name) in syntax.imported() {
         let holder = Holder {
             name,
             offset: decisions.offset,

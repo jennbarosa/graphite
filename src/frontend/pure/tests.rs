@@ -128,7 +128,7 @@ fn the_toy_language_registers_through_the_recipe_alone() {
     let front = toy();
     assert_eq!(front.extension(), "toy");
     assert_eq!(front.kind(), Kind::Pure);
-    assert_eq!(front.runtime_file_name_opt(), None);
+    assert_eq!(front.runtime_file_name(), None);
     let graphs = graph(
         "graph door\n  enum E a\n  input x : bool\n  choose c : E\n    when x -> a\n    else -> a\n",
     );
