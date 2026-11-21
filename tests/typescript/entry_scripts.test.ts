@@ -28,15 +28,6 @@ let loads = 0;
 // sentinel that no script exits with: 100 means the script has not finished yet.
 const UNFINISHED = 100;
 
-/** Polls until the script has set its exit status, which it does when its work is done. */
-async function exitStatus(): Promise<number> {
-	for (let attempt = 0; attempt < 12_000; attempt++) {
-		if (process.exitCode !== UNFINISHED) return process.exitCode as number;
-		await Bun.sleep(5);
-	}
-	throw new Error('the script did not finish');
-}
-
 /** Runs `script` with `argv`, and returns its exit status and what it printed. */
 async function runEntry(
 	script: string,
@@ -50,17 +41,30 @@ async function runEntry(
 	const error = spyOn(console, 'error').mockImplementation((...parts: unknown[]) => {
 		err.push(parts.join(' '));
 	});
+	// A script ends by calling `process.exit` or by setting `process.exitCode`. Recording the call
+	// keeps the test process alive; the status is the call's code, or the exit code the script set.
+	let exited: number | undefined;
+	const exit = spyOn(process, 'exit').mockImplementation(((code?: number) => {
+		exited = code ?? 0;
+	}) as typeof process.exit);
 	const savedArgv = process.argv;
 	process.exitCode = UNFINISHED;
 	process.argv = ['bun', script, ...argv];
 	try {
 		// A query string makes each import a new module, so the entry code runs again.
 		await import(`${script}?run=${loads++}`);
-		const code = await exitStatus();
+		let code: number | undefined;
+		for (let attempt = 0; attempt < 12_000 && code === undefined; attempt++) {
+			if (exited !== undefined) code = exited;
+			else if (process.exitCode !== UNFINISHED) code = process.exitCode as number;
+			else await Bun.sleep(5);
+		}
+		if (code === undefined) throw new Error('the script did not finish');
 		return { code, out: out.join('\n'), err: err.join('\n') };
 	} finally {
 		process.argv = savedArgv;
 		process.exitCode = 0;
+		exit.mockRestore();
 		log.mockRestore();
 		error.mockRestore();
 	}

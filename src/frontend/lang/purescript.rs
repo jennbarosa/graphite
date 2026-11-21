@@ -74,8 +74,10 @@ impl Language for PureScript {
     fn namespace(&self, role: Role) -> Namespace {
         match role {
             Role::Module => Namespace::Module("module"),
-            // A member is a data constructor, which shares the type namespace.
-            Role::Type | Role::Member => Namespace::Module("type"),
+            Role::Type => Namespace::Module("type"),
+            // A member is a data constructor. PureScript keeps constructors apart from types, so
+            // `data Input = Input` is valid.
+            Role::Member => Namespace::Module("constructor"),
             // A field is a record label, which is local to its record.
             Role::Field => Namespace::Owner,
             Role::Function | Role::Constant => Namespace::Module("value"),
@@ -135,7 +137,7 @@ mod tests {
         assert_eq!(PURESCRIPT.namespace(Role::Type), Namespace::Module("type"));
         assert_eq!(
             PURESCRIPT.namespace(Role::Member),
-            Namespace::Module("type")
+            Namespace::Module("constructor")
         );
         assert_eq!(PURESCRIPT.namespace(Role::Field), Namespace::Owner);
         assert_eq!(

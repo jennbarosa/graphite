@@ -133,9 +133,8 @@ async function run(args: string[]): Promise<number> {
 	return summary.status === 'ended' ? 0 : 1;
 }
 
-main(process.argv.slice(2)).then((code) => {
-	process.exitCode = code;
-});
+// Exits at once: a runner's open timer or pool would otherwise keep the process alive.
+main(process.argv.slice(2)).then((code) => process.exit(code));
 
 /** The task runner: the task commands when given, else the runner module, else none. */
 async function pickRunner(

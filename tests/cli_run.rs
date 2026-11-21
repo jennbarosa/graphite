@@ -137,3 +137,37 @@ fn the_state_file_defaults_beside_the_graph() {
     assert!(output.status.success(), "{}", stderr(&output));
     assert!(dir.join("workflow.state.json").exists());
 }
+
+#[test]
+fn exits_when_a_runner_leaves_a_timer_open() {
+    let fixtures = manifest().join("tests/fixtures/runtime");
+    let state = scratch("cli-run-held").join("state.json");
+    let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_graphite"))
+        .args(["run", "--durable"])
+        .arg(fixtures.join("workflow.graphite"))
+        .arg("--allow")
+        .arg(fixtures.join("workflow.toml"))
+        .arg("--state")
+        .arg(&state)
+        .arg("--runner")
+        .arg(fixtures.join("held_runner.ts"))
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    // A watchdog: a CLI that does not exit would otherwise hang the whole test run.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+    let status = loop {
+        if let Some(status) = child.try_wait().unwrap() {
+            break status;
+        }
+        if std::time::Instant::now() > deadline {
+            let _ = child.kill();
+            panic!("graphite run did not exit after the graph ended");
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    };
+    let output = child.wait_with_output().unwrap();
+    assert!(status.success(), "{}", stderr(&output));
+    assert!(stdout(&output).contains(r#""status":"ended""#));
+}

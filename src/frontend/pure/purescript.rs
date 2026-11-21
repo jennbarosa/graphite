@@ -295,8 +295,15 @@ impl PureSyntax for PureScriptSyntax {
             first: true,
         };
 
+        // Prelude supplies `Eq` for the enums and the operators of the choices. Without an enum
+        // nothing uses it, and `purs --strict` rejects an unused import.
+        let prelude = if decisions.enums.is_empty() {
+            ""
+        } else {
+            "import Prelude\n"
+        };
         groups.push(&format!(
-            "module {} where\n\nimport Prelude\n{}",
+            "module {} where\n\n{prelude}{}",
             language.ident(Role::Module, decisions.name),
             maybe_import(layout)
         ))?;

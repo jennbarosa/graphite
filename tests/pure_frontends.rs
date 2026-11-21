@@ -187,11 +187,23 @@ fn refused_by_purescript(source: &str) -> String {
 }
 
 #[test]
-fn a_member_spelled_like_a_generated_type_is_refused() {
-    let message = refused_by_purescript(
-        "graph g\n  enum E Input\n  input x : bool\n  choose c : E\n    when x -> Input\n    else -> Input\n",
+fn a_module_with_no_enum_does_not_import_prelude_which_purs_would_call_unused() {
+    let graphs = pure_graphs("graph g\n  input x : bool\n");
+    let text = emitted(purescript(), &graphs[0]);
+    assert!(!text.contains("import Prelude"), "{text}");
+    assert!(text.contains("import Data.Maybe (Maybe)"), "{text}");
+}
+
+#[test]
+fn a_member_spelled_like_a_type_is_accepted_because_constructors_are_their_own_namespace() {
+    // PureScript keeps constructors apart from types, so `data Input = Input` and `data Dir = Dir`
+    // both compile.
+    let graphs = pure_graphs(
+        "graph g\n  enum E Input\n  enum Dir dir east\n  input x : bool\n  input d : Dir\n  choose c : E\n    when x -> Input\n    else -> Input\n  choose e : Dir\n    when d:dir -> dir\n    else -> east\n",
     );
-    assert_eq!(message, "`Input` clashes with the generated name `Input`");
+    let text = emitted(purescript(), &graphs[0]);
+    assert!(text.contains("data E = Input\n"), "{text}");
+    assert!(text.contains("data Dir = Dir | East\n"), "{text}");
 }
 
 #[test]
