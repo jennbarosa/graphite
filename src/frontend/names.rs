@@ -5,12 +5,13 @@ use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::hash::Hash;
 
-/// The first holder of each `(namespace, spelling)` pair, so a clash can name both sides.
-pub struct Names<'a, K> {
-    seen: HashMap<(K, String), &'a str>,
+/// The first holder of each `(namespace, spelling)` pair, so a clash can name both sides. A holder
+/// is whatever the front end needs to report the clash, such as the declaration's name and offset.
+pub struct Names<K, H> {
+    seen: HashMap<(K, String), H>,
 }
 
-impl<K: Hash + Eq> Default for Names<'_, K> {
+impl<K: Hash + Eq, H> Default for Names<K, H> {
     fn default() -> Self {
         Self {
             seen: HashMap::new(),
@@ -18,16 +19,11 @@ impl<K: Hash + Eq> Default for Names<'_, K> {
     }
 }
 
-impl<'a, K: Hash + Eq> Names<'a, K> {
+impl<K: Hash + Eq, H: Copy> Names<K, H> {
     /// Records `spelling` in `namespace` for `holder`. On a clash, returns the first holder.
-    pub fn insert(
-        &mut self,
-        namespace: K,
-        spelling: String,
-        holder: &'a str,
-    ) -> Result<(), &'a str> {
+    pub fn insert(&mut self, namespace: K, spelling: String, holder: H) -> Result<(), H> {
         match self.seen.entry((namespace, spelling)) {
-            Entry::Occupied(first) => Err(first.get()),
+            Entry::Occupied(first) => Err(*first.get()),
             Entry::Vacant(slot) => {
                 slot.insert(holder);
                 Ok(())

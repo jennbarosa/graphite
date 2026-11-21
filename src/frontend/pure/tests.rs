@@ -5,7 +5,7 @@
 use std::io::{self, Write};
 
 use super::decision::Decisions;
-use super::{Pure, PureSyntax};
+use super::{Generated, Pure, PureSyntax};
 use crate::frontend::Frontend;
 use crate::frontend::escape::Escape;
 use crate::frontend::lang::{Language, Namespace, Role, camel, pascal};
@@ -70,11 +70,15 @@ impl PureSyntax for ToySyntax {
         &TOY
     }
 
-    fn generated(&self, decisions: &Decisions) -> Vec<(Role, String)> {
+    fn generated<'d>(&self, decisions: &Decisions<'d>) -> Vec<Generated<'d>> {
         decisions
             .functions
             .iter()
-            .map(|function| (Role::Function, format!("{}Tag", function.name)))
+            .map(|function| Generated {
+                role: Role::Function,
+                name: format!("{}Tag", function.name),
+                source: None,
+            })
             .collect()
     }
 
@@ -226,4 +230,18 @@ fn a_pure_front_end_writes_its_module_and_no_runtime() {
         .collect();
     let _ = std::fs::remove_dir_all(&directory);
     assert_eq!(names, ["Door.toy"]);
+}
+
+#[test]
+fn a_machine_choose_is_refused_by_a_pure_front_end_without_a_panic() {
+    let graphs = compile(
+        "graph door\n  node a end\n  choose c\n    when x -> a\n",
+        &Schema::default(),
+    )
+    .unwrap();
+    let error = crate::pipeline::check_outputs(&toy(), &graphs).unwrap_err();
+    assert_eq!(
+        error.to_string(),
+        "graph `door` is a machine graph, but this front end writes pure graphs at byte 6"
+    );
 }

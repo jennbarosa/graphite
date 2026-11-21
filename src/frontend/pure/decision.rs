@@ -2,13 +2,16 @@
 //! `CompiledGraph`, so the arrays and their spans stay inside this module and the parser.
 
 use crate::graph::{CompiledGraph, Span, Test as GraphTest, Ty as GraphTy, index};
+use crate::interner::StringId;
 
 /// Annotations with their values resolved to text. A `None` value is an annotation with no value.
 pub type Notes<'g> = Vec<(&'g str, Option<&'g str>)>;
 
-/// One pure graph: its name, its declarations, and its choices as functions.
+/// One pure graph: its name, its declarations, and its choices as functions. `offset` is the
+/// graph's, and every declaration carries its own, so a name clash can point at its line.
 pub struct Decisions<'g> {
     pub name: &'g str,
+    pub offset: usize,
     pub notes: Notes<'g>,
     pub enums: Vec<EnumDecl<'g>>,
     pub inputs: Vec<InputDecl<'g>>,
@@ -17,12 +20,20 @@ pub struct Decisions<'g> {
 
 pub struct EnumDecl<'g> {
     pub name: &'g str,
+    pub offset: usize,
     pub notes: Notes<'g>,
-    pub members: Vec<(&'g str, Notes<'g>)>,
+    pub members: Vec<MemberDecl<'g>>,
+}
+
+pub struct MemberDecl<'g> {
+    pub name: &'g str,
+    pub offset: usize,
+    pub notes: Notes<'g>,
 }
 
 pub struct InputDecl<'g> {
     pub name: &'g str,
+    pub offset: usize,
     pub ty: Ty,
     pub notes: Notes<'g>,
 }
@@ -48,6 +59,8 @@ pub struct Case<'g> {
     /// `None` for the final `else` arm.
     pub test: Option<Test>,
     pub tag: &'g str,
+    /// The position of `tag` among its enum's members.
+    pub member: usize,
     pub notes: Notes<'g>,
 }
 
@@ -55,7 +68,9 @@ pub struct Case<'g> {
 /// is the `else`.
 pub struct Function<'g> {
     pub name: &'g str,
-    pub returns: Option<usize>,
+    pub offset: usize,
+    /// The index in `Decisions::enums` of the enum the choice returns.
+    pub returns: usize,
     pub notes: Notes<'g>,
     pub cases: Vec<Case<'g>>,
 }
@@ -64,16 +79,22 @@ pub struct Function<'g> {
 pub fn lower(graph: &CompiledGraph) -> Decisions<'_> {
     Decisions {
         name: graph.text(graph.name),
+        offset: graph.offset,
         notes: notes(graph, &graph.graph_annotations),
         enums: graph
             .enums
             .iter()
             .map(|item| EnumDecl {
                 name: graph.text(item.name),
+                offset: item.offset,
                 notes: notes(graph, &item.annotations),
                 members: graph.members[index(&item.members)]
                     .iter()
-                    .map(|member| (graph.text(member.name), notes(graph, &member.annotations)))
+                    .map(|member| MemberDecl {
+                        name: graph.text(member.name),
+                        offset: member.offset,
+                        notes: notes(graph, &member.annotations),
+                    })
                     .collect(),
             })
             .collect(),
@@ -82,6 +103,7 @@ pub fn lower(graph: &CompiledGraph) -> Decisions<'_> {
             .iter()
             .map(|input| InputDecl {
                 name: graph.text(input.name),
+                offset: input.offset,
                 ty: match input.ty {
                     GraphTy::Bool => Ty::Bool,
                     GraphTy::Enum(index) => Ty::Enum(index as usize),
@@ -94,7 +116,8 @@ pub fn lower(graph: &CompiledGraph) -> Decisions<'_> {
             .iter()
             .map(|choice| Function {
                 name: graph.text(choice.name),
-                returns: choice.ty.map(|ty| ty as usize),
+                offset: choice.offset,
+                returns: choice.ty.expect("a pure choice names its enum") as usize,
                 notes: notes(graph, &choice.annotations),
                 cases: graph.arms[index(&choice.arms)]
                     .iter()
@@ -103,12 +126,23 @@ pub fn lower(graph: &CompiledGraph) -> Decisions<'_> {
                             .condition
                             .map(|condition| test(graph.tests[condition as usize])),
                         tag: graph.text(arm.tag),
+                        member: member_position(graph, choice.ty, arm.tag),
                         notes: notes(graph, &arm.annotations),
                     })
                     .collect(),
             })
             .collect(),
     }
+}
+
+/// The position of `tag` among the members of the enum `ty`. The parser refuses a tag that is not a
+/// member, so a pure choice always finds it.
+fn member_position(graph: &CompiledGraph, ty: Option<u32>, tag: StringId) -> usize {
+    let ty = ty.expect("a pure choice names its enum");
+    graph.members[index(&graph.enums[ty as usize].members)]
+        .iter()
+        .position(|member| member.name == tag)
+        .expect("a pure arm's tag is a member of its choice's enum")
 }
 
 fn test(test: GraphTest) -> Test {
@@ -177,7 +211,7 @@ mod tests {
         assert_eq!(cases[0].test, Some(Test::Is(1, 1)));
         assert_eq!(cases[1].test, Some(Test::Flag(0)));
         assert_eq!(cases[2].test, None);
-        assert_eq!(decisions.functions[0].returns, Some(0));
+        assert_eq!(decisions.functions[0].returns, 0);
     }
 
     #[test]

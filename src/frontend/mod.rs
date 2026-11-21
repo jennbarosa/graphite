@@ -28,6 +28,22 @@ pub enum Module {
     Choices(usize),
 }
 
+/// Two names in one output clash. The error travels as an `io::Error`, and carries the byte offset
+/// of the declaration that clashes, so the pipeline can point at it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NameClash {
+    pub message: String,
+    pub offset: usize,
+}
+
+impl std::fmt::Display for NameClash {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for NameClash {}
+
 /// Emits unmodified output from a successful parser call.
 ///
 /// A failure may leave partial output. The caller owns buffering, flushing, and file
@@ -64,5 +80,15 @@ pub trait Frontend {
     /// The runtime's file name, or `None` when the front end writes no runtime.
     fn runtime_file_name_opt(&self) -> Option<&'static str> {
         Some(self.runtime_file_name())
+    }
+
+    /// Finds what would stop `graph` from being written, such as a name clash, without writing
+    /// anything. The default renders every module into nowhere, so a check finds exactly what a
+    /// write would. A front end whose check is cheaper overrides it.
+    fn check_graph(&self, graph: &CompiledGraph) -> io::Result<()> {
+        for module in self.modules(graph) {
+            self.emit_module(graph, module, &mut io::sink())?;
+        }
+        Ok(())
     }
 }

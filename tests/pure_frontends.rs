@@ -104,7 +104,7 @@ fn every_top_level_name_is_a_source_name_or_a_generated_one() {
         known.extend(
             item.members
                 .iter()
-                .map(|(name, _)| language.ident(Role::Member, name)),
+                .map(|member| language.ident(Role::Member, member.name)),
         );
     }
     known.extend(
@@ -117,12 +117,36 @@ fn every_top_level_name_is_a_source_name_or_a_generated_one() {
     let generated: HashSet<String> = PureScriptSyntax
         .generated(&decisions)
         .into_iter()
-        .map(|(_, name)| name)
+        .map(|generated| generated.name)
         .collect();
     for name in top_level_names(&text) {
         assert!(
             known.contains(&name) || generated.contains(&name),
             "`{name}` is neither a source name nor generated"
+        );
+    }
+    // Every capitalised word of the module is a name the module declares, generates, or imports
+    // (or the module's own name and its imported modules' names). The layout's lowercase
+    // reference from Prelude, `otherwise`, is listed too.
+    let imported: HashSet<String> = PureScriptSyntax
+        .imported()
+        .into_iter()
+        .map(|(_, name)| name.to_owned())
+        .collect();
+    let module_path: HashSet<&str> = ["Prelude", "Data", "Maybe"].into_iter().collect();
+    let module_name = language.ident(Role::Module, decisions.name);
+    assert!(imported.contains("otherwise"));
+    for word in text
+        .split(|c: char| !(c.is_alphanumeric() || c == '_'))
+        .filter(|word| word.starts_with(|c: char| c.is_ascii_uppercase()))
+    {
+        assert!(
+            known.contains(word)
+                || generated.contains(word)
+                || imported.contains(word)
+                || module_path.contains(word)
+                || word == module_name,
+            "`{word}` is used by the module but is not a source, generated or imported name"
         );
     }
 }
@@ -177,7 +201,7 @@ fn a_choice_named_like_a_generated_helper_is_refused() {
     );
     assert_eq!(
         message,
-        "`tacticArm` clashes with the generated name `tacticArm`"
+        "`tacticArm` clashes with the name `tacticArm`, which the choice `tactic` generates"
     );
 }
 
@@ -186,7 +210,7 @@ fn one_member_in_two_enums_is_refused_in_purescript() {
     let message = refused_by_purescript(
         "graph g\n  enum A x\n  enum B x\n  input k : bool\n  choose c : A\n    when k -> x\n    else -> x\n",
     );
-    assert_eq!(message, "`x` and `x` both become `X`");
+    assert_eq!(message, "`x` of `B` and `x` of `A` both become `X`");
 }
 
 #[test]
@@ -197,4 +221,102 @@ fn an_input_named_tag_builds_because_fields_are_their_own_namespace() {
     let text = emitted(purescript(), &graphs[0]);
     assert!(text.contains("type Input = { tag :: Boolean }"), "{text}");
     assert!(text.contains("i.tag"), "{text}");
+}
+
+#[test]
+fn a_member_spelled_like_an_imported_constructor_is_refused() {
+    let message = refused_by_purescript(
+        "graph g\n  enum E Nothing b\n  input x : bool\n  choose c : E\n    when x -> Nothing\n    else -> b\n",
+    );
+    assert_eq!(
+        message,
+        "`Nothing` clashes with the imported name `Nothing`"
+    );
+}
+
+#[test]
+fn an_enum_named_like_an_imported_type_is_refused() {
+    let message = refused_by_purescript(
+        "graph g\n  enum Maybe a\n  input x : bool\n  choose c : Maybe\n    when x -> a\n    else -> a\n",
+    );
+    assert_eq!(message, "`Maybe` clashes with the imported name `Maybe`");
+}
+
+#[test]
+fn a_choice_named_otherwise_is_refused_because_its_guards_use_the_prelude_one() {
+    let message = refused_by_purescript(
+        "graph g\n  enum E a\n  input x : bool\n  choose otherwise : E\n    when x -> a\n    else -> a\n",
+    );
+    assert_eq!(
+        message,
+        "`otherwise` clashes with the imported name `otherwise`"
+    );
+}
+
+#[test]
+fn a_name_with_no_letters_or_digits_is_refused() {
+    let message = refused_by_purescript(
+        "graph g\n  enum E a\n  input _ : bool\n  choose c : E\n    when _ -> a\n    else -> a\n",
+    );
+    assert_eq!(message, "`_` has no letters or digits to make a name from");
+}
+
+#[test]
+fn a_member_that_starts_with_a_digit_is_refused_as_a_constructor() {
+    let message = refused_by_purescript(
+        "graph g\n  enum E 9a b\n  input x : bool\n  choose c : E\n    when x -> b\n    else -> b\n",
+    );
+    assert_eq!(
+        message,
+        "`9a` becomes `_9a`, which cannot be used as this name"
+    );
+}
+
+#[test]
+fn two_declarations_that_generate_the_same_helper_name_are_refused_by_their_sources() {
+    let message = refused_by_purescript(
+        "graph g\n  enum E a\n  input x : bool @src:s\n  choose x : E @k:v\n    when x -> a\n    else -> a\n",
+    );
+    assert_eq!(
+        message,
+        "the choice `x` and the input `x` both generate `xAnnotations`; rename one of them"
+    );
+}
+
+#[test]
+fn a_graph_named_like_an_imported_module_is_refused() {
+    let message = refused_by_purescript(
+        "graph prelude\n  enum E a\n  input x : bool\n  choose c : E\n    when x -> a\n    else -> a\n",
+    );
+    assert_eq!(
+        message,
+        "`prelude` clashes with the imported name `Prelude`"
+    );
+}
+
+#[test]
+fn an_enum_named_like_a_prelude_type_is_refused() {
+    let message = refused_by_purescript(
+        "graph g\n  enum Ordering a\n  input x : bool\n  choose c : Ordering\n    when x -> a\n    else -> a\n",
+    );
+    assert_eq!(
+        message,
+        "`Ordering` clashes with the imported name `Ordering`"
+    );
+}
+
+#[test]
+fn a_choice_named_i_is_refused_because_its_dispatch_parameter_is_i() {
+    let message = refused_by_purescript(
+        "graph g\n  enum E a\n  input x : bool\n  choose i : E\n    when x -> a\n    else -> a\n",
+    );
+    assert_eq!(message, "`i` clashes with the imported name `i`");
+}
+
+#[test]
+fn an_enum_named_like_a_built_in_prim_type_is_refused() {
+    let message = refused_by_purescript(
+        "graph g\n  enum Int a\n  input x : bool\n  choose c : Int\n    when x -> a\n    else -> a\n",
+    );
+    assert_eq!(message, "`Int` clashes with the imported name `Int`");
 }

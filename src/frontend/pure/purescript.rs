@@ -6,8 +6,8 @@
 
 use std::io::{self, Write};
 
-use super::decision::{Case, Decisions, Notes, Test, Ty};
-use super::{Pure, PureSyntax};
+use super::decision::{Case, Decisions, EnumDecl, Function, Notes, Test, Ty};
+use super::{Generated, Pure, PureSyntax, Source};
 use crate::frontend::lang::purescript::PURESCRIPT;
 use crate::frontend::lang::{Language, Role};
 
@@ -24,39 +24,122 @@ static PURESCRIPT_FRONT_END: Pure<PureScriptSyntax> = Pure::new(PureScriptSyntax
 /// PureScript's layout of a module.
 pub struct PureScriptSyntax;
 
-/// The names the layout emits for a choice, from one place so `generated` and `module` agree.
-struct ChoiceNames {
-    base: String,
+/// Every name the layout emits for one module, spelled once. `generated` reports them to the
+/// collision check and `module` writes them, so the two cannot disagree. An optional name is
+/// `Some` exactly when `module` writes that value.
+struct Layout<'d> {
+    graph_annotations: bool,
+    enums: Vec<EnumNames<'d>>,
+    inputs: Vec<InputNames<'d>>,
+    choices: Vec<ChoiceNames<'d>>,
 }
 
-impl ChoiceNames {
-    fn new(language: &dyn Language, name: &str) -> Self {
+struct EnumNames<'d> {
+    source: Source<'d>,
+    /// The type, such as `Dir`.
+    ty: String,
+    /// Each member's spelling, in source order.
+    members: Vec<String>,
+    enum_annotations: Option<String>,
+    member_annotations: Option<String>,
+}
+
+struct InputNames<'d> {
+    source: Source<'d>,
+    /// The record field, such as `homeEast`.
+    base: String,
+    annotations: Option<String>,
+}
+
+struct ChoiceNames<'d> {
+    source: Source<'d>,
+    base: String,
+    annotations: Option<String>,
+    /// One value per arm, in source order.
+    arms: Vec<String>,
+    /// The function that picks an arm from the input, such as `tacticArm`.
+    dispatch: String,
+}
+
+impl<'d> Layout<'d> {
+    fn new(language: &dyn Language, decisions: &Decisions<'d>) -> Self {
+        let enums = decisions
+            .enums
+            .iter()
+            .map(|item| {
+                let base = language.ident(Role::Constant, item.name);
+                let any_member = item.members.iter().any(|member| !member.notes.is_empty());
+                EnumNames {
+                    source: Source {
+                        name: item.name,
+                        kind: "enum",
+                        offset: item.offset,
+                    },
+                    ty: language.ident(Role::Type, item.name),
+                    members: item
+                        .members
+                        .iter()
+                        .map(|member| language.ident(Role::Member, member.name))
+                        .collect(),
+                    enum_annotations: (!item.notes.is_empty())
+                        .then(|| format!("{base}EnumAnnotations")),
+                    member_annotations: any_member.then(|| format!("{base}MemberAnnotations")),
+                }
+            })
+            .collect();
+        let inputs = decisions
+            .inputs
+            .iter()
+            .map(|input| {
+                let base = language.ident(Role::Field, input.name);
+                InputNames {
+                    source: Source {
+                        name: input.name,
+                        kind: "input",
+                        offset: input.offset,
+                    },
+                    annotations: (!input.notes.is_empty()).then(|| format!("{base}Annotations")),
+                    base,
+                }
+            })
+            .collect();
+        let choices = decisions
+            .functions
+            .iter()
+            .map(|function| {
+                let base = language.ident(Role::Function, function.name);
+                ChoiceNames {
+                    source: Source {
+                        name: function.name,
+                        kind: "choice",
+                        offset: function.offset,
+                    },
+                    annotations: (!function.notes.is_empty()).then(|| format!("{base}Annotations")),
+                    arms: (0..function.cases.len())
+                        .map(|index| format!("{base}Arm{index}"))
+                        .collect(),
+                    dispatch: format!("{base}Arm"),
+                    base,
+                }
+            })
+            .collect();
         Self {
-            base: language.ident(Role::Function, name),
+            graph_annotations: !decisions.notes.is_empty(),
+            enums,
+            inputs,
+            choices,
         }
     }
-
-    fn annotations(&self) -> String {
-        format!("{}Annotations", self.base)
-    }
-
-    fn arm(&self, index: usize) -> String {
-        format!("{}Arm{index}", self.base)
-    }
-
-    fn dispatch(&self) -> String {
-        format!("{}Arm", self.base)
-    }
 }
 
-/// The base of an enum's generated values, such as `dir` for `Dir`.
-fn enum_base(language: &dyn Language, name: &str) -> String {
-    language.ident(Role::Constant, name)
-}
-
-/// The base of an input's generated value, such as `homeEast`.
-fn input_base(language: &dyn Language, name: &str) -> String {
-    language.ident(Role::Field, name)
+/// A generated name that its declaration `source` produces, or that every module declares when
+/// `source` is `None`.
+fn generated_name<'d>(role: Role, name: &str, source: Option<Source<'d>>) -> Generated<'d> {
+    Generated {
+        role,
+        name: name.to_owned(),
+        source,
+    }
 }
 
 impl PureSyntax for PureScriptSyntax {
@@ -64,113 +147,220 @@ impl PureSyntax for PureScriptSyntax {
         &PURESCRIPT
     }
 
-    fn generated(&self, decisions: &Decisions) -> Vec<(Role, String)> {
-        let language = self.language();
-        let mut names = vec![
-            (Role::Type, "Annotation".to_owned()),
-            (Role::Type, "Arm".to_owned()),
-            (Role::Type, "Input".to_owned()),
+    fn generated<'d>(&self, decisions: &Decisions<'d>) -> Vec<Generated<'d>> {
+        let layout = Layout::new(self.language(), decisions);
+        let mut out = vec![
+            generated_name(Role::Type, "Annotation", None),
+            generated_name(Role::Type, "Arm", None),
+            generated_name(Role::Type, "Input", None),
         ];
-        if !decisions.notes.is_empty() {
-            names.push((Role::Constant, "graphAnnotations".to_owned()));
+        if layout.graph_annotations {
+            out.push(generated_name(Role::Constant, "graphAnnotations", None));
         }
-        for item in &decisions.enums {
-            let base = enum_base(language, item.name);
-            if !item.notes.is_empty() {
-                names.push((Role::Constant, format!("{base}EnumAnnotations")));
-            }
-            if item.members.iter().any(|(_, notes)| !notes.is_empty()) {
-                names.push((Role::Function, format!("{base}MemberAnnotations")));
-            }
+        for item in &layout.enums {
+            let source = Some(item.source);
+            out.extend(
+                item.enum_annotations
+                    .as_deref()
+                    .map(|name| generated_name(Role::Constant, name, source)),
+            );
+            out.extend(
+                item.member_annotations
+                    .as_deref()
+                    .map(|name| generated_name(Role::Function, name, source)),
+            );
         }
-        for input in &decisions.inputs {
-            if !input.notes.is_empty() {
-                let base = input_base(language, input.name);
-                names.push((Role::Constant, format!("{base}Annotations")));
-            }
+        for input in &layout.inputs {
+            let source = Some(input.source);
+            out.extend(
+                input
+                    .annotations
+                    .as_deref()
+                    .map(|name| generated_name(Role::Constant, name, source)),
+            );
         }
-        for function in &decisions.functions {
-            let names_of = ChoiceNames::new(language, function.name);
-            if !function.notes.is_empty() {
-                names.push((Role::Constant, names_of.annotations()));
-            }
-            for index in 0..function.cases.len() {
-                names.push((Role::Constant, names_of.arm(index)));
-            }
-            names.push((Role::Function, names_of.dispatch()));
+        for choice in &layout.choices {
+            let source = Some(choice.source);
+            out.extend(
+                choice
+                    .annotations
+                    .as_deref()
+                    .map(|name| generated_name(Role::Constant, name, source)),
+            );
+            out.extend(
+                choice
+                    .arms
+                    .iter()
+                    .map(|name| generated_name(Role::Constant, name, source)),
+            );
+            out.push(generated_name(Role::Function, &choice.dispatch, source));
         }
+        out
+    }
+
+    /// Every name the module imports or uses from Prelude and `Data.Maybe`. Source names must not
+    /// spell them, or the references in the module would be ambiguous.
+    fn imported(&self) -> Vec<(Role, &'static str)> {
+        // The module names: a graph named `prelude` would import itself. `Prim` is built in, and
+        // its types are in scope in every module.
+        let mut names = vec![(Role::Module, "Prelude"), (Role::Module, "Prim")];
+        names.extend(
+            [
+                "Char",
+                "Constraint",
+                "Function",
+                "Int",
+                "Number",
+                "Partial",
+                "Record",
+                "Symbol",
+                "Type",
+            ]
+            .map(|name| (Role::Type, name)),
+        );
+        // The types and classes of Prelude, which `import Prelude` brings in: a local type with one
+        // of these names shadows it, and `purs --strict` refuses the shadowing.
+        names.extend(
+            [
+                "Applicative",
+                "Apply",
+                "Bind",
+                "Boolean",
+                "BooleanAlgebra",
+                "Bounded",
+                "Category",
+                "CommutativeRing",
+                "DivisionRing",
+                "Discard",
+                "Eq",
+                "EuclideanRing",
+                "Field",
+                "Functor",
+                "HeytingAlgebra",
+                "Monad",
+                "Monoid",
+                "Ord",
+                "Ordering",
+                "Ring",
+                "Semigroup",
+                "Semigroupoid",
+                "Semiring",
+                "Show",
+                "Unit",
+                "Void",
+                "Maybe",
+                "String",
+                "Array",
+            ]
+            .map(|name| (Role::Type, name)),
+        );
+        names.extend([
+            (Role::Member, "Just"),
+            (Role::Member, "Nothing"),
+            (Role::Function, "otherwise"),
+            // The parameter of every choice's dispatch function, which would shadow a choice named `i`.
+            (Role::Function, "i"),
+        ]);
         names
     }
 
     fn module(&self, decisions: &Decisions, output: &mut dyn Write) -> io::Result<()> {
         let language = self.language();
-        let mut groups: Vec<String> = Vec::new();
+        let layout = Layout::new(language, decisions);
+        let mut groups = Groups {
+            output,
+            first: true,
+        };
 
-        groups.push(format!(
-            "module {} where\n\nimport Prelude\nimport Data.Maybe (Maybe(..))",
-            language.ident(Role::Module, decisions.name)
-        ));
-        groups.push(types(language, decisions)?);
-        if !decisions.notes.is_empty() {
-            groups.push(value(language, "graphAnnotations", &decisions.notes)?);
+        groups.push(&format!(
+            "module {} where\n\nimport Prelude\n{}",
+            language.ident(Role::Module, decisions.name),
+            maybe_import(decisions)
+        ))?;
+        groups.push(&types(decisions, &layout))?;
+        if layout.graph_annotations {
+            groups.push(&value(language, "graphAnnotations", &decisions.notes)?)?;
         }
-        for item in &decisions.enums {
-            groups.push(enum_declaration(language, item)?);
-            let base = enum_base(language, item.name);
-            if !item.notes.is_empty() {
-                groups.push(value(
-                    language,
-                    &format!("{base}EnumAnnotations"),
-                    &item.notes,
-                )?);
+        for (item, names) in decisions.enums.iter().zip(&layout.enums) {
+            groups.push(&enum_declaration(names))?;
+            if let Some(name) = &names.enum_annotations {
+                groups.push(&value(language, name, &item.notes)?)?;
             }
-            if item.members.iter().any(|(_, notes)| !notes.is_empty()) {
-                groups.push(member_annotations(language, &base, item)?);
+            if let Some(name) = &names.member_annotations {
+                groups.push(&member_annotations(language, name, item, names)?)?;
             }
         }
-        for input in &decisions.inputs {
-            if !input.notes.is_empty() {
-                let base = input_base(language, input.name);
-                groups.push(value(
-                    language,
-                    &format!("{base}Annotations"),
-                    &input.notes,
-                )?);
+        for (input, names) in decisions.inputs.iter().zip(&layout.inputs) {
+            if let Some(name) = &names.annotations {
+                groups.push(&value(language, name, &input.notes)?)?;
             }
         }
-        for function in &decisions.functions {
-            groups.extend(choice(language, decisions, function)?);
+        for (function, names) in decisions.functions.iter().zip(&layout.choices) {
+            choice(language, decisions, &layout, function, names, &mut groups)?;
         }
+        groups.output.write_all(b"\n")
+    }
+}
 
-        let text = groups.join("\n\n");
-        output.write_all(text.as_bytes())?;
-        output.write_all(b"\n")
+/// Writes the module's groups one after another, each separated by a blank line, so each group
+/// is written as soon as it is built and the module is never held in memory as a whole.
+struct Groups<'o> {
+    output: &'o mut dyn Write,
+    first: bool,
+}
+
+impl Groups<'_> {
+    fn push(&mut self, text: &str) -> io::Result<()> {
+        if !self.first {
+            self.output.write_all(b"\n\n")?;
+        }
+        self.first = false;
+        self.output.write_all(text.as_bytes())
+    }
+}
+
+/// The `Data.Maybe` import. The constructors are imported only when some annotation exists, since
+/// `purs` warns about an imported constructor that nothing uses.
+fn maybe_import(decisions: &Decisions) -> &'static str {
+    let mut any = !decisions.notes.is_empty();
+    any |= decisions.enums.iter().any(|item| {
+        !item.notes.is_empty() || item.members.iter().any(|member| !member.notes.is_empty())
+    });
+    any |= decisions.inputs.iter().any(|input| !input.notes.is_empty());
+    any |= decisions.functions.iter().any(|choice| {
+        !choice.notes.is_empty() || choice.cases.iter().any(|case| !case.notes.is_empty())
+    });
+    if any {
+        "import Data.Maybe (Maybe(..))"
+    } else {
+        "import Data.Maybe (Maybe)"
     }
 }
 
 /// The three types every module declares, and the input record.
-fn types(language: &dyn Language, decisions: &Decisions) -> io::Result<String> {
+fn types(decisions: &Decisions, layout: &Layout) -> String {
     let mut out = String::from(
         "type Annotation = { key :: String, value :: Maybe String }\n\
          type Arm t = { tag :: t, annotations :: Array Annotation }\n",
     );
     if decisions.inputs.is_empty() {
         out.push_str("type Input = {}");
-        return Ok(out);
+        return out;
     }
     let fields: Vec<String> = decisions
         .inputs
         .iter()
-        .map(|input| {
+        .zip(&layout.inputs)
+        .map(|(input, names)| {
             let ty = match input.ty {
                 Ty::Bool => "Boolean".to_owned(),
-                Ty::Enum(index) => language.ident(Role::Type, decisions.enums[index].name),
+                Ty::Enum(index) => layout.enums[index].ty.clone(),
             };
-            format!("{} :: {ty}", input_base(language, input.name))
+            format!("{} :: {ty}", names.base)
         })
         .collect();
     out.push_str(&format!("type Input = {{ {} }}", fields.join(", ")));
-    Ok(out)
+    out
 }
 
 /// A value of type `Array Annotation`, named `name`, with the annotations of `notes`.
@@ -182,117 +372,103 @@ fn value(language: &dyn Language, name: &str, notes: &Notes) -> io::Result<Strin
 }
 
 /// The `data` line and its `Eq` instance. Its enum annotations are a separate group.
-fn enum_declaration(
-    language: &dyn Language,
-    item: &super::decision::EnumDecl,
-) -> io::Result<String> {
-    let name = language.ident(Role::Type, item.name);
-    let members: Vec<String> = item
-        .members
-        .iter()
-        .map(|(member, _)| language.ident(Role::Member, member))
-        .collect();
-    Ok(format!(
-        "data {name} = {}\nderive instance Eq {name}",
-        members.join(" | ")
-    ))
+fn enum_declaration(names: &EnumNames) -> String {
+    format!(
+        "data {} = {}\nderive instance Eq {}",
+        names.ty,
+        names.members.join(" | "),
+        names.ty
+    )
 }
 
-/// `<base>MemberAnnotations :: T -> Array Annotation`, with one equation per member.
+/// `<name> :: T -> Array Annotation`, with one equation per member.
 fn member_annotations(
     language: &dyn Language,
-    base: &str,
-    item: &super::decision::EnumDecl,
+    name: &str,
+    item: &EnumDecl,
+    names: &EnumNames,
 ) -> io::Result<String> {
-    let name = language.ident(Role::Type, item.name);
-    let mut out = format!("{base}MemberAnnotations :: {name} -> Array Annotation");
-    for (member, notes) in &item.members {
+    let mut out = format!("{name} :: {} -> Array Annotation", names.ty);
+    for (spelled, member) in names.members.iter().zip(&item.members) {
         out.push_str(&format!(
-            "\n{base}MemberAnnotations {} = {}",
-            language.ident(Role::Member, member),
-            annotations(language, notes)?
+            "\n{name} {spelled} = {}",
+            annotations(language, &member.notes)?
         ));
     }
     Ok(out)
 }
 
-/// One choice, as groups: its annotations (when it has any), then its arm values, the dispatch on
-/// the input, and the function.
+/// The arm values, the dispatch that picks one, and the tag function of one choice.
 fn choice(
     language: &dyn Language,
     decisions: &Decisions,
-    function: &super::decision::Function,
-) -> io::Result<Vec<String>> {
-    let names = ChoiceNames::new(language, function.name);
-    let ty = language.ident(
-        Role::Type,
-        decisions.enums[function.returns.expect("a pure choice names its enum")].name,
-    );
-    let mut groups = Vec::new();
-    if !function.notes.is_empty() {
-        groups.push(value(language, &names.annotations(), &function.notes)?);
+    layout: &Layout,
+    function: &Function,
+    names: &ChoiceNames,
+    groups: &mut Groups,
+) -> io::Result<()> {
+    let enum_names = &layout.enums[function.returns];
+    let ty = &enum_names.ty;
+    if let Some(name) = &names.annotations {
+        groups.push(&value(language, name, &function.notes)?)?;
     }
     let mut lines: Vec<String> = Vec::new();
-    for (index, case) in function.cases.iter().enumerate() {
-        lines.push(format!("{} :: Arm {ty}", names.arm(index)));
-        lines.push(format!(
-            "{} = {}",
-            names.arm(index),
-            arm_value(language, case)?
-        ));
+    for (arm, case) in names.arms.iter().zip(&function.cases) {
+        lines.push(format!("{arm} :: Arm {ty}"));
+        let tag = &enum_names.members[case.member];
+        lines.push(format!("{arm} = {}", arm_value(language, tag, case)?));
     }
-    lines.push(format!("{} :: Input -> Arm {ty}", names.dispatch()));
-    lines.push(format!("{} i", names.dispatch()));
-    for (index, case) in function.cases.iter().enumerate() {
+    let dispatch = &names.dispatch;
+    lines.push(format!("{dispatch} :: Input -> Arm {ty}"));
+    lines.push(format!("{dispatch} i"));
+    for (arm, case) in names.arms.iter().zip(&function.cases) {
         let guard = match case.test {
             None => "otherwise".to_owned(),
-            Some(test) => guard(language, decisions, test),
+            Some(test) => guard(decisions, layout, test),
         };
-        lines.push(format!("  | {guard} = {}", names.arm(index)));
+        lines.push(format!("  | {guard} = {arm}"));
     }
     lines.push(format!("{} :: Input -> {ty}", names.base));
-    lines.push(format!("{} = _.tag <<< {}", names.base, names.dispatch()));
-    groups.push(lines.join("\n"));
-    Ok(groups)
+    lines.push(format!("{} = _.tag <<< {dispatch}", names.base));
+    groups.push(&lines.join("\n"))
 }
 
 /// The record of an arm: its tag and its annotations.
-fn arm_value(language: &dyn Language, case: &Case) -> io::Result<String> {
+fn arm_value(language: &dyn Language, tag: &str, case: &Case) -> io::Result<String> {
     Ok(format!(
-        "{{ tag: {}, annotations: {} }}",
-        language.ident(Role::Member, case.tag),
+        "{{ tag: {tag}, annotations: {} }}",
         annotations(language, &case.notes)?
     ))
 }
 
 /// The guard that tests an input: a bool field, or an equality with an enum member.
-fn guard(language: &dyn Language, decisions: &Decisions, test: Test) -> String {
+fn guard(decisions: &Decisions, layout: &Layout, test: Test) -> String {
     match test {
-        Test::Flag(input) => format!("i.{}", input_base(language, decisions.inputs[input].name)),
+        Test::Flag(input) => format!("i.{}", layout.inputs[input].base),
         Test::Is(input, member) => {
             let Ty::Enum(index) = decisions.inputs[input].ty else {
                 unreachable!("an `is` test names an enum input")
             };
-            let (member, _) = &decisions.enums[index].members[member];
             format!(
                 "i.{} == {}",
-                input_base(language, decisions.inputs[input].name),
-                language.ident(Role::Member, member)
+                layout.inputs[input].base, layout.enums[index].members[member]
             )
         }
     }
 }
 
-/// A list literal of annotations, `[]` when there are none.
+/// A list literal of annotations, `[]` when there are none. One buffer holds the whole literal.
 fn annotations(language: &dyn Language, notes: &Notes) -> io::Result<String> {
     if notes.is_empty() {
         return Ok("[]".to_owned());
     }
-    let mut items = Vec::new();
-    for (key, value) in notes {
-        let mut literal = Vec::new();
-        language.annotation(key, *value, &mut literal)?;
-        items.push(String::from_utf8(literal).map_err(io::Error::other)?);
+    let mut out: Vec<u8> = b"[ ".to_vec();
+    for (index, (key, value)) in notes.iter().enumerate() {
+        if index > 0 {
+            out.extend_from_slice(b", ");
+        }
+        language.annotation(key, *value, &mut out)?;
     }
-    Ok(format!("[ {} ]", items.join(", ")))
+    out.extend_from_slice(b" ]");
+    String::from_utf8(out).map_err(io::Error::other)
 }

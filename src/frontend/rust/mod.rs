@@ -243,7 +243,7 @@ fn constants<'a>(
     entries: impl Iterator<Item = (&'a str, String)>,
 ) -> io::Result<()> {
     writeln!(output, "pub mod {module} {{")?;
-    let mut seen = Names::default();
+    let mut seen: Names<(), &str> = Names::default();
     for (name, value) in entries {
         let ident = ident(name);
         if seen.insert((), ident.clone(), name).is_err() {

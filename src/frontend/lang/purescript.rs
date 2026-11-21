@@ -1,7 +1,7 @@
 //! PureScript's lexical rules: its string escapes, `Nothing` and `Just`, its reserved words, and
 //! how each role is spelled. The layout of a PureScript module is in `frontend/pure/purescript.rs`.
 
-use super::{Language, Namespace, Role, camel, pascal};
+use super::{Language, Namespace, Role, camel, is_plain_ident, pascal};
 use crate::frontend::escape::Escape;
 
 /// The PureScript rules. Stateless, so one static value serves every module.
@@ -58,6 +58,17 @@ impl Language for PureScript {
 
     fn escape_keyword(&self, spelled: String) -> String {
         format!("{spelled}_")
+    }
+
+    fn is_valid(&self, role: Role, spelled: &str) -> bool {
+        let plain = is_plain_ident(spelled, &[]);
+        match role {
+            // Modules, types and constructors must start with an upper-case letter.
+            Role::Module | Role::Type | Role::Member => {
+                plain && spelled.starts_with(|c: char| c.is_ascii_uppercase())
+            }
+            Role::Field | Role::Function | Role::Constant => plain,
+        }
     }
 
     fn namespace(&self, role: Role) -> Namespace {

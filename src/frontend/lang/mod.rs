@@ -44,6 +44,12 @@ pub trait Language: Sync {
     /// Makes a keyword spelling safe, such as by appending `_`.
     fn escape_keyword(&self, spelled: String) -> String;
     fn namespace(&self, role: Role) -> Namespace;
+    /// Whether `spelled` can be an identifier for `role` in this language. The default accepts
+    /// what [`is_plain_ident`] accepts, which is every identifier Graphite spells for a language
+    /// with `_`-led values.
+    fn is_valid(&self, _role: Role, spelled: &str) -> bool {
+        is_plain_ident(spelled, &[])
+    }
 
     /// A string literal with its quotes. Written once here, from [`Language::escape`].
     fn string(&self, value: &str, out: &mut dyn Write) -> io::Result<()> {
@@ -70,8 +76,8 @@ pub trait Language: Sync {
             Some(value) => {
                 let mut literal = Vec::new();
                 self.string(value, &mut literal)?;
-                let literal = String::from_utf8(literal).map_err(io::Error::other)?;
-                out.write_all(self.some(&literal).as_bytes())?;
+                let literal = std::str::from_utf8(&literal).map_err(io::Error::other)?;
+                out.write_all(self.some(literal).as_bytes())?;
             }
         }
         out.write_all(b" }")

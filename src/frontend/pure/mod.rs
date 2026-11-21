@@ -10,6 +10,7 @@ mod tests;
 
 use std::io::{self, Write};
 
+use super::NameClash;
 use super::lang::{Language, Namespace, Role};
 use super::names::Names;
 use super::{Frontend, Module};
@@ -23,10 +24,16 @@ pub trait PureSyntax: Sync {
     /// The rules this syntax writes with. The extension, names and literals all come from here.
     fn language(&self) -> &'static dyn Language;
 
-    /// Every name `module` emits that does not come from a source name, with its role. The
-    /// collision check registers these before any source name, so a source name that clashes
-    /// with one of them is the error.
-    fn generated(&self, decisions: &Decisions) -> Vec<(Role, String)>;
+    /// Every name `module` emits that does not come from a source name, with its role and the
+    /// declaration that generates it. The collision check registers these before any source name,
+    /// so a source name that clashes with one of them is the error.
+    fn generated<'d>(&self, decisions: &Decisions<'d>) -> Vec<Generated<'d>>;
+
+    /// Names the module imports and uses, which a source name must not spell. A source name that
+    /// clashes with one of them is the error, as with a generated name.
+    fn imported(&self) -> Vec<(Role, &'static str)> {
+        Vec::new()
+    }
 
     /// The layout of one module.
     fn module(&self, decisions: &Decisions, output: &mut dyn Write) -> io::Result<()>;
@@ -70,8 +77,13 @@ impl<S: PureSyntax> Frontend for Pure<S> {
         Ok(())
     }
 
+    /// Never read: a pure front end writes no runtime, so `runtime_file_name_opt` is `None`.
     fn runtime_file_name(&self) -> &'static str {
         ""
+    }
+
+    fn runtime_file_name_opt(&self) -> Option<&'static str> {
+        None
     }
 
     fn extension(&self) -> &'static str {
@@ -82,67 +94,170 @@ impl<S: PureSyntax> Frontend for Pure<S> {
         Kind::Pure
     }
 
-    fn runtime_file_name_opt(&self) -> Option<&'static str> {
-        None
+    /// Only the names: the layout is not rendered, so a check costs one pass over the names.
+    fn check_graph(&self, graph: &CompiledGraph) -> io::Result<()> {
+        check_names(&self.syntax, &lower(graph))
     }
+}
+
+/// A name the layout emits that no source spells: its role, its spelling, and the declaration that
+/// generates it. A name every module declares, such as `Input`, has no `source`.
+pub struct Generated<'d> {
+    pub role: Role,
+    pub name: String,
+    pub source: Option<Source<'d>>,
+}
+
+/// The source declaration that a generated name comes from.
+#[derive(Clone, Copy)]
+pub struct Source<'d> {
+    /// The declaration's name as written, such as `home-east`.
+    pub name: &'d str,
+    /// What kind of declaration it is, such as `input`, for a diagnostic.
+    pub kind: &'static str,
+    pub offset: usize,
+}
+
+/// Where a name came from. A clash with a generated or imported name is reported as one.
+#[derive(Clone, Copy)]
+enum Origin<'a> {
+    Source,
+    Generated(Option<Source<'a>>),
+    Imported,
+}
+
+/// What the collision table keeps for a name: the name as spelled, the offset of the declaration
+/// that holds it, and where it came from.
+#[derive(Clone, Copy)]
+struct Holder<'a> {
+    name: &'a str,
+    offset: usize,
+    origin: Origin<'a>,
+    /// The enum a member belongs to, so two members with one spelling name their enums.
+    scope: Option<&'a str>,
 }
 
 /// Checks that no two names in a module spell the same identifier in the same namespace. The
 /// generated names are registered first, so a source name that clashes with one of them is the
-/// error, and the source names follow in source order.
+/// error, and the source names follow in source order. A clash is reported at the later
+/// declaration, so its offset is that declaration's own.
 fn check_names(syntax: &dyn PureSyntax, decisions: &Decisions) -> io::Result<()> {
     let generated = syntax.generated(decisions);
     let mut claims = Claims {
         names: Names::default(),
         language: syntax.language(),
-        generated: &generated,
     };
-    for (role, name) in &generated {
-        claims.claim_spelled(*role, name, name, None)?;
+    for item in &generated {
+        let holder = Holder {
+            name: &item.name,
+            offset: item.source.map_or(decisions.offset, |source| source.offset),
+            origin: Origin::Generated(item.source),
+            scope: None,
+        };
+        claims.claim_spelled(item.role, &item.name, holder, None)?;
     }
-    claims.claim(Role::Module, decisions.name, decisions.name, None)?;
+    for (role, name) in syntax.imported() {
+        let holder = Holder {
+            name,
+            offset: decisions.offset,
+            origin: Origin::Imported,
+            scope: None,
+        };
+        claims.claim_spelled(role, name, holder, None)?;
+    }
+    claims.claim(Role::Module, decisions.name, decisions.offset, None)?;
     for item in &decisions.enums {
-        claims.claim(Role::Type, item.name, item.name, None)?;
-        for (member, _) in &item.members {
-            claims.claim(Role::Member, member, member, Some(item.name))?;
+        claims.claim(Role::Type, item.name, item.offset, None)?;
+        for member in &item.members {
+            claims.claim(Role::Member, member.name, member.offset, Some(item.name))?;
         }
     }
     for input in &decisions.inputs {
-        claims.claim(Role::Field, input.name, input.name, Some("Input"))?;
+        claims.claim(Role::Field, input.name, input.offset, Some("Input"))?;
     }
     for function in &decisions.functions {
-        claims.claim(Role::Function, function.name, function.name, None)?;
+        claims.claim(Role::Function, function.name, function.offset, None)?;
     }
     Ok(())
 }
 
-/// The names claimed so far in one module, and the generated names they are checked against.
+fn clash(message: String, offset: usize) -> io::Error {
+    io::Error::new(io::ErrorKind::InvalidData, NameClash { message, offset })
+}
+
+/// The message for a clash where `holder` came second and `first` holds `spelled`.
+fn clash_message(holder: Holder, first: Holder, spelled: &str) -> String {
+    match (holder.origin, first.origin) {
+        (Origin::Generated(Some(this)), Origin::Generated(Some(that))) => format!(
+            "the {} `{}` and the {} `{}` both generate `{spelled}`; rename one of them",
+            this.kind, this.name, that.kind, that.name
+        ),
+        (_, Origin::Generated(Some(from))) => format!(
+            "`{}` clashes with the name `{}`, which the {} `{}` generates",
+            holder.name, first.name, from.kind, from.name
+        ),
+        (_, Origin::Generated(None)) => format!(
+            "`{}` clashes with the generated name `{}`",
+            holder.name, first.name
+        ),
+        (_, Origin::Imported) => format!(
+            "`{}` clashes with the imported name `{}`",
+            holder.name, first.name
+        ),
+        (_, Origin::Source) => match (holder.scope, first.scope) {
+            (Some(this), Some(that)) if this != that => format!(
+                "`{}` of `{this}` and `{}` of `{that}` both become `{spelled}`",
+                holder.name, first.name
+            ),
+            _ => format!(
+                "`{}` and `{}` both become `{spelled}`",
+                holder.name, first.name
+            ),
+        },
+    }
+}
+
+/// The names claimed so far in one module.
 struct Claims<'a> {
-    names: Names<'a, (Namespace, Option<&'a str>)>,
+    names: Names<(Namespace, Option<&'a str>), Holder<'a>>,
     language: &'a dyn Language,
-    generated: &'a [(Role, String)],
 }
 
 impl<'a> Claims<'a> {
-    /// Spells `name` for `role` and records it. `owner` scopes an `Owner` name; a `Module` name
-    /// ignores it. A clash names the first holder, and says so when that holder is generated.
+    /// Spells source name `name` for `role` and records it. `owner` scopes an `Owner` name; a
+    /// `Module` name ignores it. A spelling the language cannot use is refused.
     fn claim(
         &mut self,
         role: Role,
         name: &'a str,
-        holder: &'a str,
+        offset: usize,
         owner: Option<&'a str>,
     ) -> io::Result<()> {
         let spelled = self.language.ident(role, name);
+        if !self.language.is_valid(role, &spelled) {
+            let message = if spelled.is_empty() {
+                format!("`{name}` has no letters or digits to make a name from")
+            } else {
+                format!("`{name}` becomes `{spelled}`, which cannot be used as this name")
+            };
+            return Err(clash(message, offset));
+        }
+        let holder = Holder {
+            name,
+            offset,
+            origin: Origin::Source,
+            scope: owner,
+        };
         self.claim_spelled(role, &spelled, holder, owner)
     }
 
-    /// [`Claims::claim`] for a name that is already spelled, such as a generated one.
+    /// Records an already spelled name. A clash is an error at the holder's offset, naming the
+    /// first holder.
     fn claim_spelled(
         &mut self,
         role: Role,
         spelled: &str,
-        holder: &'a str,
+        holder: Holder<'a>,
         owner: Option<&'a str>,
     ) -> io::Result<()> {
         let namespace = self.language.namespace(role);
@@ -150,17 +265,8 @@ impl<'a> Claims<'a> {
             Namespace::Owner => (namespace, owner),
             Namespace::Module(_) => (namespace, None),
         };
-        let spelled = spelled.to_owned();
         self.names
-            .insert(key, spelled.clone(), holder)
-            .map_err(|first| {
-                let generated = self.generated.iter().any(|(_, text)| text == first);
-                let message = if generated {
-                    format!("`{holder}` clashes with the generated name `{first}`")
-                } else {
-                    format!("`{holder}` and `{first}` both become `{spelled}`")
-                };
-                io::Error::new(io::ErrorKind::InvalidData, message)
-            })
+            .insert(key, spelled.to_owned(), holder)
+            .map_err(|first| clash(clash_message(holder, first, spelled), holder.offset))
     }
 }
