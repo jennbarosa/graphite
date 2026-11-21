@@ -707,6 +707,7 @@ export class Run<V extends Vocabulary> {
 			snapshot.node < graph.data.nodeCount &&
 			Number.isInteger(snapshot.transitions) &&
 			snapshot.transitions >= 0 &&
+			typeof snapshot.finished === 'boolean' &&
 			(snapshot.phase === 'running' ||
 				snapshot.phase === 'ended') &&
 			(snapshot.failure === null ||

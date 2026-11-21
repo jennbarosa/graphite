@@ -71,7 +71,6 @@ graphite run examples/workflow/workflow.graphite \
 - `--allow` is optional, but the task names are checked against it, or against `--tasks` when given.
 - `--state` defaults to the file's name with `.state.json`, beside the file.
 - `--runner` is optional. Without it, every task settles as `none`.
-- `--durable` is accepted and does nothing. `run` is always durable.
 - To check the graph's routes before any task runs, use `graphite debug --simulate` (see
   [checking routes](#checking-routes-without-running-tasks)).
 
@@ -112,7 +111,7 @@ same shape a runner returns:
 - A nonzero exit status is a thrown attempt, so a node flagged `retry` tries again.
 - Output that is not JSON is a thrown attempt.
 - Stderr goes to the terminal, next to the run log.
-- A command that outlives `taskTimeoutMs` is stopped.
+- A command that outlives its task's timeout (the `timeout` annotation, or `taskTimeoutMs`) is stopped.
 
 Every task in the graph needs a command. A graph whose task has no command is refused before
 anything is recorded, and the error names the task. The commands run with your permissions, like
@@ -170,15 +169,24 @@ things keep the engine from doing the same work twice:
 
 - **Dedupe.** `--key` names the item field that identifies it. The key of each item started is written
   to the seen file, which defaults to `<state>.seen.json`. The file holds one key per line, appended and
-  fsynced as each item starts, so an old JSON-array seen file must be deleted before it is reused. A key
-  already there is skipped. Keys must be letters, digits, dots, dashes or underscores, since each one is
-  also a file name. A line cut short by a crash is dropped, and the file is cut back to its last complete
+  fsynced as each item starts, so an old JSON-array seen file must be deleted before it is reused. Keys
+  must be letters, digits, dots, dashes or underscores, since each one is also a file name. A line cut short by a crash is dropped, and the file is cut back to its last complete
   line before the next key is appended, so a torn line never joins the next key.
-- **Counter.** `--until-passed N` stops starting items once N have ended on a passing stage. An item
-  ends on a passing stage when its end node's own task returns `pass`.
+  A key already there is not started again. The state also keeps a `.started` marker for each item it
+  started. An item with a marker in this state is resumed from its own state file: a finished item
+  returns its stored result without running a task again, and an interrupted one runs on from where it
+  stopped. A key with no marker in this state was started by an earlier run with another `--state`, so
+  it is skipped, and its tasks do not run again.
+- **Counter.** `--until-passed N` stops starting items once N have ended on a passing stage in this
+  state. An item ends on a passing stage when its end node's own task returns `pass`.
 
-An item that stops or errors does not count as passed, and its key stays in the seen file, so it is
-not retried on the next run. Pass the same `--seen` file on each run to keep the list across days.
+An item that stops or errors does not count as passed. Its key stays in the seen file, and a later run
+does not run its tasks again: a stopped item stays stopped, and a stored error stays an error. `--retry`
+does not apply to `--each`, so change that item's state by hand to run its failed task again (see
+[retrying a failed task](#retrying-a-failed-task)). To keep the list across days, pass the same `--seen`
+file each day. Give each day its own `--state`, as in the example above: a key already in the seen file
+is skipped on the new day, so no item runs twice. Items an earlier state started are not resumed in the
+new one, and they do not count toward `--until-passed`.
 
 ## Failure details
 
@@ -211,11 +219,28 @@ The run log prints the detail after the outcome, for example
   is settled as `none`.
 - **Retries.** Nodes flagged `retry` get three attempts when a task throws. A task that still
   fails stops the run with an error naming its key, unless the graph declares `errored`, which routes
-  it instead (see [error routing](#error-routing)).
+  it instead (see [error routing](#error-routing)). See [retrying a failed task](#retrying-a-failed-task)
+  for how to run it again.
 - **At least once.** A task that was running when the process died runs again on resume, with the
   same `key`. Tasks with external effects must dedupe on `key`.
-- **Timeouts.** A task that exceeds `taskTimeoutMs` (default 60 s) counts as a failed attempt. The
-  engine cannot stop a runner that ignores its `AbortSignal`.
+- **Timeouts.** Off by default. A node can set its own limit per attempt with a `timeout` annotation
+  in whole milliseconds, such as `node check @task:lint @timeout:30000`. A task that exceeds its
+  limit counts as a failed attempt. `taskTimeoutMs` sets the limit for every task without a
+  `timeout` annotation. The engine cannot stop a runner that ignores its `AbortSignal`.
+
+## Retrying a failed task
+
+A task that failed for good stops the run, and every later run stops on the same stored error until
+someone clears it. The run's JSON result names the failed task's key. Clear the error and run again:
+
+```sh
+graphite run review.graphite --tasks tasks.toml --retry 4:check
+```
+
+`--retry` clears only that key's stored error, then the run continues from there. A key with no
+stored error is refused, and the state is left unchanged. So is a key for a stage the run has already
+moved past, such as a task whose error an `errored` edge routed: its retry would never run. With `--each`, `--retry` is refused, so an
+item whose task failed stays stopped; its state must be changed by hand.
 
 ## When a run stalls
 

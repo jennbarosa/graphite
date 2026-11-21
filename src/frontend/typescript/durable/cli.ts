@@ -1,24 +1,26 @@
 // Command-line entry for `graphite run`. It runs one generated graph under the durable engine and
 // prints the result as JSON. Usage:
 //   bun run cli.ts <graph.ts> <state.json> [--runner <tasks.ts> | --tasks <tasks.json>]
-//                  [--input <input.json>]
+//                  [--input <input.json>] [--retry <key>]
 //                  [--each <item.ts> --key <field> [--seen <file.json>] [--until-passed <N>]]
 // `--runner` names a module whose default export is the task runner, with the `Runner` signature.
 // `--tasks` names a JSON file of task commands, `{ "cwd", "commands": { task: [argv...] } }`. Pass
 // one of them, not both. `--input` names a JSON file whose value every task receives as
 // `context.input`. `--each` runs the item graph once per item of the first graph's output, with the
-// fan-out rules in fanout.ts. The run log goes to stderr.
+// fan-out rules in fanout.ts. `--retry <key>` clears the stored error of that task before the run, so
+// the run runs it again; it does not apply to `--each`. The run log goes to stderr.
 import { mkdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { type CommandTable, commandRunner } from './commands';
-import { type DurableOptions, type Runner, runDurable } from './engine';
+import { type DurableOptions, type Runner, retryFailedTask, runDurable } from './engine';
 import { fanOut } from './fanout';
 import { runLog } from './run-log';
-import type { GraphLike } from './contract';
+import { RETRY_FLAG, TASK_ANNOTATION, type GraphLike } from './contract';
 import { outcomeConditionsOf, taskNames } from './graph-checks';
+import { fileStore } from './store';
 
 const USAGE =
-	'usage: cli.ts <graph.ts> <state.json> [--runner <tasks.ts> | --tasks <tasks.json>] [--input <input.json>] [--each <item.ts> --key <field>]';
+	'usage: cli.ts <graph.ts> <state.json> [--runner <tasks.ts> | --tasks <tasks.json>] [--input <input.json>] [--retry <key>] [--each <item.ts> --key <field>]';
 const NEEDS_TASKS = 3;
 
 /** A command line that cannot run: its message is printed, and the exit status is 2. */
@@ -45,6 +47,7 @@ async function run(args: string[]): Promise<number> {
 	const keyField = flag(args, '--key');
 	const seenPath = flag(args, '--seen');
 	const untilText = flag(args, '--until-passed');
+	const retryKey = flag(args, '--retry');
 	if (!modulePath || !statePath) {
 		throw new UsageError(USAGE);
 	}
@@ -57,6 +60,9 @@ async function run(args: string[]): Promise<number> {
 	if (eachPath === undefined && (seenPath !== undefined || untilText !== undefined)) {
 		throw new UsageError('--seen and --until-passed apply to --each only');
 	}
+	if (retryKey !== undefined && eachPath !== undefined) {
+		throw new UsageError('--retry applies to one run, not to --each');
+	}
 	const untilPassed = untilText === undefined ? undefined : parseCount(untilText);
 
 	const { graph } = await import(resolve(modulePath));
@@ -66,7 +72,7 @@ async function run(args: string[]): Promise<number> {
 	// A graph with tasks needs a runner or a command for each task. Checked before the run starts,
 	// so nothing is locked or recorded.
 	for (const g of itemGraph === undefined ? [graph] : [graph, itemGraph]) {
-		const tasks = taskNames(g, 'task');
+		const tasks = taskNames(g, TASK_ANNOTATION);
 		if (tasks.length > 0 && runnerPath === undefined && table === undefined) {
 			console.error(
 				`the graph has tasks (${tasks.map((t) => t.label).join(', ')}) but no runner or commands: pass --runner <tasks.ts> or --tasks <tasks.json>`
@@ -102,13 +108,20 @@ async function run(args: string[]): Promise<number> {
 		stateFile,
 		runner,
 		input: runInput,
-		taskAnnotation: 'task',
-		retryFlag: 'retry',
+		taskAnnotation: TASK_ANNOTATION,
+		retryFlag: RETRY_FLAG,
 		outcomeConditions: outcomeConditionsOf(g),
 		onEvent: log,
 	});
 
 	if (itemGraph === undefined || eachPath === undefined || keyField === undefined) {
+		if (retryKey !== undefined) {
+			try {
+				await retryFailedTask(fileStore(statePathResolved), retryKey);
+			} catch (error) {
+				throw new UsageError(error instanceof Error ? error.message : String(error));
+			}
+		}
 		const result = await runDurable(
 			optionsFor(graph, modulePathResolved, statePathResolved, input)
 		);

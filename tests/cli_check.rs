@@ -4,7 +4,7 @@
 #[path = "support/cli.rs"]
 mod cli;
 
-use cli::{dsl, graphite, stderr, stdout, walk_spec};
+use cli::{dsl, graphite, scratch, stderr, stdout, walk_spec};
 
 #[test]
 fn reports_the_graph_count() {
@@ -136,4 +136,68 @@ fn check_json_reports_the_graph_count_or_the_error() {
         line.starts_with(r#"{"ok":false,"error":"no-such-file.graphite"#),
         "{line}"
     );
+}
+
+#[test]
+fn an_allowlist_also_refuses_a_value_on_the_graph_line() {
+    let dir = scratch("cli-check-graph-line-allow");
+    std::fs::create_dir_all(&dir).unwrap();
+    let graph = dir.join("door.graphite");
+    std::fs::write(
+        &graph,
+        "graph door @anim:bogus\n  node closed @anim:idle\n  node open end @anim:idle\n\n  edge closed -> open\n",
+    )
+    .unwrap();
+    let allow = dir.join("allow.toml");
+    std::fs::write(&allow, "[annotations]\nanim = [\"idle\"]\n").unwrap();
+
+    let output = graphite([
+        "check".as_ref(),
+        graph.as_os_str(),
+        "--allow".as_ref(),
+        allow.as_os_str(),
+    ]);
+    assert_eq!(output.status.code(), Some(1), "{}", stdout(&output));
+    assert!(
+        stderr(&output).contains("graph door: @anim:bogus is not allowed"),
+        "{}",
+        stderr(&output)
+    );
+}
+
+#[test]
+fn an_allowlist_also_refuses_values_on_choice_arms_and_edges() {
+    let dir = scratch("cli-check-arm-edge-allow");
+    std::fs::create_dir_all(&dir).unwrap();
+    let allow = dir.join("allow.toml");
+    std::fs::write(&allow, "[annotations]\nanim = [\"idle\"]\n").unwrap();
+    // Each case puts one bad value in a different place; the check must name that place.
+    let cases = [
+        (
+            "choice",
+            "graph door\n  node a @anim:idle\n  node b end @anim:idle\n\n  edge a -> b\n\n  choose facing\n    when left -> b @anim:bogus\n    else -> b\n",
+            "graph door, choice facing: @anim:bogus is not allowed",
+        ),
+        (
+            "edge",
+            "graph door\n  node a @anim:idle\n  node b end @anim:idle\n\n  edge a -> b @anim:bogus\n",
+            "graph door, edge a -> b: @anim:bogus is not allowed",
+        ),
+    ];
+    for (name, source, expected) in cases {
+        let graph = dir.join(format!("{name}.graphite"));
+        std::fs::write(&graph, source).unwrap();
+        let output = graphite([
+            "check".as_ref(),
+            graph.as_os_str(),
+            "--allow".as_ref(),
+            allow.as_os_str(),
+        ]);
+        assert_eq!(output.status.code(), Some(1), "{name}: {}", stdout(&output));
+        assert!(
+            stderr(&output).contains(expected),
+            "{name}: {}",
+            stderr(&output)
+        );
+    }
 }

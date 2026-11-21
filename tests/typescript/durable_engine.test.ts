@@ -337,6 +337,24 @@ describe('durable engine', () => {
 		]);
 	});
 
+	// Regression: the results file used to keep every record of a long run, so it grew with the run.
+	test('a long loop in one process keeps the results file short, and the run still ends', async () => {
+		const files = scratch();
+		let lints = 0;
+		const result = await runDurable({
+			modulePath: graphModule,
+			...workflowNames,
+			stateFile: files.state,
+			runner: async (task) => {
+				if (task !== 'lint') return 'none';
+				return lints++ < 1500 ? 'fail' : 'pass';
+			},
+		});
+		expect(result.status).toBe('ended');
+		// About 3,000 stages ran. Compaction runs every 1,000 steps, so fewer than 1,000 lines are left.
+		expect(recordsOf(files).length).toBeLessThan(1000);
+	}, 120_000);
+
 	test('the snapshot holds the position only; each result is appended on its own line', async () => {
 		const files = scratch();
 		const { runner } = recorder(['fail', 'pass']);

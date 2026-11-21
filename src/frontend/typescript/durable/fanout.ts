@@ -5,16 +5,9 @@
 // - `untilPassed` stops starting items once that many have ended on a passing stage.
 // The list graph must end with an array as its output. Each item is a JSON object with a string
 // field named by `key`, which is also the item's name on disk, so it must be a plain identifier.
-import {
-	closeSync,
-	existsSync,
-	ftruncateSync,
-	fsyncSync,
-	openSync,
-	readFileSync,
-} from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { type DurableOptions, type Result, runDurable } from './engine';
-import { appendLine } from './store';
+import { appendLine, cutFile } from './store';
 
 export interface FanOutOptions {
 	/** The list graph's run. Its end output is the array of items. */
@@ -50,16 +43,28 @@ export async function fanOut(options: FanOutOptions): Promise<FanOutSummary> {
 	}
 
 	const seen = readSeen(options.seenFile);
+	const visited = new Set<string>();
 	let started = 0;
 	let passed = 0;
 	for (const item of items) {
 		if (options.untilPassed !== undefined && passed >= options.untilPassed) break;
 		const key = keyOf(item, options.key);
-		if (seen.has(key)) continue;
-		// Recorded before the item runs, so a crash mid-item does not start it again.
-		seen.add(key);
-		appendLine(options.seenFile, key);
-		started++;
+		// A key listed twice in this run is handled once.
+		if (visited.has(key)) continue;
+		visited.add(key);
+		// Each state keeps a marker for every item it started. A key in the seen file with no marker in
+		// this state was started by an earlier run with another state, so it is skipped here. A marked
+		// key is resumed: a finished item returns its stored result, and an interrupted one runs on.
+		const marker = `${options.itemStateFile(key)}.started`;
+		if (!seen.has(key)) {
+			// The marker is written first, so a crash between the two writes leaves the key unseen, not seen but unmarked.
+			appendLine(marker, key);
+			seen.add(key);
+			appendLine(options.seenFile, key);
+			started++;
+		} else if (!existsSync(marker)) {
+			continue;
+		}
 		const result = await runDurable(
 			options.item(item, options.itemStateFile(key))
 		);
@@ -90,15 +95,7 @@ function readSeen(file: string): Set<string> {
 	if (!existsSync(file)) return new Set();
 	const bytes = readFileSync(file);
 	const completeEnd = bytes.lastIndexOf(0x0a) + 1;
-	if (completeEnd < bytes.length) {
-		const fd = openSync(file, 'r+');
-		try {
-			ftruncateSync(fd, completeEnd);
-			fsyncSync(fd);
-		} finally {
-			closeSync(fd);
-		}
-	}
+	if (completeEnd < bytes.length) cutFile(file, completeEnd);
 	const lines = bytes.subarray(0, completeEnd).toString('utf8').split('\n');
 	// The last piece is what follows the final newline, which is always empty now.
 	lines.pop();

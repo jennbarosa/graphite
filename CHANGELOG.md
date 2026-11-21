@@ -7,6 +7,21 @@ change the interface.
 
 ## [Unreleased]
 
+### Added
+
+- A `@timeout:MS` node annotation sets a per-attempt time limit, in milliseconds, for that node's task.
+- `Node::timeout` in the Rust front end's runtime reads a node's `@timeout:MS` annotation with the
+  TypeScript engine's rule for valid values. The Rust front end has no durable runner, so it does not
+  enforce the limit.
+
+- `graphite run --retry <key>` clears a failed task's stored error, so the run runs that task again.
+
+### Fixed
+
+- Fan-out (`run --each`) no longer leaves an item unfinished after a crash. A seen item is resumed from its
+  own state, and `--until-passed` counts the items that passed in earlier runs.
+- The results file drops the records of finished stages, so it no longer grows with a long run.
+
 ### Changed
 
 - **Breaking:** a dotted file name now picks its front end from the infix. `door.rs.graphite`
@@ -27,6 +42,12 @@ change the interface.
   with the line of its graph, and it is refused before anything is written.
 - A pure name that PureScript cannot use, or that clashes with a name the module imports (such as
   `Nothing` or `otherwise`), is refused with the line of the declaration that causes it.
+- Fan-out seen keys are resumed, not skipped, on later runs: a finished item returns its stored result
+  without running its tasks again.
+- The `--durable` flag is removed. It did nothing since `run` became durable, and passing it is now a usage error.
+- `graphite inspect` prints the annotations on the `graph` line, in text and in `--json`.
+- Durable tasks no longer have a 60-second default limit. Without a `timeout` annotation or a
+  `taskTimeoutMs` option, a task runs until it finishes.
 
 - Graph files now end in `.graphite` instead of `.dsl`. The examples, fixtures and bundled graph
   descriptions use the new extension. The language itself is unchanged.
@@ -79,6 +100,13 @@ change the interface.
 
 - A seen file whose last line was cut short by a crash could make the next key join that line, so an
   item could be started again. The torn line is now cut before the next key is appended.
+- Fan-out with the same `--seen` file and a new `--state` no longer runs the tasks of items an earlier state
+  started. Each state records the items it started, and a key without a record there is skipped.
+  An item started before this version has no record, so an interrupted one is skipped, not resumed. Finish it by hand.
+- `--allow` checks the annotations on the `graph` line, which it skipped before.
+- The state lock is written whole, so a lock with no readable pid is refused rather than taken over.
+- `--retry` refuses a stage the run has already passed, such as a task whose error an `errored` edge routed,
+  instead of reporting a retry that never runs.
 
 ## [0.1.0] - 2026-11-12
 

@@ -17,12 +17,12 @@ export function taskOf(
 export function taskNames(
 	graph: GraphLike,
 	annotation: string
-): { name: string; label: string }[] {
-	const found: { name: string; label: string }[] = [];
+): { node: string; name: string; label: string }[] {
+	const found: { node: string; name: string; label: string }[] = [];
 	for (let id = 0; id < graph.data.nodeCount; id++) {
 		const node = graph.nodeName(id);
 		const name = taskOf(graph, node, annotation);
-		if (name !== undefined) found.push({ name, label: `${node} (${name})` });
+		if (name !== undefined) found.push({ node, name, label: `${node} (${name})` });
 	}
 	return found;
 }

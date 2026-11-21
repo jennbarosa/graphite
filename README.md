@@ -43,8 +43,7 @@ works. Compiling needs nothing else.
 
 ## Quick start
 
-Create a starter graph, check it, and compile it. The TypeScript front end is the one Graphite
-ships today:
+Create a starter graph, check it, and compile it. This uses the TypeScript front end, the default:
 
 ```sh
 graphite init hello.graphite

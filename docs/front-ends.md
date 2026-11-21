@@ -3,9 +3,9 @@
 A **front end** turns a checked graph into code for one host language. The parser, the checks,
 and the compiled graph know nothing about any language. A language appears only in its front end.
 
-Graphite ships one front end today: **TypeScript**, the default for every command. The front end
-interface is general, so supporting another language means writing one front end, not changing
-the graph language.
+Graphite ships two front ends: **TypeScript**, the default for every command, and **Rust**. The
+front end interface is general, so supporting another language means writing one front end, not
+changing the graph language.
 
 | Key (`--frontend`) | Language | Status |
 | --- | --- | --- |
@@ -64,7 +64,13 @@ let (id, node) = door::GRAPH.node("closed").unwrap();
 The runtime has the data types, `Graph::node` and `Graph::get`, and a `Run` that steps the graph
 with the same rules as the TypeScript runtime. `graphite debug` builds a Rust debugger for the
 graph with `rustc`, so `debug` works with `--frontend rust`. The durable engine (`run`,
-`--simulate`) is still TypeScript-only.
+`--simulate`) is still TypeScript-only. `Node::timeout` reads a node's `@timeout:MS` annotation
+with the same rule as the TypeScript engine, and returns `Err` for a value it refuses. It does not
+enforce the limit; a Rust host applies it to its own tasks:
+
+```rust
+let limit = door::GRAPH.get(door::nodes::CLOSED).timeout()?; // Option<u32>, in milliseconds
+```
 
 ## Adding a front end
 

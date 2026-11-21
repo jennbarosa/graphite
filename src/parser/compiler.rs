@@ -13,6 +13,7 @@ use crate::lexer::TokenKind;
 
 use super::capacity::{buffer, push};
 use super::tokens::{INVALID_NAME, Tokens, valid_name};
+use super::{Capacity, ParseError};
 
 /// The line forms allowed inside a graph body, shared by the message and the fallback arm.
 pub(super) const GRAPH_FORM: &str = "expected `default`, `node`, `edge`, or `choose` line";
@@ -37,7 +38,6 @@ const WHEN_REPEATED: &str = "this test is already an arm above, so this arm can 
 const TAG_NOT_MEMBER: &str = "the arm's tag must be a member of the choose's enum";
 const ANNOTATION_KEY: &str =
     "invalid annotation key: use letters, digits, `_`, or `-`, separated by `.`";
-use super::{Capacity, ParseError};
 
 pub(super) struct Builder<'s> {
     pub(super) graph: CompiledGraph,
@@ -74,10 +74,10 @@ struct NameBindings {
 }
 
 impl<'s> Builder<'s> {
-    pub(super) fn new<'a>(
+    pub(super) fn new(
         c: Capacity,
         name: &str,
-        tokens: &mut Tokens<'a>,
+        tokens: &mut Tokens<'_>,
         flags: &'s HashSet<&'s str>,
         kind: Kind,
     ) -> Result<Self, ParseError> {
@@ -99,9 +99,9 @@ impl<'s> Builder<'s> {
         })
     }
 
-    pub(super) fn intern<'a>(
+    pub(super) fn intern(
         &mut self,
-        tokens: &mut Tokens<'a>,
+        tokens: &mut Tokens<'_>,
         word: &str,
     ) -> Result<StringId, ParseError> {
         self.graph
@@ -110,7 +110,7 @@ impl<'s> Builder<'s> {
             .map_err(|_| tokens.error(STRINGS_FULL))
     }
 
-    pub(super) fn node<'a>(&mut self, tokens: &mut Tokens<'a>) -> Result<(), ParseError> {
+    pub(super) fn node(&mut self, tokens: &mut Tokens<'_>) -> Result<(), ParseError> {
         let (name, offset) = tokens.name("expected a node name after `node`")?;
         let id = self.graph.nodes.len() as u32;
         let name = self.intern(tokens, name)?;
@@ -162,7 +162,7 @@ impl<'s> Builder<'s> {
     }
 
     /// Finishes the `graph` line, which may carry the graph's own annotations, and opens the body.
-    pub(super) fn opened<'a>(mut self, tokens: &mut Tokens<'a>) -> Result<Self, ParseError> {
+    pub(super) fn opened(mut self, tokens: &mut Tokens<'_>) -> Result<Self, ParseError> {
         // `annotations` reads through the end of the line, so it also takes the newline.
         self.graph.graph_annotations = narrow(self.annotations(tokens)?);
         tokens.expect(TokenKind::Indent)?;
@@ -171,7 +171,7 @@ impl<'s> Builder<'s> {
 
     /// Reads `default @key:value ...`, after the `default` keyword. Each node declared later
     /// gets these annotations unless it sets the same key itself.
-    pub(super) fn default<'a>(&mut self, tokens: &mut Tokens<'a>) -> Result<(), ParseError> {
+    pub(super) fn default(&mut self, tokens: &mut Tokens<'_>) -> Result<(), ParseError> {
         let offset = tokens.offset();
         let range = self.annotations(tokens)?;
         if range.is_empty() {
@@ -187,10 +187,7 @@ impl<'s> Builder<'s> {
         Ok(())
     }
 
-    pub(super) fn node_reference<'a>(
-        &mut self,
-        tokens: &mut Tokens<'a>,
-    ) -> Result<u32, ParseError> {
+    pub(super) fn node_reference(&mut self, tokens: &mut Tokens<'_>) -> Result<u32, ParseError> {
         let (name, offset) = tokens.word_or("expected a node name after `->` or `edge`")?;
         if let Some(id) = self
             .graph
@@ -208,7 +205,7 @@ impl<'s> Builder<'s> {
         Err(ParseError::new(message, offset))
     }
 
-    pub(super) fn condition<'a>(&mut self, tokens: &mut Tokens<'a>) -> Result<u32, ParseError> {
+    pub(super) fn condition(&mut self, tokens: &mut Tokens<'_>) -> Result<u32, ParseError> {
         let (word, offset) = tokens.word_or("expected a condition name after `when`")?;
         let name = self.intern(tokens, word)?;
         let binding = &mut self.bindings[name.index()];
@@ -225,9 +222,9 @@ impl<'s> Builder<'s> {
     }
 
     /// Reads a node's flags up to the end of its line. Returns `(looping, end, domain-flag span)`.
-    pub(super) fn node_flags<'a>(
+    pub(super) fn node_flags(
         &mut self,
-        tokens: &mut Tokens<'a>,
+        tokens: &mut Tokens<'_>,
     ) -> Result<(bool, bool, Span), ParseError> {
         let start = self.graph.flags.len() as u32;
         let mut looping = false;
@@ -258,7 +255,7 @@ impl<'s> Builder<'s> {
     /// Reads `edge A -> B [-> C ...] [when COND] [else T] [@key:value ...]`.
     /// Each hop becomes one edge carrying the line's condition and annotations.
     /// `else T` also adds an unconditional edge from each hop's source to `T`.
-    pub(super) fn edge<'a>(&mut self, tokens: &mut Tokens<'a>) -> Result<(), ParseError> {
+    pub(super) fn edge(&mut self, tokens: &mut Tokens<'_>) -> Result<(), ParseError> {
         let offset = tokens.offset();
         let start = self.graph.edges.len();
         let mut source = self.node_reference(tokens)?;
@@ -353,9 +350,9 @@ impl<'s> Builder<'s> {
 
     /// Reads `choose NAME` and its indented block's opening, after the `choose` keyword. A pure
     /// choose names its enum as `: ENUM`, and may carry annotations on the line.
-    pub(super) fn choice_head<'a>(
+    pub(super) fn choice_head(
         &mut self,
-        tokens: &mut Tokens<'a>,
+        tokens: &mut Tokens<'_>,
     ) -> Result<(StringId, usize), ParseError> {
         let (word, offset) = tokens.name("expected a choose name after `choose`")?;
         let name = self.intern(tokens, word)?;
@@ -524,10 +521,7 @@ impl<'s> Builder<'s> {
 
     /// Reads the condition of a `when` arm. A machine names a free condition; a pure file names a
     /// declared input: `NAME` for a bool, `NAME:MEMBER` for an enum.
-    pub(super) fn when_condition<'a>(
-        &mut self,
-        tokens: &mut Tokens<'a>,
-    ) -> Result<u32, ParseError> {
+    pub(super) fn when_condition(&mut self, tokens: &mut Tokens<'_>) -> Result<u32, ParseError> {
         if self.kind == Kind::Machine {
             return self.condition(tokens);
         }
@@ -577,9 +571,9 @@ impl<'s> Builder<'s> {
     }
 
     /// Ends a choose block: it needs an arm, and its closing dedent. Stores the choice.
-    pub(super) fn choice_end<'a>(
+    pub(super) fn choice_end(
         &mut self,
-        tokens: &mut Tokens<'a>,
+        tokens: &mut Tokens<'_>,
         name: StringId,
         start: usize,
         offset: usize,
@@ -600,7 +594,7 @@ impl<'s> Builder<'s> {
     }
 
     /// Ends the graph body: a machine needs a node, and both need the closing dedent.
-    pub(super) fn body_end<'a>(&mut self, tokens: &mut Tokens<'a>) -> Result<(), ParseError> {
+    pub(super) fn body_end(&mut self, tokens: &mut Tokens<'_>) -> Result<(), ParseError> {
         if self.kind == Kind::Machine && self.graph.nodes.is_empty() {
             return Err(tokens.error("graph needs at least one node; the first is its entry"));
         }
@@ -609,9 +603,9 @@ impl<'s> Builder<'s> {
 
     /// Reads one arm's `-> tag` and annotations, then stores it. A pure arm's tag must be a
     /// member of its choose's enum, and the defaults apply to it.
-    pub(super) fn arm<'a>(
+    pub(super) fn arm(
         &mut self,
-        tokens: &mut Tokens<'a>,
+        tokens: &mut Tokens<'_>,
         condition: Option<u32>,
         offset: usize,
     ) -> Result<(), ParseError> {
@@ -643,9 +637,9 @@ impl<'s> Builder<'s> {
         )
     }
 
-    pub(super) fn annotations<'a>(
+    pub(super) fn annotations(
         &mut self,
-        tokens: &mut Tokens<'a>,
+        tokens: &mut Tokens<'_>,
     ) -> Result<Range<usize>, ParseError> {
         let start = self.graph.annotations.len();
         while tokens.at(TokenKind::At)? {
@@ -669,27 +663,19 @@ impl<'s> Builder<'s> {
         Ok(start..self.graph.annotations.len())
     }
 
-    pub(super) fn annotation_key<'a>(
+    pub(super) fn annotation_key(
         &mut self,
-        tokens: &mut Tokens<'a>,
+        tokens: &mut Tokens<'_>,
         key: &str,
         offset: usize,
     ) -> Result<StringId, ParseError> {
-        // Preserve invalid-key diagnostics even when interner storage is exhausted.
-        let id = self.intern(tokens, key).map_err(|error| {
-            if key.split('.').all(valid_name) {
-                error
-            } else {
-                ParseError::new(ANNOTATION_KEY, offset)
-            }
-        })?;
-        let binding = &mut self.bindings[id.index()];
-        if !binding.annotation_key {
-            if !key.split('.').all(valid_name) {
-                return Err(ParseError::new(ANNOTATION_KEY, offset));
-            }
-            binding.annotation_key = true;
+        // Checked before interning, so an invalid key gets this message even when interner storage is
+        // exhausted.
+        if !key.split('.').all(valid_name) {
+            return Err(ParseError::new(ANNOTATION_KEY, offset));
         }
+        let id = self.intern(tokens, key)?;
+        self.bindings[id.index()].annotation_key = true;
         Ok(id)
     }
 }

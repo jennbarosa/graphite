@@ -46,9 +46,9 @@ graphite --version                                     print the version
 | `--input <input.json>` | `run` | A JSON value every task receives as `context.input`. See [input](durable-workflows.md#input). |
 | `--each <item.graphite>` | `run` | Runs the item graph once per item the graph produces. Needs `--key`. See [fan-out](durable-workflows.md#fan-out). |
 | `--key <field>` | `run` | The item field that identifies each item. |
-| `--seen <file.json>` | `run` | Item keys already started, so a run skips them. Defaults beside the state file. |
+| `--seen <file.json>` | `run` | Item keys already started. A later run with the same `--state` resumes those items without running finished tasks again. A key started under another `--state` is skipped. Defaults beside the state file. |
 | `--until-passed <N>` | `run` | Stops starting items once N have passed. |
-| `--durable` | `run` | Accepted and ignored: `run` is always durable. |
+| `--retry <key>` | `run` | Clears the stored error of the task with that key, so this run runs it again. Not used with `--each`. See [retrying a failed task](durable-workflows.md#retrying-a-failed-task). |
 | `--frontend <key>` | `check`, `compile`, `debug` | The front end to use. Without it, the file's name and directives pick one; see [choosing the front end](#choosing-the-front-end-and-mode). `debug` defaults to `typescript`. |
 | `--pure` | `check`, `compile`, `inspect` | Reads the file as a pure file, as an `@!pure` directive does. Refused by `run` and `debug`, which run machine graphs only. |
 

@@ -237,7 +237,6 @@ fn run_takes_a_runner_and_checkpoints_its_state() {
     std::fs::create_dir_all(state.parent().unwrap()).unwrap();
     let args = [
         "run".as_ref(),
-        "--durable".as_ref(),
         dsl.as_os_str(),
         "--allow".as_ref(),
         allow.as_os_str(),

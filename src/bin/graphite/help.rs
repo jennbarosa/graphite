@@ -36,8 +36,8 @@ pub const COMMANDS: &[(&str, &[&str])] = &[
             "--key",
             "--seen",
             "--until-passed",
+            "--retry",
             "--allow",
-            "--durable",
         ],
     ),
     ("doctor", &["--json"]),
@@ -62,6 +62,7 @@ pub fn takes_value(option: &str) -> bool {
             | "--key"
             | "--seen"
             | "--until-passed"
+            | "--retry"
             | "--simulate"
     )
 }
@@ -94,20 +95,23 @@ chosen as for `check`.
 It never overwrites: remove the directory, or pass another --out, to compile again."
         }
         "run" => {
-            "usage: graphite run <file.graphite> [--state <file.json>] [--tasks <tasks.toml> | --runner <tasks.ts>] [--input <data.json>] [--allow <list.toml>]
+            "usage: graphite run <file.graphite> [--state <file.json>] [--tasks <tasks.toml> | --runner <tasks.ts>] [--input <data.json>] [--allow <list.toml>] [--retry <key>]
                    [--each <item.graphite> --key <field> [--seen <file.json>] [--until-passed <N>]]
 
 Runs the file's first graph as a durable workflow. Each node with a @task:NAME annotation runs
 that task through --runner, or through the command --tasks names for it, and state is checkpointed
-after every result, so running the same command again resumes where it stopped.
+after every result, so running the same command again resumes where it stopped. A node may carry
+@timeout:MS, a limit in milliseconds on each attempt of its task; without it a task has no limit.
 --input <data.json> is a JSON value every task receives as context.input. A resume must give the
 same input.
 With --tasks, the manifest's [tasks] keys are the allowed task names, so --allow needs only node_flags.
 --each <item.graphite> runs that graph once per item the file's graph ends with, as an array. --key names
-the item field that identifies it. --seen keeps the keys already started, so a second run skips them.
+the item field that identifies it. --seen keeps the keys already started, so a second run resumes them
+without running finished tasks again.
 --until-passed <N> stops starting items once N have ended on a passing stage.
+--retry <key> clears the stored error of the task with that key, so this run runs it again. The key is
+the one the run reported in its error. Not used with --each.
 --state defaults to <file stem>.state.json beside the file.
---durable is accepted for compatibility and does nothing: `run` is always durable.
 The runner is code that runs with your permissions. Use only runners you wrote or reviewed."
         }
         "debug" => {

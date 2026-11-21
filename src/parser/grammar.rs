@@ -47,7 +47,7 @@ pub(crate) fn parse(
         linking: false,
         keyword_offset: 0,
         choice: None,
-        fallback: false,
+        else_seen: false,
         pending_condition: None,
         error: None,
     };
@@ -70,6 +70,13 @@ pub(crate) fn parse(
 const OK: &[&str] = &["passed"];
 const FAILED: &[&str] = &["failed"];
 
+/// A choose block that has started: its name, the index of its first arm, and its offset.
+struct ChoiceHead {
+    name: StringId,
+    first_arm: usize,
+    offset: usize,
+}
+
 /// What the grammar's tasks share: the tokens, the graph being built, and what the last state read.
 struct Session<'a, 's> {
     tokens: Tokens<'a>,
@@ -85,9 +92,10 @@ struct Session<'a, 's> {
     linking: bool,
     /// Where the keyword of the line just read starts.
     keyword_offset: usize,
-    /// The choose block being read: its name, the arms it starts at, and its offset.
-    choice: Option<(StringId, usize, usize)>,
-    fallback: bool,
+    /// The choose block being read, if any.
+    choice: Option<ChoiceHead>,
+    /// Set once the choose block being read has its `else` arm, after which only its end may follow.
+    else_seen: bool,
     /// The condition of the `when` arm being read, or `None` for an `else` arm.
     pending_condition: Option<u32>,
     error: Option<ParseError>,
@@ -128,6 +136,29 @@ impl<'a, 's> Session<'a, 's> {
         self.builder
             .as_mut()
             .expect("a graph body is read only inside a graph")
+    }
+
+    /// Runs one line's builder call. A failure routes the run to `failed`.
+    fn line(
+        &mut self,
+        read: impl FnOnce(&mut Builder<'s>, &mut Tokens<'a>) -> Result<(), ParseError>,
+    ) -> &'static [&'static str] {
+        match self.with_builder(read) {
+            Ok(()) => OK,
+            Err(error) => self.fail(error),
+        }
+    }
+
+    /// Calls `read` with the graph being built and the tokens, and returns its result.
+    fn with_builder<T>(
+        &mut self,
+        read: impl FnOnce(&mut Builder<'s>, &mut Tokens<'a>) -> Result<T, ParseError>,
+    ) -> Result<T, ParseError> {
+        let builder = self
+            .builder
+            .as_mut()
+            .expect("a graph body is read only inside a graph");
+        read(builder, &mut self.tokens)
     }
 
     /// Another graph if there are tokens left, else the end.
@@ -291,52 +322,28 @@ impl<'a, 's> Session<'a, 's> {
     }
 
     fn default_line(&mut self) -> &'static [&'static str] {
-        let tokens = &mut self.tokens;
-        let builder = self
-            .builder
-            .as_mut()
-            .expect("a default is read inside a graph");
-        match builder.default(tokens) {
-            Ok(()) => OK,
-            Err(error) => self.fail(error),
-        }
+        self.line(|builder, tokens| builder.default(tokens))
     }
 
     fn node_line(&mut self) -> &'static [&'static str] {
-        let tokens = &mut self.tokens;
-        let builder = self
-            .builder
-            .as_mut()
-            .expect("a node is read inside a graph");
-        match builder.node(tokens) {
-            Ok(()) => OK,
-            Err(error) => self.fail(error),
-        }
+        self.line(|builder, tokens| builder.node(tokens))
     }
 
     fn edge_line(&mut self) -> &'static [&'static str] {
-        let tokens = &mut self.tokens;
-        let builder = self
-            .builder
-            .as_mut()
-            .expect("an edge is read inside a graph");
-        match builder.edge(tokens) {
-            Ok(()) => OK,
-            Err(error) => self.fail(error),
-        }
+        self.line(|builder, tokens| builder.edge(tokens))
     }
 
     /// The head of a choose block. Its arms follow in the `arms` state.
     fn choose(&mut self) -> &'static [&'static str] {
-        let tokens = &mut self.tokens;
-        let builder = self
-            .builder
-            .as_mut()
-            .expect("a choose is read inside a graph");
-        match builder.choice_head(tokens) {
+        match self.with_builder(|builder, tokens| builder.choice_head(tokens)) {
             Ok((name, offset)) => {
-                self.choice = Some((name, self.builder().graph.arms.len(), offset));
-                self.fallback = false;
+                let first_arm = self.builder().graph.arms.len();
+                self.choice = Some(ChoiceHead {
+                    name,
+                    first_arm,
+                    offset,
+                });
+                self.else_seen = false;
                 OK
             }
             Err(error) => self.fail(error),
@@ -356,25 +363,20 @@ impl<'a, 's> Session<'a, 's> {
         };
         self.keyword_offset = offset;
         let arms_so_far = self.builder().graph.arms.len();
-        let start = self.choice.map_or(0, |(_, start, _)| start);
+        let first_arm = self.choice.as_ref().map_or(0, |head| head.first_arm);
         match keyword {
-            "when" if !self.fallback => &["arm_when"],
-            "else" if !self.fallback && arms_so_far > start => {
-                self.fallback = true;
+            "when" if !self.else_seen => &["arm_when"],
+            "else" if !self.else_seen && arms_so_far > first_arm => {
+                self.else_seen = true;
                 &["arm_else"]
             }
-            "else" if !self.fallback => self.fail(ParseError::new(CHOOSE_NEEDS_WHEN, offset)),
+            "else" if !self.else_seen => self.fail(ParseError::new(CHOOSE_NEEDS_WHEN, offset)),
             _ => self.fail(ParseError::new(CHOOSE_ARM, offset)),
         }
     }
 
     fn when_arm(&mut self) -> &'static [&'static str] {
-        let tokens = &mut self.tokens;
-        let builder = self
-            .builder
-            .as_mut()
-            .expect("an arm is read inside a graph");
-        match builder.when_condition(tokens) {
+        match self.with_builder(|builder, tokens| builder.when_condition(tokens)) {
             Ok(condition) => {
                 self.pending_condition = Some(condition);
                 OK
@@ -390,41 +392,25 @@ impl<'a, 's> Session<'a, 's> {
 
     /// The arrow, tag and annotations of the arm being read.
     fn arm(&mut self) -> &'static [&'static str] {
-        let tokens = &mut self.tokens;
-        let builder = self
-            .builder
-            .as_mut()
-            .expect("an arm is read inside a graph");
         let condition = self.pending_condition;
         let offset = self.keyword_offset;
-        match builder.arm(tokens, condition, offset) {
-            Ok(()) => OK,
-            Err(error) => self.fail(error),
-        }
+        self.line(|builder, tokens| builder.arm(tokens, condition, offset))
     }
 
     fn arms_end(&mut self) -> &'static [&'static str] {
-        let Some((name, start, offset)) = self.choice.take() else {
+        let Some(ChoiceHead {
+            name,
+            first_arm,
+            offset,
+        }) = self.choice.take()
+        else {
             return self.fail(ParseError::new("a choose block ended without starting", 0));
         };
-        let tokens = &mut self.tokens;
-        let builder = self
-            .builder
-            .as_mut()
-            .expect("a choose is read inside a graph");
-        match builder.choice_end(tokens, name, start, offset) {
-            Ok(()) => OK,
-            Err(error) => self.fail(error),
-        }
+        self.line(|builder, tokens| builder.choice_end(tokens, name, first_arm, offset))
     }
 
     fn block_end(&mut self) -> &'static [&'static str] {
-        let tokens = &mut self.tokens;
-        let builder = self.builder.as_mut().expect("a body ends inside a graph");
-        match builder.body_end(tokens) {
-            Ok(()) => OK,
-            Err(error) => self.fail(error),
-        }
+        self.line(|builder, tokens| builder.body_end(tokens))
     }
 
     /// Finishes the graph, checks its structure, and stores it.

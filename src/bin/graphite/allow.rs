@@ -97,6 +97,8 @@ impl Allowlist {
     pub fn check(&self, graphs: &[CompiledGraph]) -> Result<(), String> {
         for graph in graphs {
             let graph_name = graph.text(graph.name);
+            let graph_place = || format!("graph {graph_name}");
+            self.check_span(graph, &graph.graph_annotations, &graph_place)?;
             for node in &graph.nodes {
                 let place = || format!("graph {graph_name}, node {}", graph.text(node.name));
                 self.check_span(graph, &node.annotations, &place)?;

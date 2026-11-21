@@ -8,8 +8,9 @@
 //   any side effect it has must dedupe on `key` in the external system.
 // - A task that throws is retried only on nodes flagged with the retry flag. A task that still
 //   fails is recorded as `error` and stops the run; the recorded error is not retried.
-// - A task that outlives `taskTimeoutMs` counts as a failed attempt. The runner gets an
-//   AbortSignal, but a runner that ignores it keeps running in the background.
+// - A task with a timeout (the node's `timeout` annotation, else `taskTimeoutMs`) that outlives it
+//   counts as a failed attempt. The runner gets an AbortSignal, but a runner that ignores it keeps
+//   running in the background.
 // - State lives in a `StateStore`. The run's position is a small snapshot. Each task result is
 //   appended once. A run holds in memory only the results of the stage it is on, so memory does
 //   not grow with the length of the run. Any other store must provide an atomic snapshot save, an
@@ -27,9 +28,14 @@ import type {
 	StoredOutcome,
 	StoredResult,
 } from './contract';
-import { MAX_DETAIL_CODE, MAX_DETAIL_DATA_BYTES, MAX_DETAIL_MESSAGE } from './contract';
+import {
+	MAX_DETAIL_CODE,
+	MAX_DETAIL_DATA_BYTES,
+	MAX_DETAIL_MESSAGE,
+	TIMEOUT_ANNOTATION,
+} from './contract';
 import { capMessage, isDetail, isOutcome, isRecord, normalizeReport } from './report';
-import { taskOf } from './graph-checks';
+import { declares, taskNames, taskOf } from './graph-checks';
 import { fileStore } from './store';
 
 export { MAX_DETAIL_CODE, MAX_DETAIL_DATA_BYTES, MAX_DETAIL_MESSAGE } from './contract';
@@ -38,7 +44,6 @@ export { fileStore } from './store';
 
 const DEFAULT_MAX_TRANSITIONS = 10_000_000;
 const DEFAULT_MAX_ATTEMPTS = 3;
-const DEFAULT_TASK_TIMEOUT_MS = 60_000;
 
 export interface TaskContext {
 	/** Stable for a stage visit, including across a crash. External systems dedupe on it. */
@@ -79,10 +84,11 @@ export interface StageFailure {
 	readonly detail?: Detail;
 }
 
-export type Runner = (
-	task: string,
-	context: TaskContext
-) => Promise<Outcome | RunnerReport>;
+/**
+ * Settles a task. It returns an outcome or a report; the engine checks the value with
+ * `normalizeReport`, and an invalid value fails the attempt.
+ */
+export type Runner = (task: string, context: TaskContext) => Promise<unknown>;
 
 /** Points where a test can stop the process. Each label names the write it follows. */
 export type Checkpoint =
@@ -148,8 +154,10 @@ export interface DurableOptions {
 	 * run must be given the same input: a different one is refused, so no task sees a mix of two.
 	 */
 	readonly input?: unknown;
-	/** Per attempt. Default 60 seconds. */
+	/** Per attempt, for every task without a `timeout` annotation. Default: no limit. */
 	readonly taskTimeoutMs?: number;
+	/** Annotation whose value sets a stage's timeout per attempt. Default `timeout`. */
+	readonly timeoutAnnotation?: string;
 	/** Attempts for a node flagged with the retry flag. Default 3. Other nodes get one. */
 	readonly maxAttempts?: number;
 	/** Transitions allowed per run, so a loop cannot run forever. Default 10 million. */
@@ -205,8 +213,15 @@ export async function retryFailedTask(
 ): Promise<void> {
 	const sequence = sequenceOf(key);
 	await store.withLock(() => {
-		if (store.loadRecords(sequence).get(key)?.outcome !== 'error') {
+		// From 0: loading from the key's own stage would drop the records of earlier stages, which
+		// a mistyped key must not do.
+		if (store.loadRecords(0).get(key)?.outcome !== 'error') {
 			throw new Error(`task "${key}" has no stored error`);
+		}
+		// A stage numbered before the saved position has been routed already. Clearing it now would
+		// claim a retry that never runs.
+		if (sequence < transitionsSaved(store)) {
+			throw new Error(`task "${key}": the run is past this stage, so its error cannot be retried`);
 		}
 		store.recordResult(key, sequence, undefined);
 	});
@@ -224,11 +239,26 @@ interface RunLike {
 	snapshot(): unknown;
 }
 
+/** The limits a run uses, with the defaults filled in. */
+interface Limits {
+	readonly maxAttempts: number;
+	readonly taskTimeoutMs: number | undefined;
+	readonly maxTransitions: number;
+}
+
+/** One stage of a run: its graph node, the task it runs, and the stage's key. */
+interface Stage {
+	readonly node: string;
+	readonly task: string;
+	readonly key: string;
+}
+
 interface Session {
 	readonly graph: GraphLike;
 	readonly run: RunLike;
 	readonly store: StateStore;
 	readonly options: DurableOptions;
+	readonly limits: Limits;
 	/** Results for the current stage only. Cleared when the stage is done. */
 	readonly results: Map<string, StoredResult>;
 	/** The most recent failed stage of this run. Saved with the snapshot. */
@@ -240,58 +270,88 @@ interface Session {
 /** Graphs already checked, with the options they were checked under. Keyed by graph, so it frees itself. */
 const checked = new WeakMap<object, string>();
 
-/** Runs the graph from its saved state, or from the entry if there is none. */
-export async function runDurable(options: DurableOptions): Promise<Result> {
-	const maxAttempts = options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
-	if (!Number.isInteger(maxAttempts) || maxAttempts < 1) {
+/** The limits from the options, with defaults filled in. Throws for a value no run can use. */
+function resolveLimits(options: DurableOptions): Limits {
+	const limits = {
+		maxAttempts: options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS,
+		taskTimeoutMs: options.taskTimeoutMs,
+		maxTransitions: options.maxTransitions ?? DEFAULT_MAX_TRANSITIONS,
+	};
+	if (!Number.isInteger(limits.maxAttempts) || limits.maxAttempts < 1) {
 		throw new RangeError(
-			`maxAttempts must be a positive integer, got ${maxAttempts}`
+			`maxAttempts must be a positive integer, got ${limits.maxAttempts}`
 		);
 	}
+	if (
+		limits.taskTimeoutMs !== undefined &&
+		(!Number.isFinite(limits.taskTimeoutMs) || limits.taskTimeoutMs <= 0)
+	) {
+		throw new RangeError(
+			`taskTimeoutMs must be a positive number of milliseconds, got ${limits.taskTimeoutMs}`
+		);
+	}
+	return limits;
+}
+
+/**
+ * Refuses a graph that cannot run with these options. The check depends on the graph and on two
+ * options, so a graph checked once with the same options is not walked again; a fan-out checks each
+ * item's run with the same graph.
+ */
+function checkGraph(graph: GraphLike, options: DurableOptions): void {
+	const timeouts = options.timeoutAnnotation ?? TIMEOUT_ANNOTATION;
+	const checkKey = JSON.stringify([options.taskAnnotation, options.outcomeConditions ?? null, timeouts]);
+	if (checked.get(graph) === checkKey) return;
+	for (let id = 0; id < graph.data.nodeCount; id++) {
+		stageTimeoutOf(graph, graph.nodeName(id), timeouts);
+	}
+	const outcome = options.outcomeConditions;
+	if (outcome === undefined) {
+		const [first] = taskNames(graph, options.taskAnnotation);
+		if (first !== undefined) {
+			throw new RangeError(
+				`the graph has tasks (node "${first.node}" among them), so it needs outcomeConditions naming its pass and fail conditions`
+			);
+		}
+	} else {
+		const names = [outcome.pass, outcome.fail, ...(outcome.error === undefined ? [] : [outcome.error])];
+		for (const name of names) {
+			if (!declares(graph, name)) {
+				throw new RangeError(
+					`the graph has no condition "${name}", which outcomeConditions names`
+				);
+			}
+		}
+	}
+	checked.set(graph, checkKey);
+}
+
+/**
+ * The timeout a node's annotation sets, in milliseconds, or undefined when it has none. Throws for a
+ * value that is not a whole number of milliseconds that setTimeout can count.
+ */
+function stageTimeoutOf(graph: GraphLike, node: string, annotation: string): number | undefined {
+	const entry = graph.nodeAnnotations(node).find((item) => item.key === annotation);
+	if (entry === undefined) return undefined;
+	const ms = Number(entry.value);
+	if (!/^[1-9]\d*$/.test(entry.value ?? '') || ms > 2_147_483_647) {
+		throw new RangeError(
+			`node "${node}" has ${annotation}:${entry.value ?? ''}; a timeout is a whole number of milliseconds, such as @${annotation}:30000`
+		);
+	}
+	return ms;
+}
+
+/** Runs the graph from its saved state, or from the entry if there is none. */
+export async function runDurable(options: DurableOptions): Promise<Result> {
+	const limits = resolveLimits(options);
 	const file = resolve(options.modulePath);
 	const { graph } = await import(file);
 	const { start, restore } = await import(
 		join(dirname(file), 'graphite.ts')
 	);
-	// The checks depend on the graph and on these two options, so a graph checked once with the same
-	// options is not walked again. A fan-out checks each item's run with the same graph.
-	const checkKey = JSON.stringify([options.taskAnnotation, options.outcomeConditions ?? null]);
-	if (checked.get(graph) !== checkKey) {
-		if (options.outcomeConditions === undefined) {
-			for (let id = 0; id < graph.data.nodeCount; id++) {
-				const node = graph.nodeName(id);
-				if (
-					taskOf(graph, node, options.taskAnnotation) !==
-					undefined
-				) {
-					throw new RangeError(
-						`the graph has tasks (node "${node}" among them), so it needs outcomeConditions naming its pass and fail conditions`
-					);
-				}
-			}
-		} else {
-			const names = [
-				options.outcomeConditions.pass,
-				options.outcomeConditions.fail,
-			];
-			if (options.outcomeConditions.error !== undefined) {
-				names.push(options.outcomeConditions.error);
-			}
-			for (const name of names) {
-				try {
-					graph.conditionId(name);
-				} catch {
-					throw new RangeError(
-						`the graph has no condition "${name}", which outcomeConditions names`
-					);
-				}
-			}
-		}
-		checked.set(graph, checkKey);
-	}
-	const limits = {
-		maxTransitions: options.maxTransitions ?? DEFAULT_MAX_TRANSITIONS,
-	};
+	checkGraph(graph, options);
+	const runOptions = { maxTransitions: limits.maxTransitions };
 	const store = options.store ?? fileStore(options.stateFile);
 	return store.withLock(async () => {
 		const saved = store.loadSnapshot();
@@ -307,14 +367,15 @@ export async function runDurable(options: DurableOptions): Promise<Result> {
 			);
 		}
 		const run: RunLike = resumed
-			? restore(graph, runSnapshot, limits)
-			: start(graph, limits);
+			? restore(graph, runSnapshot, runOptions)
+			: start(graph, runOptions);
 		const results = store.loadRecords(run.transitions);
 		const session: Session = {
 			graph,
 			run,
 			store,
 			options,
+			limits,
 			results,
 			lastFailure,
 			inputDigest,
@@ -351,7 +412,7 @@ async function runStage(session: Session): Promise<Result | undefined> {
 	let settled: StoredResult = { outcome: 'none' };
 	if (task !== undefined) {
 		try {
-			settled = await settleTask(session, node, task, key);
+			settled = await settleTask(session, { node, task, key });
 		} catch (error) {
 			if (!(error instanceof TaskFailure)) throw error;
 			return {
@@ -390,6 +451,7 @@ async function runStage(session: Session): Promise<Result | undefined> {
 	saveSnapshot(session, 'step-saved', key);
 	// The next stage has a later sequence, so nothing recorded for this one is needed again.
 	session.results.clear();
+	session.store.compactResults?.(run.transitions);
 	if (statusOf(run) === 'error') return errorResult(session, key);
 	if (taken === 0) {
 		return {
@@ -405,21 +467,28 @@ async function runStage(session: Session): Promise<Result | undefined> {
  * The task's result. A recorded result is returned without running the task again. Throws when
  * the task failed, either now or in an earlier run.
  */
-async function settleTask(
-	session: Session,
-	node: string,
-	task: string,
-	key: string
-): Promise<StoredResult> {
-	const { graph, options, results } = session;
+async function settleTask(session: Session, stage: Stage): Promise<StoredResult> {
+	const { options, results, limits } = session;
+	const { task, key } = stage;
+	const timeoutMs =
+		stageTimeoutOf(session.graph, stage.node, options.timeoutAnnotation ?? TIMEOUT_ANNOTATION) ??
+		limits.taskTimeoutMs;
 	const stored = results.get(key);
 	if (stored?.outcome === 'error') {
-		noteFailure(session, node, task, key, stored);
+		noteFailure(session, stage, stored);
+		options.onEvent?.({
+			type: 'task-settled',
+			task,
+			key,
+			outcome: 'error',
+			detail: stored.detail,
+			source: 'stored',
+		});
 		if (routesErrors(session)) return stored;
 		throw new TaskFailure(`task ${task} failed in an earlier run`);
 	}
 	if (stored !== undefined) {
-		noteFailure(session, node, task, key, stored);
+		noteFailure(session, stage, stored);
 		options.onEvent?.({
 			type: 'task-settled',
 			task,
@@ -439,7 +508,7 @@ async function settleTask(
 			}
 			const result: StoredResult = { outcome: done };
 			recordResult(session, key, result);
-			noteFailure(session, node, task, key, result);
+			noteFailure(session, stage, result);
 			options.onEvent?.({
 				type: 'task-settled',
 				task,
@@ -450,21 +519,14 @@ async function settleTask(
 			return result;
 		}
 	}
-	const attempts = graph.nodeFlags(node).includes(options.retryFlag)
-		? (options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS)
+	const attempts = session.graph.nodeFlags(stage.node).includes(options.retryFlag)
+		? limits.maxAttempts
 		: 1;
 	// Only the attempt's own failure is caught here. A checkpoint or a store failure is not a task error.
 	let report: RunnerReport | undefined;
 	let failure = '';
 	try {
-		report = await attempt(
-			options,
-			task,
-			key,
-			attempts,
-			session.lastFailure,
-			outputsOf(session)
-		);
+		report = await attempt(session, task, key, attempts, timeoutMs);
 	} catch (error) {
 		failure = errorText(error);
 	}
@@ -475,28 +537,27 @@ async function settleTask(
 		};
 		if (!routesErrors(session)) {
 			recordResult(session, key, result);
-			noteFailure(session, node, task, key, result);
+			noteFailure(session, stage, result);
 			throw new TaskFailure(`task ${task} failed: ${failure}`);
 		}
-		return finishTask(session, node, task, key, result, undefined);
+		return finishTask(session, stage, result, undefined);
 	}
 	options.onCheckpoint?.('task-done', key);
 	const result: StoredResult =
 		report.detail === undefined
 			? { outcome: report.outcome }
 			: { outcome: report.outcome, detail: report.detail };
-	return finishTask(session, node, task, key, result, report.output);
+	return finishTask(session, stage, result, report.output);
 }
 
 /** Saves the task's output, records its result, and reports it. Shared by every way a task settles. */
 function finishTask(
 	session: Session,
-	node: string,
-	task: string,
-	key: string,
+	stage: Stage,
 	result: StoredResult,
 	output: unknown
 ): StoredResult {
+	const { node, task, key } = stage;
 	if (output !== undefined) {
 		if (session.store.saveOutput === undefined) {
 			throw new Error(
@@ -507,7 +568,7 @@ function finishTask(
 		session.store.saveOutput(node, output);
 	}
 	recordResult(session, key, result);
-	noteFailure(session, node, task, key, result);
+	noteFailure(session, stage, result);
 	session.options.onEvent?.({
 		type: 'task-settled',
 		task,
@@ -533,18 +594,12 @@ function outputsOf(session: Session): OutputReader {
 }
 
 /** Makes `node` the run's last failure when the result is a failure. */
-function noteFailure(
-	session: Session,
-	node: string,
-	task: string,
-	key: string,
-	result: StoredResult
-): void {
+function noteFailure(session: Session, stage: Stage, result: StoredResult): void {
 	if (result.outcome !== 'fail' && result.outcome !== 'error') return;
 	session.lastFailure = {
-		node,
-		task,
-		key,
+		node: stage.node,
+		task: stage.task,
+		key: stage.key,
 		outcome: result.outcome,
 		...(result.detail === undefined ? {} : { detail: result.detail }),
 	};
@@ -558,7 +613,7 @@ function statusOf(run: RunLike): RunLike['status'] {
 function errorResult(session: Session, key: string): Result {
 	const error =
 		session.run.error === 'limit'
-			? `run reached maxTransitions (${session.options.maxTransitions ?? DEFAULT_MAX_TRANSITIONS})`
+			? `run reached maxTransitions (${session.limits.maxTransitions})`
 			: String(session.run.error);
 	return {
 		status: 'error',
@@ -645,26 +700,40 @@ function parseFailure(value: unknown): StageFailure | undefined {
 	};
 }
 
+/** The transition count the saved run has reached, or 0 when no snapshot is saved. */
+function transitionsSaved(store: StateStore): number {
+	const { runSnapshot } = splitSnapshot(store.loadSnapshot());
+	return isRecord(runSnapshot) && typeof runSnapshot.transitions === 'number'
+		? runSnapshot.transitions
+		: 0;
+}
+
 function sequenceOf(key: string): number {
 	return Number(key.slice(0, key.indexOf(':')));
 }
 
 async function attempt(
-	options: DurableOptions,
+	session: Session,
 	task: string,
 	key: string,
 	attempts: number,
-	failure: StageFailure | undefined,
-	outputs: OutputReader
+	timeoutMs: number | undefined
 ): Promise<RunnerReport> {
-	const timeoutMs = options.taskTimeoutMs ?? DEFAULT_TASK_TIMEOUT_MS;
+	const { options } = session;
+	const outputs = outputsOf(session);
 	let lastError: unknown = new Error('no attempts');
 	for (let number = 1; number <= attempts; number++) {
 		try {
 			return await runOnce(
 				options.runner,
 				task,
-				{ key, attempt: number, failure, input: options.input, outputs },
+				{
+					key,
+					attempt: number,
+					failure: session.lastFailure,
+					input: options.input,
+					outputs,
+				},
 				timeoutMs
 			);
 		} catch (error) {
@@ -684,18 +753,20 @@ async function attempt(
 async function runOnce(
 	runner: Runner,
 	task: string,
-	ids: {
+	context: {
 		key: string;
 		attempt: number;
 		failure: StageFailure | undefined;
 		input: unknown;
 		outputs: OutputReader;
 	},
-	timeoutMs: number
+	timeoutMs: number | undefined
 ): Promise<RunnerReport> {
 	const controller = new AbortController();
 	let timer: ReturnType<typeof setTimeout> | undefined;
+	// Without a timeout, this promise never settles and the runner alone decides.
 	const timeout = new Promise<never>((_, reject) => {
+		if (timeoutMs === undefined) return;
 		timer = setTimeout(() => {
 			controller.abort();
 			reject(new Error(`timed out after ${timeoutMs}ms`));
@@ -703,7 +774,7 @@ async function runOnce(
 	});
 	try {
 		const value: unknown = await Promise.race([
-			runner(task, { ...ids, signal: controller.signal }),
+			runner(task, { ...context, signal: controller.signal }),
 			timeout,
 		]);
 		return normalizeReport(value);

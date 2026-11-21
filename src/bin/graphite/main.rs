@@ -142,6 +142,7 @@ fn dispatch(command: Command) -> Result<(), String> {
             key,
             seen,
             until_passed,
+            retry,
         } => run::run(
             &input,
             state.as_deref(),
@@ -150,6 +151,7 @@ fn dispatch(command: Command) -> Result<(), String> {
                 tasks: tasks.as_deref(),
                 input_data: input_data.as_deref(),
                 allow: allow.as_deref(),
+                retry: retry.as_deref(),
                 fan_out: each
                     .as_deref()
                     .zip(key.as_deref())

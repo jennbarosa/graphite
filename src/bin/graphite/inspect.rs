@@ -29,7 +29,13 @@ pub fn describe_json(graphs: &[CompiledGraph]) -> String {
 
 fn graph_json(graph: &CompiledGraph) -> String {
     let pure = graph.kind == Kind::Pure;
-    let mut fields = vec![("name", json::quote(graph.text(graph.name)))];
+    let mut fields = vec![
+        ("name", json::quote(graph.text(graph.name))),
+        (
+            "annotations",
+            annotations_json(graph, &graph.graph_annotations),
+        ),
+    ];
     // The pure fields appear only on pure graphs, so a machine graph's JSON is unchanged.
     if pure {
         fields.push(("kind", json::quote(graph.kind.label())));
@@ -195,7 +201,11 @@ fn annotations_json(graph: &CompiledGraph, span: &Span) -> String {
 pub fn describe(graphs: &[CompiledGraph]) -> String {
     let mut lines = Vec::new();
     for graph in graphs {
-        lines.push(format!("graph {}", graph.text(graph.name)));
+        lines.push(format!(
+            "graph {}{}",
+            graph.text(graph.name),
+            annotations(graph, &graph.graph_annotations)
+        ));
         if graph.kind == Kind::Pure {
             describe_pure(graph, &mut lines);
             describe_choices(graph, &mut lines);

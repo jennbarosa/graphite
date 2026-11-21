@@ -38,7 +38,7 @@ fn text_view_of_a_machine_graph_lists_nodes_conditions_and_edges() {
 fn json_view_of_a_machine_graph_keeps_its_fields_and_omits_pure_ones() {
     let json = inspect(&["inspect", &example("examples/door.graphite"), "--json"]);
     assert!(
-        json.starts_with(r#"{"ok":true,"graphs":[{"name":"door","nodes":["#),
+        json.starts_with(r#"{"ok":true,"graphs":[{"name":"door","annotations":[],"nodes":["#),
         "{json}"
     );
     assert!(
@@ -61,7 +61,7 @@ fn json_view_of_a_machine_graph_keeps_its_fields_and_omits_pure_ones() {
 fn text_view_of_a_pure_graph_lists_enums_inputs_and_choices() {
     let text = inspect(&["inspect", &example("examples/combat.pure.graphite")]);
     assert!(
-        text.starts_with("graph combat\n  kind pure\n  enums\n"),
+        text.starts_with("graph combat @owner:ai\n  kind pure\n  enums\n"),
         "{text}"
     );
     assert!(text.contains("    Tactic = flee | hit | hold\n"), "{text}");

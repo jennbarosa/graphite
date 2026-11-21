@@ -9,6 +9,13 @@ export const MAX_DETAIL_CODE = 64;
 /** Largest `detail.data`, as UTF-8 JSON. */
 export const MAX_DETAIL_DATA_BYTES = 4_096;
 
+/** The node annotation whose value names a stage's task. */
+export const TASK_ANNOTATION = 'task';
+/** The node flag that allows a task to be retried. */
+export const RETRY_FLAG = 'retry';
+/** The node annotation whose value is a stage's timeout per attempt, in whole milliseconds. */
+export const TIMEOUT_ANNOTATION = 'timeout';
+
 export const OUTCOMES = ['pass', 'fail', 'none'] as const;
 export type Outcome = (typeof OUTCOMES)[number];
 /** A finished task's recorded result: its outcome, or `error` when every attempt threw. */
@@ -57,6 +64,11 @@ export interface StateStore {
 	loadOutput?(node: string): unknown;
 	loadSnapshot(): unknown;
 	loadRecords(since: number): Map<string, StoredResult>;
+	/**
+	 * Drops records before `since`, which belong to finished stages, so the store does not grow with
+	 * the run's length. Optional: a store that keeps only what it needs may leave it out.
+	 */
+	compactResults?(since: number): void;
 	saveSnapshot(snapshot: unknown): void;
 	recordResult(
 		key: string,

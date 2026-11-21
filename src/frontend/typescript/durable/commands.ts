@@ -1,7 +1,7 @@
 // Command-backed tasks. Each task runs as a command, instead of a function in a runner module.
 //
 // The command gets one JSON object on stdin:
-//   { "task", "key", "attempt", "input", "failure" }
+//   { "task", "key", "attempt", "input", "failure", "outputs" }
 // `input` is the run's input (null when there is none). `failure` is the run's last failed stage,
 // with its node, task, key, outcome and detail, or null. `outputs` is the directory where earlier
 // stages' outputs are kept, as `<node>.json`, or null.
@@ -11,7 +11,7 @@
 // Empty stdout with exit status 0 means `pass`. A nonzero exit status is a thrown attempt, so a
 // retry node tries again. Stderr goes to this process's stderr, where the run log also writes.
 import { spawn } from 'node:child_process';
-import type { Runner, RunnerReport, TaskContext } from './engine';
+import type { Runner, TaskContext } from './engine';
 
 /** The tasks the engine can run as commands: each task name, and the argv that runs it. */
 export interface CommandTable {
@@ -47,7 +47,7 @@ function runCommand(
 	cwd: string,
 	request: unknown,
 	signal: AbortSignal
-): Promise<RunnerReport> {
+): Promise<unknown> {
 	const [program = '', ...args] = argv;
 	return new Promise((resolve, reject) => {
 		const child = spawn(program, args, {
@@ -89,10 +89,13 @@ function runCommand(
 	});
 }
 
-/** The report a command printed. Empty output is a pass. Anything else must be one JSON object. */
-function reportOf(stdout: string): RunnerReport {
+/**
+ * The report a command printed. Empty output is a pass. Anything else must be one JSON value; the
+ * engine checks it with `normalizeReport`, so it is returned unchecked.
+ */
+function reportOf(stdout: string): unknown {
 	const text = stdout.trim();
 	if (text === '') return { outcome: 'pass' };
 	const value: unknown = JSON.parse(text);
-	return value as RunnerReport;
+	return value;
 }

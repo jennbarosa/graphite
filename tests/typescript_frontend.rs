@@ -7,6 +7,13 @@ use graphite::graph::CompiledGraph;
 #[path = "support/parse.rs"]
 mod fixture;
 
+#[allow(dead_code)]
+#[path = "support/bun.rs"]
+mod bun;
+#[allow(dead_code)]
+#[path = "support/tools.rs"]
+mod tools;
+
 const DEFAULT: TypeScript = TYPESCRIPT;
 
 /// Every module of every graph, each as (file name, text), in emission order.
@@ -187,7 +194,20 @@ fn export_modules_for_cross_language_checks() {
     let Some(directory) = std::env::var_os("GRAPHITE_CODEGEN_TEST_OUTPUT") else {
         return;
     };
-    let directory = std::path::Path::new(&directory);
+    write_fixtures(std::path::Path::new(&directory));
+}
+
+/// Runs the runtime's Bun tests against the fixtures this file writes, so `cargo test` covers them
+/// without the manual export step.
+#[test]
+fn the_runtime_passes_on_the_exported_modules() {
+    let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    write_fixtures(&manifest.join("target/ts-fixtures"));
+    bun::assert_bun_test_passes_with(manifest, "tests/typescript/runtime.test.ts", &[]);
+}
+
+/// Writes every fixture under `directory`, for the runtime's Bun tests to load.
+fn write_fixtures(directory: &std::path::Path) {
     let inputs = [
         ("door", include_str!("fixtures/parser/door.graphite")),
         ("walk", include_str!("fixtures/parser/walk.graphite")),

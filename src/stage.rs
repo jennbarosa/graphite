@@ -6,6 +6,9 @@ use std::collections::HashMap;
 
 use crate::graph::{CompiledGraph, index};
 
+/// The node annotation whose value names a stage's task.
+pub const TASK_ANNOTATION: &str = "task";
+
 /// Runs `graph` from its entry node. `lookup` turns each task name in the graph into the caller's
 /// task type, so a graph naming a task the caller does not know is an error. `task` gets each task
 /// node's task and returns the conditions that hold after it; every other condition is false for
@@ -106,7 +109,7 @@ impl<'g, T: Copy> Stepper<'g, T> {
 pub(crate) fn task_of(graph: &CompiledGraph, node: usize) -> Option<&str> {
     graph.annotations[index(&graph.nodes[node].annotations)]
         .iter()
-        .find(|entry| graph.text(entry.key) == "task")
+        .find(|entry| graph.text(entry.key) == TASK_ANNOTATION)
         .and_then(|entry| entry.value)
         .map(|value| graph.text(value))
 }
