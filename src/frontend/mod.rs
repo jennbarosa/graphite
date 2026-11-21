@@ -1,8 +1,11 @@
 //! Front ends turn checked graphs into host-facing output. The graph core knows nothing about
 //! any of them: each front end lives in its own folder and implements [`Frontend`].
 
+pub mod escape;
+pub mod lang;
 pub mod layered;
 pub mod layout;
+pub mod names;
 pub mod registry;
 pub mod rust;
 pub mod typescript;
@@ -47,4 +50,7 @@ pub trait Frontend {
 
     /// The file name of the runtime, which every index imports.
     fn runtime_file_name(&self) -> &'static str;
+
+    /// The extension of this front end's files, without the dot. Inference matches on it.
+    fn extension(&self) -> &'static str;
 }

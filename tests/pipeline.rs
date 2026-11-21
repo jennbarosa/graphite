@@ -187,6 +187,10 @@ impl Frontend for FailingOn {
         TYPESCRIPT.file_name(graph, module)
     }
 
+    fn extension(&self) -> &'static str {
+        TYPESCRIPT.extension()
+    }
+
     fn emit_module(
         &self,
         graph: &CompiledGraph,

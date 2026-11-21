@@ -98,7 +98,7 @@ impl<S: Syntax, const SHIFT: u32> Frontend for Layered<S, SHIFT> {
             Module::Nodes(chunk) => node_stem(stem, chunk),
             Module::Choices(chunk) => choice_stem(stem, chunk),
         };
-        format!("{file}.{}", self.syntax.extension())
+        format!("{file}.{}", self.extension())
     }
 
     fn emit_module(
@@ -128,5 +128,9 @@ impl<S: Syntax, const SHIFT: u32> Frontend for Layered<S, SHIFT> {
 
     fn runtime_file_name(&self) -> &'static str {
         self.syntax.runtime_file_name()
+    }
+
+    fn extension(&self) -> &'static str {
+        self.syntax.extension()
     }
 }

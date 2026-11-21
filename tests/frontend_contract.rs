@@ -15,6 +15,10 @@ impl Frontend for StringTable {
         "strings.txt".into()
     }
 
+    fn extension(&self) -> &'static str {
+        "txt"
+    }
+
     fn emit_module(
         &self,
         graph: &CompiledGraph,
