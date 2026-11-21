@@ -45,25 +45,33 @@ This project is indexed by GitNexus as **graphite** (4447 symbols, 10121 relatio
 
 ## Verification
 
-Run these before calling a change done or committing. They mirror the CI gates in `.github/workflows/ci.yml`, with the `.graphite` fixture and integration tests named explicitly so they are never skipped.
+Run these steps in order before calling a change done or committing. Each step must pass before the next one starts. They mirror the CI gates in `.github/workflows/ci.yml`.
 
-1. `cargo fmt --check`
-2. `cargo clippy --all-targets -- -D warnings`
-3. Generated rule data is current:
-   ```sh
-   for rule in lex grammar structure build directive; do
-     cargo run --quiet --example bootstrap_dump -- "src/graphs/$rule.graphite" "src/generated/$rule.rs"
-   done
-   git diff --exit-code -- src/generated
-   ```
-4. `.graphite` fixtures and integration tests:
-   ```sh
-   cargo test --test parser_fixtures --test examples --test real_workflows \
-     --test front_end_equivalence --test chain_equivalence \
-     --test pure_frontends --test pure_graphs --test cli_pure
-   ```
-   This list covers the targets that load the fixtures in `tests/fixtures` and the files in `examples`. Step 5 runs every target, including the CLI tests that also touch `.graphite` files. When you add a fixture-driven test target, add it to this list.
-5. `cargo test` (the full suite).
-6. `cargo test --no-default-features`.
+1. **Format and index.**
+   a. `cargo fmt` formats every file. Do not stop at `cargo fmt --check`; let the formatter write its changes.
+   b. Re-index the graph: `node .gitnexus/run.cjs analyze --index-only`.
+2. **Lint and unit tests.**
+   a. `cargo clippy --all-targets -- -D warnings`
+   b. Generated rule data is current:
+      ```sh
+      for rule in lex grammar structure build directive; do
+        cargo run --quiet --example bootstrap_dump -- "src/graphs/$rule.graphite" "src/generated/$rule.rs"
+      done
+      git diff --exit-code -- src/generated
+      ```
+   c. All unit tests: `cargo test --lib --bins`
+3. **Integration tests and `.graphite` fixtures.**
+   a. The fixture-driven targets, named explicitly so they are never skipped:
+      ```sh
+      cargo test --test parser_fixtures --test examples --test real_workflows \
+        --test front_end_equivalence --test chain_equivalence \
+        --test pure_frontends --test pure_graphs --test cli_pure
+      ```
+      When you add a fixture-driven test target, add it to this list.
+   b. All integration tests: `cargo test` (the full suite; it includes every target above and the CLI tests that also touch `.graphite` files).
+   c. `cargo test --no-default-features`
+4. **Graph check and commit**, only when steps 1 to 3 all pass.
+   a. `node .gitnexus/run.cjs detect-changes --scope all --repo .`. Report the risk level. `partial: true` or `truncated: true` is not clean; re-run it.
+   b. Commit the changed files with a message that describes the change. **Do not add a `Co-Authored-By` trailer or any other co-author line.**
 
 A failing gate is a failing change. Report the output, not a summary of it.
