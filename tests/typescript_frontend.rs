@@ -42,7 +42,8 @@ fn emitted_text<const SHIFT: u32>(frontend: &TypeScript<SHIFT>, source: &str) ->
 
 #[test]
 fn registry_lists_typescript_and_rust_with_no_unknown_fallback() {
-    assert_eq!(registry::TARGETS.len(), 2);
+    // TypeScript, Rust and PureScript: a pure target is one more entry in `TARGETS`.
+    assert_eq!(registry::TARGETS.len(), 3);
     let target = registry::lookup("typescript").unwrap();
     assert_eq!(target.key, "typescript");
     assert!(registry::lookup("TypeScript").is_none());

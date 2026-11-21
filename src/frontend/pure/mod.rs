@@ -4,6 +4,7 @@
 //! are written here, so a new language is one `Language`, one `PureSyntax`, and one target.
 
 pub mod decision;
+pub mod purescript;
 #[cfg(test)]
 mod tests;
 
@@ -97,7 +98,7 @@ fn check_names(syntax: &dyn PureSyntax, decisions: &Decisions) -> io::Result<()>
         generated: &generated,
     };
     for (role, name) in &generated {
-        claims.claim(*role, name, name, None)?;
+        claims.claim_spelled(*role, name, name, None)?;
     }
     claims.claim(Role::Module, decisions.name, decisions.name, None)?;
     for item in &decisions.enums {
@@ -132,12 +133,24 @@ impl<'a> Claims<'a> {
         holder: &'a str,
         owner: Option<&'a str>,
     ) -> io::Result<()> {
+        let spelled = self.language.ident(role, name);
+        self.claim_spelled(role, &spelled, holder, owner)
+    }
+
+    /// [`Claims::claim`] for a name that is already spelled, such as a generated one.
+    fn claim_spelled(
+        &mut self,
+        role: Role,
+        spelled: &str,
+        holder: &'a str,
+        owner: Option<&'a str>,
+    ) -> io::Result<()> {
         let namespace = self.language.namespace(role);
         let key = match namespace {
             Namespace::Owner => (namespace, owner),
             Namespace::Module(_) => (namespace, None),
         };
-        let spelled = self.language.ident(role, name);
+        let spelled = spelled.to_owned();
         self.names
             .insert(key, spelled.clone(), holder)
             .map_err(|first| {

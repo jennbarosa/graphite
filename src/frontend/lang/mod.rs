@@ -3,6 +3,7 @@
 //! keywords, and how each kind of name is spelled and which namespace it lives in. The loops, the
 //! keyword lookup and the annotation literal are provided methods, so no language copies them.
 
+pub mod purescript;
 pub mod rust_keywords;
 
 use std::io::{self, Write};

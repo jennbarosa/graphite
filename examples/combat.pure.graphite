@@ -1,0 +1,22 @@
+@!frontend:purescript
+graph combat @owner:ai
+  default @log:off
+  enum Tactic flee hit hold @ui:icon
+  enum Dir @axis:compass
+    north @deg:0
+    east  @deg:90
+    south @deg:180
+    west  @deg:270
+
+  input homeEast : bool
+  input lowHealth : bool @source:stats
+  input dir : Dir
+
+  choose tactic : Tactic @tick:fast
+    when lowHealth -> flee @anim:run @log:on
+    when homeEast  -> hit  @anim:swing
+    else           -> hold
+
+  choose facing : Dir
+    when dir:east -> east
+    else          -> north

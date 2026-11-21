@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 
+use super::pure::purescript;
 use super::{Frontend, rust, typescript};
 use crate::kind::Kind;
 
@@ -31,10 +32,13 @@ pub struct Target {
 }
 
 /// The only shared registration list. Each backend owns its registration.
-pub static TARGETS: &[Target] = &[typescript::TARGET, rust::TARGET];
+pub static TARGETS: &[Target] = &[typescript::TARGET, rust::TARGET, purescript::TARGET];
 
 /// The front end used when `--frontend` is not given.
 pub const DEFAULT_FRONT_END: &str = "typescript";
+
+/// The front end used for a pure file when `--frontend` is not given.
+pub const DEFAULT_PURE_FRONT_END: &str = "purescript";
 
 /// The front end whose runtime runs `graphite run`. The durable engine is written for it alone.
 pub const DURABLE_FRONT_END: &str = "typescript";
