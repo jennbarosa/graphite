@@ -69,5 +69,10 @@ That option belongs to another command. The message names both.
 ## Tests
 
 **`cannot run "tsc"`**
-The type-check test needs TypeScript 5 or later. Install it, or set `GRAPHITE_TSC` to its path.
+The type-check test needs TypeScript. Run `scripts/setup-tools.sh` to install the pinned
+version into `tools/`, or set `GRAPHITE_TSC` to your own `tsc`.
 `graphite doctor` reports whether it found `tsc`, and where.
+
+**`cannot run spago`**
+The PureScript test builds the generated modules with `spago` and `purs`. Run
+`scripts/setup-tools.sh`, or set `GRAPHITE_SPAGO` and `GRAPHITE_PURS`. Node.js 22.5 or newer is required.

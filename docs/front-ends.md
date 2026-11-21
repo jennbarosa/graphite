@@ -98,6 +98,9 @@ names the file.
    extension, its string escape rule, its `none` and `some` literals, its keywords, `spell` (one
    of the case converters `pascal`, `camel` or `snake`), `escape_keyword`, and `namespace`. The
    string, identifier and annotation literals are provided methods, so no language copies them.
+   Two optional methods: `is_valid` refuses a spelling the language cannot use (the default
+   accepts any plain identifier), and `imported` on `PureSyntax` lists the names the module
+   imports, so a source name cannot clash with them.
 2. **`src/frontend/pure/<language>.rs`**: a `PureSyntax` impl with the layout (`module`) and the
    names the layout generates (`generated`), so the collision check sees them. Its `Target` goes
    next to it.

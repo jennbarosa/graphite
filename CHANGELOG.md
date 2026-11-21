@@ -12,11 +12,21 @@ change the interface.
 - **Breaking:** a dotted file name now picks its front end from the infix. `door.rs.graphite`
   builds Rust, where it used to build TypeScript, with no warning. Pass `--frontend typescript` or add
   `@!frontend:typescript` to keep the old output. A name such as `my.walk.graphite` with no known
-  infix is now an error unless a flag or directive names the front end. See the
+  infix is now an error for `compile` and `check` unless a flag or directive names the front end.
+  Other commands ignore the infix. See the
   [CLI reference](docs/cli.md#choosing-the-front-end-and-mode).
 - `check` and `compile` pick the front end from the file's name and directives when `--frontend` is
   not given. The default is still `typescript` for machine files.
 - The allowlist's `[annotations]` check now covers enum, member, input and choose lines.
+- **Breaking (library):** `Frontend` gains a required `extension` method. `Schema` gains a `pure`
+  field, so a struct literal needs `..Default::default()`. `CompiledGraph`, `Choice` and the pure
+  data types gain fields. `pipeline::build::Request` takes a `select` callback in place of
+  `front_end` and `pure`, and the file is read once.
+- `check` now renders every output, so it reports the same name clashes as `compile`. A clash
+  found while rendering, such as two machine nodes that become one Rust constant, is now reported
+  with the line of its graph, and it is refused before anything is written.
+- A pure name that PureScript cannot use, or that clashes with a name the module imports (such as
+  `Nothing` or `otherwise`), is refused with the line of the declaration that causes it.
 
 - Graph files now end in `.graphite` instead of `.dsl`. The examples, fixtures and bundled graph
   descriptions use the new extension. The language itself is unchanged.

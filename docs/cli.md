@@ -74,7 +74,7 @@ directive; a name ending in `.pure.graphite`; a target that is pure (`--frontend
 | `combat.pure.graphite` | `purescript` | pure |
 | `combat.purs.graphite` | `purescript` | pure |
 | `combat.ts.pure.graphite` | error: no pure front end writes `.ts` | |
-| `my.walk.graphite` | error: no front end for the infix `.walk` | |
+| `my.walk.graphite` | error: no front end for the infix `.walk` (`compile` and `check` only) | |
 
 Two signals that disagree are an error that names both sides, for example
 "pure (by `--pure`), but `typescript` is a machine front end (pure front ends: purescript)". A

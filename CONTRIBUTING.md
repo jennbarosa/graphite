@@ -15,20 +15,24 @@ in annotations, front ends, or hosts.
 You need:
 
 - Rust 1.88 or newer (edition 2024)
-- [Bun](https://bun.sh) 1.x for the TypeScript runtime and its tests. CI pins 1.4.4
-- TypeScript (`tsc`) 5 or later, for the type-check test. CI uses 6.0.3. Set
-  `GRAPHITE_TSC` to its path, or put it on your `PATH`.
+- Node.js 22.5 or newer, npm, `curl`, `unzip` and `tar`
 
-Build and run the tests from the repository root:
+Then install the pinned test tools once, and build and test from the repository root:
 
 ```sh
+scripts/setup-tools.sh   # Bun 1.4.4, PureScript 0.15.16 (purs), spago 1.0.5, TypeScript 6.0.3 (tsc)
 cargo build
 cargo test
 cargo test --no-default-features   # without the SIMD lexer
 ```
 
-Several tests run TypeScript with Bun and fail with a clear message when Bun or `tsc`
-is missing. `graphite doctor` reports which front ends can run here, and whether `tsc` is found:
+`scripts/setup-tools.sh` puts the tools in `tools/` (ignored by git), checks every download
+against its SHA-256 digest, and installs the npm packages from `tools/package-lock.json`.
+The tests find them there, so nothing else needs to be on your `PATH`. To use your own copy of a
+tool instead, set its variable: `GRAPHITE_BUN`, `GRAPHITE_TSC`, `GRAPHITE_PURS` or
+`GRAPHITE_SPAGO`. The setup script supports Linux (x86_64, arm64) and macOS (x86_64, arm64).
+
+`graphite doctor` reports which front ends can run here, and whether `tsc` is found:
 
 ```sh
 cargo run -- doctor
