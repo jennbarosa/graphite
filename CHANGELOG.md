@@ -24,6 +24,12 @@ change the interface.
 
 ### Changed
 
+- The SIMD lexer and its `lexer-simd` feature are removed. The scalar scan is the only path. On the
+  medium lexer benchmark the SIMD scan ran in 8.03 ms and the scalar scan in 8.19 ms, about 2% apart.
+- **Breaking:** a file is pure only when its front end is pure: `@!frontend:purescript`, a `.purs`
+  name, or `--frontend purescript`. The `--pure` flag, the `@!pure` directive, `@!frontend:pure` and
+  a `.pure` name no longer make a file pure. Rename `x.pure.graphite` to `x.purs.graphite`.
+- **Breaking (library):** the `graphite::arena` module is removed. Nothing in the library used it.
 - **Breaking:** a dotted file name now picks its front end from the infix. `door.rs.graphite`
   builds Rust, where it used to build TypeScript, with no warning. Pass `--frontend typescript` or add
   `@!frontend:typescript` to keep the old output. A name such as `my.walk.graphite` with no known

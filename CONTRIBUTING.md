@@ -15,7 +15,7 @@ in annotations, front ends, or hosts.
 You need:
 
 - Rust 1.88 or newer (edition 2024)
-- Node.js 22.5 or newer, npm, `curl`, `unzip` and `tar`
+- Python 3, and Node.js 22.5 or newer with npm, for the tool installer
 
 Then install the pinned test tools once, and build and test from the repository root:
 
