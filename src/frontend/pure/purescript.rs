@@ -142,6 +142,16 @@ fn generated_name<'d>(role: Role, name: &str, source: Option<Source<'d>>) -> Gen
     }
 }
 
+/// Pushes the name when the layout writes it. An absent name is not generated.
+fn push_optional<'d>(
+    out: &mut Vec<Generated<'d>>,
+    role: Role,
+    name: Option<&str>,
+    source: Option<Source<'d>>,
+) {
+    out.extend(name.map(|name| generated_name(role, name, source)));
+}
+
 impl PureSyntax for PureScriptSyntax {
     fn language(&self) -> &'static dyn Language {
         &PURESCRIPT
@@ -159,33 +169,35 @@ impl PureSyntax for PureScriptSyntax {
         }
         for item in &layout.enums {
             let source = Some(item.source);
-            out.extend(
-                item.enum_annotations
-                    .as_deref()
-                    .map(|name| generated_name(Role::Constant, name, source)),
+            push_optional(
+                &mut out,
+                Role::Constant,
+                item.enum_annotations.as_deref(),
+                source,
             );
-            out.extend(
-                item.member_annotations
-                    .as_deref()
-                    .map(|name| generated_name(Role::Function, name, source)),
+            push_optional(
+                &mut out,
+                Role::Function,
+                item.member_annotations.as_deref(),
+                source,
             );
         }
         for input in &layout.inputs {
             let source = Some(input.source);
-            out.extend(
-                input
-                    .annotations
-                    .as_deref()
-                    .map(|name| generated_name(Role::Constant, name, source)),
+            push_optional(
+                &mut out,
+                Role::Constant,
+                input.annotations.as_deref(),
+                source,
             );
         }
         for choice in &layout.choices {
             let source = Some(choice.source);
-            out.extend(
-                choice
-                    .annotations
-                    .as_deref()
-                    .map(|name| generated_name(Role::Constant, name, source)),
+            push_optional(
+                &mut out,
+                Role::Constant,
+                choice.annotations.as_deref(),
+                source,
             );
             out.extend(
                 choice
