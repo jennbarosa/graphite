@@ -26,7 +26,6 @@ pub fn resolve(
     directives: &Directives<'_>,
     output: Output,
 ) -> Result<Chosen, String> {
-    let directive_pure = directives.frontend_is_pure();
     // A directive loses to the flag, so it is ignored completely unless it is `@!frontend:pure`,
     // which names no target and always counts.
     let explicit = match (flag_front_end, directives.frontend) {
@@ -42,11 +41,9 @@ pub fn resolve(
         }),
         _ => None,
     };
-    let explicit_target = match &explicit {
-        Some(named) => Some(lookup(named, name)?),
-        None => None,
-    };
-    let explicit_pure = explicit_target.is_some_and(|target| target.frontend.kind() == Kind::Pure);
+    let explicit = explicit
+        .map(|named| lookup(&named, name).map(|target| (named, target)))
+        .transpose()?;
     // A front end named by a flag or directive decides the front end, so the infix is ignored.
     let infix = match &explicit {
         Some(_) => None,
@@ -57,38 +54,35 @@ pub fn resolve(
         name,
         flag_pure,
         directives,
-        directive_pure,
         explicit
             .as_ref()
-            .filter(|_| explicit_pure)
-            .map(|named| named.spelled.as_str()),
+            .filter(|(_, target)| target.frontend.kind() == Kind::Pure)
+            .map(|(named, _)| named.spelled.as_str()),
         infix,
     );
 
-    let target = match (&explicit, explicit_target) {
-        (Some(named), Some(target)) => {
-            let key = named.key;
+    let target = match (explicit, infix) {
+        (Some((named, target)), _) => {
             if let Some(reason) = &reason
                 && target.frontend.kind() == Kind::Machine
             {
                 return Err(format!(
-                    "pure ({reason}), but `{key}` is a machine front end (pure front ends: {})",
+                    "pure ({reason}), but `{}` is a machine front end (pure front ends: {})",
+                    named.key,
                     pure_front_ends()
                 ));
             }
             target
         }
-        _ => match infix {
-            Some(infix) if output == Output::Written => {
-                infix_target(name, infix, reason.as_deref())?
-            }
-            _ => registry::lookup(if reason.is_some() {
-                registry::DEFAULT_PURE_FRONT_END
-            } else {
-                registry::DEFAULT_FRONT_END
-            })
-            .expect("the default front end is registered"),
-        },
+        (None, Some(infix)) if output == Output::Written => {
+            infix_target(name, infix, reason.as_deref())?
+        }
+        (None, _) => registry::lookup(if reason.is_some() {
+            registry::DEFAULT_PURE_FRONT_END
+        } else {
+            registry::DEFAULT_FRONT_END
+        })
+        .expect("the default front end is registered"),
     };
     Ok(Chosen {
         target,
@@ -118,7 +112,6 @@ fn pure_reason(
     name: &str,
     flag_pure: bool,
     directives: &Directives<'_>,
-    directive_pure: bool,
     explicit_pure: Option<&str>,
     infix: Option<&str>,
 ) -> Option<String> {
@@ -128,7 +121,7 @@ fn pure_reason(
     if directives.pure.is_some() {
         return Some("by `@!pure`".to_owned());
     }
-    if directive_pure {
+    if directives.frontend_is_pure() {
         return Some("by `@!frontend:pure`".to_owned());
     }
     if name.ends_with(".pure.graphite") {
@@ -138,12 +131,8 @@ fn pure_reason(
         return Some(format!("because of {spelled}"));
     }
     if let Some(infix) = infix {
-        let targets: Vec<&Target> = targets_with_extension(infix).collect();
-        if !targets.is_empty()
-            && targets
-                .iter()
-                .all(|target| target.frontend.kind() == Kind::Pure)
-        {
+        let mut targets = targets_with_extension(infix).peekable();
+        if targets.peek().is_some() && targets.all(|target| target.frontend.kind() == Kind::Pure) {
             return Some(format!("by its `.{infix}` infix"));
         }
     }
