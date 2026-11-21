@@ -42,3 +42,28 @@ This project is indexed by GitNexus as **graphite** (4447 symbols, 10121 relatio
 | Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus-cli/SKILL.md` |
 
 <!-- gitnexus:end -->
+
+## Verification
+
+Run these before calling a change done or committing. They mirror the CI gates in `.github/workflows/ci.yml`, with the `.graphite` fixture and integration tests named explicitly so they are never skipped.
+
+1. `cargo fmt --check`
+2. `cargo clippy --all-targets -- -D warnings`
+3. Generated rule data is current:
+   ```sh
+   for rule in lex grammar structure build directive; do
+     cargo run --quiet --example bootstrap_dump -- "src/graphs/$rule.graphite" "src/generated/$rule.rs"
+   done
+   git diff --exit-code -- src/generated
+   ```
+4. `.graphite` fixtures and integration tests:
+   ```sh
+   cargo test --test parser_fixtures --test examples --test real_workflows \
+     --test front_end_equivalence --test chain_equivalence \
+     --test pure_frontends --test pure_graphs --test cli_pure
+   ```
+   This list covers the targets that load the fixtures in `tests/fixtures` and the files in `examples`. Step 5 runs every target, including the CLI tests that also touch `.graphite` files. When you add a fixture-driven test target, add it to this list.
+5. `cargo test` (the full suite).
+6. `cargo test --no-default-features`.
+
+A failing gate is a failing change. Report the output, not a summary of it.
