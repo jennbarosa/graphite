@@ -221,7 +221,7 @@ fn check_plan(
         });
     }
     // Lowercased output name -> owning graph, or `None` for the runtime.
-    let mut owners: HashMap<String, Option<usize>> = HashMap::new();
+    let mut owners: Owners = HashMap::new();
     if let Some(runtime) = runtime {
         owners.insert(runtime.to_lowercase(), None);
     }
@@ -241,32 +241,54 @@ fn check_plan(
         for module in frontend.modules(graph) {
             let file = frontend.file_name(graph, module);
             let existing = exists(&file);
-            let message = if existing {
-                format!("graph `{name}` would overwrite the existing file `{file}`")
+            let clash = if existing {
+                Some(format!(
+                    "graph `{name}` would overwrite the existing file `{file}`"
+                ))
             } else {
-                let key = file.to_lowercase();
-                match owners.get(&key) {
-                    None => {
-                        owners.insert(key, Some(index));
-                        continue;
-                    }
-                    Some(Some(owner)) if *owner == index => continue,
-                    Some(None) => {
-                        format!("graph `{name}` would overwrite the runtime file `{runtime}`")
-                    }
-                    Some(Some(other)) => {
-                        let other = graphs[*other].text(graphs[*other].name);
-                        format!("graph `{name}` writes `{file}`, the same file as graph `{other}`")
-                    }
-                }
+                claim_output(&mut owners, graphs, index, &file, runtime).err()
             };
-            return Err(Collision {
-                existing,
-                ..Collision::new(message, graph.offset)
-            });
+            if let Some(message) = clash {
+                return Err(Collision {
+                    existing,
+                    ..Collision::new(message, graph.offset)
+                });
+            }
         }
     }
     Ok(())
+}
+
+/// Lowercased output name -> owning graph, or `None` for the runtime.
+type Owners = HashMap<String, Option<usize>>;
+
+/// Records that graph `index` writes `file`. Returns why it cannot: another graph or the runtime
+/// already writes that name, ignoring case. Writing the same file twice for one graph is fine.
+fn claim_output(
+    owners: &mut Owners,
+    graphs: &[CompiledGraph],
+    index: usize,
+    file: &str,
+    runtime: &str,
+) -> Result<(), String> {
+    let name = graphs[index].text(graphs[index].name);
+    let key = file.to_lowercase();
+    match owners.get(&key) {
+        None => {
+            owners.insert(key, Some(index));
+            Ok(())
+        }
+        Some(Some(owner)) if *owner == index => Ok(()),
+        Some(None) => Err(format!(
+            "graph `{name}` would overwrite the runtime file `{runtime}`"
+        )),
+        Some(Some(other)) => {
+            let other = graphs[*other].text(graphs[*other].name);
+            Err(format!(
+                "graph `{name}` writes `{file}`, the same file as graph `{other}`"
+            ))
+        }
+    }
 }
 
 /// Writes the runtime and every module of every graph into `directory`, and returns the paths
