@@ -14,6 +14,8 @@ use crate::stage;
 
 /// Every directive line starts with this, at column 0.
 const PREFIX: &str = "@!";
+/// The byte-order mark some editors write first. It is skipped, so a directive on line 1 still counts.
+const BOM: &str = "\u{feff}";
 
 const UNKNOWN: &str = "unknown directive: the directives are `@!pure` and `@!frontend:KEY`";
 const TAKES_NO_VALUE: &str = "`@!pure` takes no value";
@@ -56,7 +58,11 @@ fn directive_graph() -> &'static CompiledGraph {
 pub fn preprocess(source: &str) -> Result<Directives<'_>, ParseError> {
     let mut reader = Reader {
         source,
-        cursor: 0,
+        cursor: if source.starts_with(BOM) {
+            BOM.len()
+        } else {
+            0
+        },
         pure: None,
         frontend: None,
         body: 0,

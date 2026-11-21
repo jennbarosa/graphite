@@ -11,7 +11,7 @@ use crate::graph::CompiledGraph;
 use crate::interner::StringId;
 use crate::kind::{Kind, Line};
 use crate::lexer::{Lexer, TokenKind};
-use crate::parser::compiler::{Builder, CHOOSE_ARM, GRAPH_FORM};
+use crate::parser::compiler::{Builder, CHOOSE_ARM, CHOOSE_NEEDS_WHEN, GRAPH_FORM};
 use crate::parser::tokens::Tokens;
 use crate::parser::{Capacity, GRAPH_KEYWORD, ParseError, Schema, structure};
 use crate::stage::Stepper;
@@ -363,6 +363,7 @@ impl<'a, 's> Session<'a, 's> {
                 self.fallback = true;
                 &["arm_else"]
             }
+            "else" if !self.fallback => self.fail(ParseError::new(CHOOSE_NEEDS_WHEN, offset)),
             _ => self.fail(ParseError::new(CHOOSE_ARM, offset)),
         }
     }

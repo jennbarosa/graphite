@@ -40,6 +40,14 @@ fn a_file_of_only_directives_has_an_empty_body_at_its_end() {
 }
 
 #[test]
+fn a_byte_order_mark_before_the_first_directive_is_skipped() {
+    let source = format!("\u{feff}@!pure\n{GRAPH}");
+    let directives = preprocess(&source).unwrap();
+    assert_eq!(directives.pure, Some(3));
+    assert_eq!(directives.body, source.find("graph").unwrap());
+}
+
+#[test]
 fn an_unknown_directive_is_refused_on_its_line() {
     let error = preprocess(&format!("@!puer\n{GRAPH}")).unwrap_err();
     assert_eq!(error.offset, 0);

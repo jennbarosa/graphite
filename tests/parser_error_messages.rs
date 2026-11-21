@@ -79,7 +79,13 @@ const CASES: &[(&str, &str, bool, &str)] = &[
         "arm_without_else_or_when",
         "graph g\n  node a\n  choose c\n    else -> \n",
         false,
-        "expected `when` or a final `else` arm",
+        "choose needs at least one `when` arm",
+    ),
+    (
+        "choose_opens_with_else",
+        "graph g\n  node a end\n  choose c\n    else -> a\n",
+        false,
+        "choose needs at least one `when` arm",
     ),
     (
         "node_declared_twice",

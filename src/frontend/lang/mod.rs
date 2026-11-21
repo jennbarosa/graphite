@@ -158,17 +158,9 @@ pub fn camel(name: &str) -> String {
     out
 }
 
-/// `homeEast` and `home-east` become `home_east`, with a leading `_` before a digit.
-pub fn snake(name: &str) -> String {
-    let mut out = String::new();
-    digit_guard(name, &mut out);
-    out.push_str(&words(name).join("_"));
-    out
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{camel, digit_guard, is_plain_ident, pascal, snake};
+    use super::{camel, digit_guard, is_plain_ident, pascal};
 
     #[test]
     fn digit_guard_prefixes_only_a_leading_digit() {
@@ -206,15 +198,12 @@ mod tests {
         assert_eq!(pascal("home_east"), "HomeEast");
         assert_eq!(camel("home-east"), "homeEast");
         assert_eq!(camel("HomeEast"), "homeEast");
-        assert_eq!(snake("homeEast"), "home_east");
-        assert_eq!(snake("Home-East"), "home_east");
     }
 
     #[test]
     fn converters_guard_a_leading_digit_and_skip_empty_parts() {
         assert_eq!(pascal("9lives"), "_9lives");
         assert_eq!(camel("--a__b--"), "aB");
-        assert_eq!(snake("a--b"), "a_b");
         assert_eq!(pascal(""), "");
         assert_eq!(camel("-"), "");
     }

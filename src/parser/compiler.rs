@@ -18,6 +18,8 @@ use super::tokens::{INVALID_NAME, Tokens, valid_name};
 pub(super) const GRAPH_FORM: &str = "expected `default`, `node`, `edge`, or `choose` line";
 /// The arms allowed inside a choose block.
 pub(super) const CHOOSE_ARM: &str = "expected `when` or a final `else` arm";
+/// The refusal of a choose block with no `when` arm, whether it is empty or opens with `else`.
+pub(super) const CHOOSE_NEEDS_WHEN: &str = "choose needs at least one `when` arm";
 const STRINGS_FULL: &str = "string capacity exhausted; raise the graph's `strings` hint";
 const ENUM_DUPLICATE: &str = "enum name is already declared in this graph";
 const MEMBER_DUPLICATE: &str = "member is already declared in this enum";
@@ -583,7 +585,7 @@ impl<'s> Builder<'s> {
         offset: usize,
     ) -> Result<(), ParseError> {
         if self.graph.arms.len() == start {
-            return Err(tokens.error("choose needs at least one `when` arm"));
+            return Err(tokens.error(CHOOSE_NEEDS_WHEN));
         }
         tokens.expect(TokenKind::Dedent)?;
         let choice = Choice {
