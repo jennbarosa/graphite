@@ -9,8 +9,9 @@ Graph files end in `.graphite`, for example `door.graphite`. Editor support is i
 ## Editor support
 
 [`editors/nvim`](../editors/nvim) is a Neovim plugin. It sets the file type of `*.graphite` files to
-`graphite` and highlights the keywords (`graph`, `node`, `edge`, `choose`, `when`, `else`), the flags
-(`loop`, `end`), annotations (`@key:value`), and arrows (`->`).
+`graphite` and highlights the keywords (`graph`, `node`, `edge`, `choose`, `when`, `else`, `enum`,
+`input`, `default`), the flags (`loop`, `end`), enum names and members, pure-file types and `when`
+members, annotations (`@key:value`), arrows (`->`), and directives.
 
 To use it, add the folder to Neovim's runtime path, for example in `init.lua`:
 
