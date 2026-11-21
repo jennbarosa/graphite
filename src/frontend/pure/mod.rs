@@ -21,13 +21,24 @@ use decision::{Decisions, lower};
 
 /// One pure language's layout. Every literal and name goes through `language()`.
 pub trait PureSyntax: Sync {
+    /// What a syntax computes once per module from its decisions: the names it will emit. The
+    /// collision check and `module` both read this one value.
+    type Layout<'d>;
+
     /// The rules this syntax writes with. The extension, names and literals all come from here.
     fn language(&self) -> &'static dyn Language;
+
+    /// Computes the layout of one module.
+    fn layout<'d>(&self, decisions: &Decisions<'d>) -> Self::Layout<'d>;
 
     /// Every name `module` emits that does not come from a source name, with its role and the
     /// declaration that generates it. The collision check registers these before any source name,
     /// so a source name that clashes with one of them is the error.
-    fn generated<'d>(&self, decisions: &Decisions<'d>) -> Vec<Generated<'d>>;
+    fn generated<'d>(
+        &self,
+        decisions: &Decisions<'d>,
+        layout: &Self::Layout<'d>,
+    ) -> Vec<Generated<'d>>;
 
     /// Names the module imports and uses, which a source name must not spell. A source name that
     /// clashes with one of them is the error, as with a generated name.
@@ -35,8 +46,13 @@ pub trait PureSyntax: Sync {
         Vec::new()
     }
 
-    /// The layout of one module.
-    fn module(&self, decisions: &Decisions, output: &mut dyn Write) -> io::Result<()>;
+    /// The layout of one module, written from its decisions and the layout computed for them.
+    fn module<'d>(
+        &self,
+        decisions: &Decisions<'d>,
+        layout: &Self::Layout<'d>,
+        output: &mut dyn Write,
+    ) -> io::Result<()>;
 }
 
 /// The pure front end for one language's syntax.
@@ -68,8 +84,9 @@ impl<S: PureSyntax> Frontend for Pure<S> {
         output: &mut dyn Write,
     ) -> io::Result<()> {
         let decisions = lower(graph);
-        check_names(&self.syntax, &decisions)?;
-        self.syntax.module(&decisions, output)
+        let layout = self.syntax.layout(&decisions);
+        check_names(&self.syntax, &decisions, &layout)?;
+        self.syntax.module(&decisions, &layout, output)
     }
 
     /// A pure front end writes no runtime, so this is never called. See `runtime_file_name_opt`.
@@ -96,7 +113,9 @@ impl<S: PureSyntax> Frontend for Pure<S> {
 
     /// Only the names: the layout is not rendered, so a check costs one pass over the names.
     fn check_graph(&self, graph: &CompiledGraph) -> io::Result<()> {
-        check_names(&self.syntax, &lower(graph))
+        let decisions = lower(graph);
+        let layout = self.syntax.layout(&decisions);
+        check_names(&self.syntax, &decisions, &layout)
     }
 }
 
@@ -141,8 +160,12 @@ struct Holder<'a> {
 /// generated names are registered first, so a source name that clashes with one of them is the
 /// error, and the source names follow in source order. A clash is reported at the later
 /// declaration, so its offset is that declaration's own.
-fn check_names(syntax: &dyn PureSyntax, decisions: &Decisions) -> io::Result<()> {
-    let generated = syntax.generated(decisions);
+fn check_names<'d, S: PureSyntax>(
+    syntax: &S,
+    decisions: &Decisions<'d>,
+    layout: &S::Layout<'d>,
+) -> io::Result<()> {
+    let generated = syntax.generated(decisions, layout);
     let mut claims = Claims {
         names: Names::default(),
         language: syntax.language(),

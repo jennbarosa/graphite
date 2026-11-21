@@ -24,10 +24,10 @@ static PURESCRIPT_FRONT_END: Pure<PureScriptSyntax> = Pure::new(PureScriptSyntax
 /// PureScript's layout of a module.
 pub struct PureScriptSyntax;
 
-/// Every name the layout emits for one module, spelled once. `generated` reports them to the
-/// collision check and `module` writes them, so the two cannot disagree. An optional name is
-/// `Some` exactly when `module` writes that value.
-struct Layout<'d> {
+/// Every name the layout emits for one module. `generated` reports them to the collision check and
+/// `module` writes them, both from this one value, so they agree. An optional name is `Some`
+/// exactly when `module` writes that value.
+pub struct Layout<'d> {
     graph_annotations: bool,
     enums: Vec<EnumNames<'d>>,
     inputs: Vec<InputNames<'d>>,
@@ -153,12 +153,17 @@ fn push_optional<'d>(
 }
 
 impl PureSyntax for PureScriptSyntax {
+    type Layout<'d> = Layout<'d>;
+
     fn language(&self) -> &'static dyn Language {
         &PURESCRIPT
     }
 
-    fn generated<'d>(&self, decisions: &Decisions<'d>) -> Vec<Generated<'d>> {
-        let layout = Layout::new(self.language(), decisions);
+    fn layout<'d>(&self, decisions: &Decisions<'d>) -> Layout<'d> {
+        Layout::new(self.language(), decisions)
+    }
+
+    fn generated<'d>(&self, _: &Decisions<'d>, layout: &Layout<'d>) -> Vec<Generated<'d>> {
         let mut out = vec![
             generated_name(Role::Type, "Annotation", None),
             generated_name(Role::Type, "Arm", None),
@@ -276,9 +281,13 @@ impl PureSyntax for PureScriptSyntax {
         names
     }
 
-    fn module(&self, decisions: &Decisions, output: &mut dyn Write) -> io::Result<()> {
+    fn module<'d>(
+        &self,
+        decisions: &Decisions<'d>,
+        layout: &Layout<'d>,
+        output: &mut dyn Write,
+    ) -> io::Result<()> {
         let language = self.language();
-        let layout = Layout::new(language, decisions);
         let mut groups = Groups {
             output,
             first: true,
@@ -289,7 +298,7 @@ impl PureSyntax for PureScriptSyntax {
             language.ident(Role::Module, decisions.name),
             maybe_import(decisions)
         ))?;
-        groups.push(&types(decisions, &layout))?;
+        groups.push(&types(decisions, layout))?;
         if layout.graph_annotations {
             groups.push(&value(language, "graphAnnotations", &decisions.notes)?)?;
         }
@@ -308,7 +317,7 @@ impl PureSyntax for PureScriptSyntax {
             }
         }
         for (function, names) in decisions.functions.iter().zip(&layout.choices) {
-            choice(language, decisions, &layout, function, names, &mut groups)?;
+            choice(language, decisions, layout, function, names, &mut groups)?;
         }
         groups.output.write_all(b"\n")
     }

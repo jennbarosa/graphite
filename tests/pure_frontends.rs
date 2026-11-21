@@ -115,7 +115,7 @@ fn every_top_level_name_is_a_source_name_or_a_generated_one() {
     );
     // The generated names, which the layout also emits.
     let generated: HashSet<String> = PureScriptSyntax
-        .generated(&decisions)
+        .generated(&decisions, &PureScriptSyntax.layout(&decisions))
         .into_iter()
         .map(|generated| generated.name)
         .collect();

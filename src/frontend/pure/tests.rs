@@ -66,11 +66,15 @@ static TOY: Toy = Toy;
 struct ToySyntax;
 
 impl PureSyntax for ToySyntax {
+    type Layout<'d> = ();
+
     fn language(&self) -> &'static dyn Language {
         &TOY
     }
 
-    fn generated<'d>(&self, decisions: &Decisions<'d>) -> Vec<Generated<'d>> {
+    fn layout<'d>(&self, _: &Decisions<'d>) {}
+
+    fn generated<'d>(&self, decisions: &Decisions<'d>, _: &()) -> Vec<Generated<'d>> {
         decisions
             .functions
             .iter()
@@ -82,7 +86,12 @@ impl PureSyntax for ToySyntax {
             .collect()
     }
 
-    fn module(&self, decisions: &Decisions, output: &mut dyn Write) -> io::Result<()> {
+    fn module<'d>(
+        &self,
+        decisions: &Decisions<'d>,
+        _: &(),
+        output: &mut dyn Write,
+    ) -> io::Result<()> {
         let language = self.language();
         for function in &decisions.functions {
             let name = language.ident(Role::Function, function.name);

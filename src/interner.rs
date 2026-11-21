@@ -8,7 +8,7 @@ use hashbrown::hash_table::Entry;
 
 /// Stable within the interner that issued it; IDs must not cross interners.
 /// Stores index + 1 so `Option<StringId>` takes four bytes, not eight.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct StringId(NonZeroU32);
 
 impl StringId {
