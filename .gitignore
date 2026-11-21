@@ -5,3 +5,7 @@ graphite-out/
 /tools/bin/
 /tools/downloads/
 /tools/node_modules/
+
+# Local agent skills and Claude settings, not part of the project
+/.agents/
+/.claude/
