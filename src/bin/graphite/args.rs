@@ -85,6 +85,8 @@ pub enum Command {
 /// Options as written, before each command decides which ones it accepts.
 #[derive(Default)]
 struct Options {
+    /// Every flag as written, in the order typed.
+    given: Vec<String>,
     out: Option<PathBuf>,
     front_end: Option<String>,
     pure: bool,
@@ -199,6 +201,9 @@ fn parse_options(args: &[String]) -> Result<(Options, Vec<String>), String> {
     let mut positionals = Vec::new();
     let mut words = args.iter().cloned();
     while let Some(arg) = words.next() {
+        if arg.starts_with("--") {
+            options.given.push(arg.clone());
+        }
         match arg.as_str() {
             "--out" => options.out = Some(PathBuf::from(value(&mut words, "--out")?)),
             "--frontend" => options.front_end = Some(value(&mut words, "--frontend")?),
@@ -253,31 +258,6 @@ fn accepted_flags(verb: &str) -> &'static [&'static str] {
     }
 }
 
-/// The option flags that were given, in a fixed order.
-fn given_flags(options: &Options) -> Vec<&'static str> {
-    [
-        ("--out", options.out.is_some()),
-        ("--frontend", options.front_end.is_some()),
-        ("--pure", options.pure),
-        ("--graph", options.graph.is_some()),
-        ("--allow", options.allow.is_some()),
-        ("--state", options.state.is_some()),
-        ("--runner", options.runner.is_some()),
-        ("--json", options.json),
-        ("--input", options.input_data.is_some()),
-        ("--tasks", options.tasks.is_some()),
-        ("--each", options.each.is_some()),
-        ("--key", options.key.is_some()),
-        ("--seen", options.seen.is_some()),
-        ("--until-passed", options.until_passed.is_some()),
-        ("--retry", options.retry.is_some()),
-        ("--simulate", !options.simulate.is_empty()),
-    ]
-    .into_iter()
-    .filter_map(|(flag, given)| given.then_some(flag))
-    .collect()
-}
-
 /// Builds the command for `verb` from its file and options, refusing any option it does not accept.
 fn command(
     verb: &str,
@@ -286,9 +266,10 @@ fn command(
     options: Options,
 ) -> Result<Command, String> {
     let accepted = accepted_flags(verb);
-    if let Some(flag) = given_flags(&options)
-        .into_iter()
-        .find(|flag| !accepted.contains(flag))
+    if let Some(flag) = options
+        .given
+        .iter()
+        .find(|flag| !accepted.contains(&flag.as_str()))
     {
         return Err(format!("{verb} does not take {flag}"));
     }
