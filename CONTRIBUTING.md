@@ -20,13 +20,13 @@ You need:
 Then install the pinned test tools once, and build and test from the repository root:
 
 ```sh
-scripts/setup-tools.sh   # Bun 1.4.4, PureScript 0.15.16 (purs), spago 1.0.5, TypeScript 6.0.3 (tsc)
+scripts/setup-tools.py   # Bun 1.4.4, PureScript 0.15.16 (purs), spago 1.0.5, TypeScript 6.0.3 (tsc)
 cargo build
 cargo test
 cargo test --no-default-features   # without the SIMD lexer
 ```
 
-`scripts/setup-tools.sh` puts the tools in `tools/` (ignored by git), checks every download
+`scripts/setup-tools.py` puts the tools in `tools/` (ignored by git), checks every download
 against its SHA-256 digest, and installs the npm packages from `tools/package-lock.json`.
 The tests find them there, so nothing else needs to be on your `PATH`. To use your own copy of a
 tool instead, set its variable: `GRAPHITE_BUN`, `GRAPHITE_TSC`, `GRAPHITE_PURS` or

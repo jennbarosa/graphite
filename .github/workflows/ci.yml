@@ -17,9 +17,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      # Bun, purs, spago and tsc at the versions the tests pin (see scripts/setup-tools.sh).
+      # Bun, purs, spago and tsc at the versions the tests pin (see scripts/setup-tools.py).
       - name: Install the test tools
-        run: scripts/setup-tools.sh
+        run: python3 scripts/setup-tools.py
       # src/generated/ must match what the converter writes from the .graphite rule files.
       - name: Check the generated rule data is current
         run: |

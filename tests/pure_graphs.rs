@@ -281,7 +281,7 @@ fn the_generated_modules_build_with_purs_in_strict_mode() {
         .args(["build", "--strict"])
         .output()
         .unwrap_or_else(|error| {
-            panic!("cannot run spago: {error}; run scripts/setup-tools.sh or set GRAPHITE_SPAGO")
+            panic!("cannot run spago: {error}; run scripts/setup-tools.py or set GRAPHITE_SPAGO")
         });
     let log = format!("{}{}", stdout(&output), stderr(&output));
     assert!(

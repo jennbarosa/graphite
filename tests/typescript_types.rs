@@ -61,7 +61,7 @@ fn generated_types_accept_real_names_and_reject_typos() {
         ])
         .output()
         .unwrap_or_else(|error| {
-            panic!("cannot run tsc: {error}; run scripts/setup-tools.sh or set GRAPHITE_TSC")
+            panic!("cannot run tsc: {error}; run scripts/setup-tools.py or set GRAPHITE_TSC")
         });
     assert!(
         output.status.success(),

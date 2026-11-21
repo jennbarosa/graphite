@@ -19,7 +19,7 @@ pub fn assert_bun_test_passes_with(manifest: &Path, file: &str, variables: &[(&s
     }
     let output = command
         .output()
-        .expect("bun must be installed to run the TypeScript tests: run scripts/setup-tools.sh");
+        .expect("bun must be installed to run the TypeScript tests: run scripts/setup-tools.py");
     assert!(
         output.status.success(),
         "{file} failed:\n{}{}",

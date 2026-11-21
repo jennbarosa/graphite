@@ -1,4 +1,4 @@
-//! Finds the external tools the tests run. `scripts/setup-tools.sh` installs the pinned versions
+//! Finds the external tools the tests run. `scripts/setup-tools.py` installs the pinned versions
 //! into `tools/`. An environment variable overrides one tool's path, and otherwise the program is
 //! looked up on `PATH`.
 
