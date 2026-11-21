@@ -1,12 +1,11 @@
 //! Compile grammar forms directly into preallocated graph arrays.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::num::NonZeroU32;
 use std::ops::Range;
 
 use crate::graph::{
-    Annotation, Arm, Choice, CompiledGraph, Edge, Enum, Input, Member, Node, Span, Test, Ty, index,
-    narrow,
+    Annotation, Arm, Choice, CompiledGraph, Edge, Enum, Input, Member, Node, Span, Test, Ty, narrow,
 };
 use crate::interner::StringId;
 use crate::kind::Kind;
@@ -45,6 +44,9 @@ pub(super) struct Builder<'s> {
     /// (and, in a pure file, to every arm).
     defaults: Vec<Annotation>,
     kind: Kind,
+    /// Position of each member within its enum, keyed by (enum index, name index). One lookup
+    /// answers the duplicate check, the `when` test and the arm's tag check, so none scans a list.
+    member_positions: HashMap<(u32, usize), u32>,
     /// The enum being declared, whose members the member lines add to.
     current_enum: Option<u32>,
     /// The enum and annotations of the choose block being read.
@@ -83,6 +85,7 @@ impl<'s> Builder<'s> {
             flags,
             defaults: Vec::new(),
             kind,
+            member_positions: HashMap::new(),
             current_enum: None,
             choice_ty: None,
             choice_annotations: 0..0,
@@ -404,6 +407,7 @@ impl<'s> Builder<'s> {
                 name,
                 annotations: 0..0,
                 members: narrow(start..start),
+                offset,
             },
             offset,
         )?;
@@ -444,15 +448,21 @@ impl<'s> Builder<'s> {
     ) -> Result<(), ParseError> {
         let id = self.current_enum.expect("a member is read inside an enum") as usize;
         let name = self.intern(tokens, word)?;
-        let members = index(&self.graph.enums[id].members);
-        if self.graph.members[members].iter().any(|m| m.name == name) {
+        let key = (id as u32, name.index());
+        if self.member_positions.contains_key(&key) {
             return Err(ParseError::new(MEMBER_DUPLICATE, offset));
         }
+        let position = self.graph.members.len() as u32 - self.graph.enums[id].members.start;
         push(
             &mut self.graph.members,
-            Member { name, annotations },
+            Member {
+                name,
+                annotations,
+                offset,
+            },
             offset,
         )?;
+        self.member_positions.insert(key, position);
         self.graph.enums[id].members.end = self.graph.members.len() as u32;
         Ok(())
     }
@@ -498,6 +508,7 @@ impl<'s> Builder<'s> {
                 name,
                 ty,
                 annotations,
+                offset,
             },
             offset,
         )
@@ -547,11 +558,8 @@ impl<'s> Builder<'s> {
 
     /// The position of the member named `word` within enum `ty`.
     fn member_position(&self, ty: u32, word: &str) -> Option<u32> {
-        let members = index(&self.graph.enums[ty as usize].members);
-        self.graph.members[members]
-            .iter()
-            .position(|member| self.graph.text(member.name) == word)
-            .map(|position| position as u32)
+        let name = self.graph.strings.find(word)?;
+        self.member_positions.get(&(ty, name.index())).copied()
     }
 
     /// Ends a choose block: it needs an arm, and its closing dedent. Stores the choice.
@@ -596,11 +604,10 @@ impl<'s> Builder<'s> {
         tokens.expect(TokenKind::Arrow)?;
         let (word, tag_offset) = tokens.word_or("expected a tag name after `->`")?;
         let tag = self.intern(tokens, word)?;
-        if let Some(ty) = self.choice_ty {
-            let members = index(&self.graph.enums[ty as usize].members);
-            if !self.graph.members[members].iter().any(|m| m.name == tag) {
-                return Err(ParseError::new(TAG_NOT_MEMBER, tag_offset));
-            }
+        if let Some(ty) = self.choice_ty
+            && !self.member_positions.contains_key(&(ty, tag.index()))
+        {
+            return Err(ParseError::new(TAG_NOT_MEMBER, tag_offset));
         }
         let own = self.annotations(tokens)?;
         let annotations = if self.kind == Kind::Pure {

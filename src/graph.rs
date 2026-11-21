@@ -93,12 +93,16 @@ pub struct Enum {
     pub name: StringId,
     pub annotations: Span,
     pub members: Span,
+    /// Byte offset of the enum's name, for diagnostics.
+    pub offset: usize,
 }
 
 #[derive(Debug)]
 pub struct Member {
     pub name: StringId,
     pub annotations: Span,
+    /// Byte offset of the member's name, for diagnostics.
+    pub offset: usize,
 }
 
 /// A pure file's input: a bool, or one enum.
@@ -107,6 +111,8 @@ pub struct Input {
     pub name: StringId,
     pub ty: Ty,
     pub annotations: Span,
+    /// Byte offset of the input's name, for diagnostics.
+    pub offset: usize,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

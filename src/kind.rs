@@ -23,6 +23,15 @@ pub enum Kind {
     Pure,
 }
 
+const NODE_IN_PURE: &str = "`node` is not allowed in a pure file";
+const EDGE_IN_PURE: &str = "`edge` is not allowed in a pure file";
+
+/// Whether `message` is the refusal of a machine line (`node` or `edge`) in a pure file. The
+/// pipeline uses it to add the reason the file is pure.
+pub fn is_machine_line_refusal(message: &str) -> bool {
+    message == NODE_IN_PURE || message == EDGE_IN_PURE
+}
+
 impl Kind {
     /// Whether a body line may appear in a graph of this kind. The error names the fix.
     pub fn allows(self, line: Line) -> Result<(), &'static str> {
@@ -33,8 +42,8 @@ impl Kind {
             (Kind::Machine, Line::Input) => Err(
                 "`input` needs a pure file (use `--pure`, `@!pure`, or a `.pure.graphite` name)",
             ),
-            (Kind::Pure, Line::Node) => Err("`node` is not allowed in a pure file"),
-            (Kind::Pure, Line::Edge) => Err("`edge` is not allowed in a pure file"),
+            (Kind::Pure, Line::Node) => Err(NODE_IN_PURE),
+            (Kind::Pure, Line::Edge) => Err(EDGE_IN_PURE),
             _ => Ok(()),
         }
     }
@@ -66,7 +75,7 @@ impl Kind {
 
 #[cfg(test)]
 mod tests {
-    use super::{Kind, Line};
+    use super::{Kind, Line, NODE_IN_PURE};
 
     const LINES: [Line; 6] = [
         Line::Default,
@@ -101,10 +110,7 @@ mod tests {
             Kind::Machine.allows(Line::Input),
             Err("`input` needs a pure file (use `--pure`, `@!pure`, or a `.pure.graphite` name)")
         );
-        assert_eq!(
-            Kind::Pure.allows(Line::Node),
-            Err("`node` is not allowed in a pure file")
-        );
+        assert_eq!(Kind::Pure.allows(Line::Node), Err(NODE_IN_PURE));
     }
 
     #[test]
