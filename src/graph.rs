@@ -42,6 +42,18 @@ impl CompiledGraph {
     }
 }
 
+/// The node annotation whose value names a stage's task.
+pub const TASK_ANNOTATION: &str = "task";
+
+/// The value of node `node`'s `task` annotation, if it has one.
+pub fn task_of(graph: &CompiledGraph, node: usize) -> Option<&str> {
+    graph.annotations[index(&graph.nodes[node].annotations)]
+        .iter()
+        .find(|entry| graph.text(entry.key) == TASK_ANNOTATION)
+        .and_then(|entry| entry.value)
+        .map(|value| graph.text(value))
+}
+
 /// Ranges into the graph's arrays, stored as `u32` to keep records small.
 pub type Span = Range<u32>;
 

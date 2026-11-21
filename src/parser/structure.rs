@@ -1,66 +1,21 @@
-//! The structure checks on a finished graph, run as a stage graph from `structure.graphite`: every node
-//! has an exit, the adjacency arrays are built, every node is reachable from the entry, and a graph
-//! that runs durable tasks routes every outcome and can always finish.
+//! The structure checks on a finished graph: every node has an exit, the adjacency arrays are built,
+//! every node is reachable from the entry, and a graph that runs durable tasks routes every outcome
+//! and can always finish.
 
-use std::sync::OnceLock;
-
-use crate::bootstrap;
-use crate::bootstrap::structure::{Task, task};
-use crate::graph::{CompiledGraph, Edge, index};
+use crate::graph::{CompiledGraph, Edge, index, task_of};
+use crate::kind::Kind;
 use crate::parser::ParseError;
-use crate::stage::{Stepper, task_of};
 
-const OK: &[&str] = &["passed"];
-const FAILED: &[&str] = &["failed"];
-
-/// The `graph structure` description, rebuilt from its bootstrap form.
-fn structure_graph() -> &'static CompiledGraph {
-    static GRAPH: OnceLock<CompiledGraph> = OnceLock::new();
-    GRAPH.get_or_init(bootstrap::structure::graph)
-}
-
-/// Checks a finished graph by running the structure graph over it.
+/// Checks a finished graph. A machine graph gets every check; a pure graph gets its totality check.
 pub(super) fn finish(graph: &mut CompiledGraph) -> Result<(), ParseError> {
-    let mut work = Work { graph, error: None };
-    let mut stepper = Stepper::new(structure_graph(), task)
-        .unwrap_or_else(|error| panic!("the bundled structure.graphite is wrong: {error}"));
-    loop {
-        match stepper.step(&mut |task| work.run(task)) {
-            Ok(None) => {}
-            Ok(Some("failed")) => {
-                return Err(work.error.take().unwrap_or_else(|| {
-                    ParseError::new("the structure checks stopped without an error", 0)
-                }));
-            }
-            Ok(Some(_)) => return Ok(()),
-            Err(message) => panic!("the structure graph stopped: {message}"),
+    match graph.kind {
+        Kind::Machine => {
+            degrees(graph)?;
+            offsets(graph)?;
+            reachability(graph)?;
+            routes(graph)
         }
-    }
-}
-
-/// The graph under check, and the first error any of its checks reports.
-struct Work<'g> {
-    graph: &'g mut CompiledGraph,
-    error: Option<ParseError>,
-}
-
-impl Work<'_> {
-    fn run(&mut self, task: Task) -> &'static [&'static str] {
-        let result = match task {
-            Task::Kind => return self.graph.kind.structure_route(),
-            Task::Degrees => degrees(self.graph),
-            Task::Offsets => offsets(self.graph),
-            Task::Reach => reachability(self.graph),
-            Task::Routes => routes(self.graph),
-            Task::Totality => totality(self.graph),
-        };
-        match result {
-            Ok(()) => OK,
-            Err(error) => {
-                self.error = Some(error);
-                FAILED
-            }
-        }
+        Kind::Pure => totality(graph),
     }
 }
 

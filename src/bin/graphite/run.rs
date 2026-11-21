@@ -7,8 +7,8 @@ use std::path::Path;
 
 use graphite::frontend::Module;
 use graphite::frontend::registry;
+use graphite::graph::TASK_ANNOTATION;
 use graphite::pipeline::write_modules;
-use graphite::stage::TASK_ANNOTATION;
 
 use crate::allow::Allowlist;
 use crate::{js, load, runtime_assets, scratch, tasks};
