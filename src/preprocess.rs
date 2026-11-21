@@ -1,16 +1,7 @@
-//! The preprocessor: `@!` directives at the top of a file, read before the lexer runs.
-//!
-//! The directive stage graph (`src/graphs/directive.graphite`) reads one line at a time. Each
-//! `@!` line is checked here. The first other non-blank line starts the body, and no `@!` line
-//! may follow it.
+//! The preprocessor: `@!` directives at the top of a file, read before the lexer runs. The first
+//! other non-blank line starts the body, and no `@!` line may follow it.
 
-use std::sync::OnceLock;
-
-use crate::bootstrap;
-use crate::bootstrap::directive::{Task, task};
-use crate::graph::CompiledGraph;
 use crate::parser::ParseError;
-use crate::stage;
 
 /// Every directive line starts with this, at column 0.
 const PREFIX: &str = "@!";
@@ -33,132 +24,80 @@ pub struct Directives<'a> {
     pub body: usize,
 }
 
-fn directive_graph() -> &'static CompiledGraph {
-    static GRAPH: OnceLock<CompiledGraph> = OnceLock::new();
-    GRAPH.get_or_init(bootstrap::directive::graph)
-}
-
 /// Reads the directives at the top of `source`. Errors name the line they are on.
 pub fn preprocess(source: &str) -> Result<Directives<'_>, ParseError> {
-    let mut reader = Reader {
-        source,
-        cursor: if source.starts_with(BOM) {
-            BOM.len()
-        } else {
-            0
-        },
-        frontend: None,
-        body: 0,
-        error: None,
+    let mut cursor = if source.starts_with(BOM) {
+        BOM.len()
+    } else {
+        0
     };
-    let end = stage::drive(directive_graph(), task, |task| reader.run(task))
-        .unwrap_or_else(|stall| panic!("the bundled directive.graphite is wrong: {stall}"));
-    if end == "failed" {
-        return Err(reader
-            .error
-            .take()
-            .unwrap_or_else(|| ParseError::new("the directive reader stopped", 0)));
-    }
-    Ok(Directives {
-        frontend: reader.frontend,
-        body: reader.body,
-    })
-}
-
-/// What the stage tasks share: where the reader is, what it has found, and the first error.
-struct Reader<'a> {
-    source: &'a str,
-    /// Offset of the line the next task reads.
-    cursor: usize,
-    frontend: Option<(&'a str, usize)>,
-    body: usize,
-    error: Option<ParseError>,
-}
-
-impl<'a> Reader<'a> {
-    fn run(&mut self, task: Task) -> &'static [&'static str] {
-        let result = match task {
-            Task::Line => self.line_task(),
-            Task::Directive => self.directive(),
-            Task::Rest => self.rest(),
-        };
-        match result {
-            Ok(conditions) => conditions,
-            Err(error) => {
-                self.error = Some(error);
-                &["failed"]
-            }
+    let mut frontend = None;
+    let body = loop {
+        if cursor >= source.len() {
+            break source.len();
         }
-    }
-
-    /// The line at the cursor, without its line break, and the offset just past it.
-    fn current_line(&self) -> (&'a str, usize) {
-        let source = self.source;
-        let rest = &source[self.cursor..];
-        let length = rest.find('\n').map_or(rest.len(), |at| at + 1);
-        (
-            rest[..length].trim_end_matches(['\n', '\r']),
-            self.cursor + length,
-        )
-    }
-
-    /// Classifies the line at the cursor. A blank line is skipped; a `@!` line is a directive;
-    /// anything else starts the body.
-    fn line_task(&mut self) -> Result<&'static [&'static str], ParseError> {
-        if self.cursor >= self.source.len() {
-            self.body = self.source.len();
-            return Ok(&["body"]);
-        }
-        let (text, next) = self.current_line();
+        let (text, next) = current_line(source, cursor);
         if text.trim().is_empty() {
-            self.cursor = next;
-            return Ok(&["skipped"]);
+            cursor = next;
+        } else if text.starts_with(PREFIX) {
+            frontend = directive(text, cursor, frontend)?;
+            cursor = next;
+        } else {
+            break cursor;
         }
-        if text.starts_with(PREFIX) {
-            return Ok(&["directive"]);
-        }
-        self.body = self.cursor;
-        Ok(&["body"])
-    }
+    };
+    reject_directives_after(source, body)?;
+    Ok(Directives { frontend, body })
+}
 
-    fn directive(&mut self) -> Result<&'static [&'static str], ParseError> {
-        let offset = self.cursor;
-        let (text, next) = self.current_line();
-        // A trailing space is invisible in an editor, so it is not a second word. A tab is still
-        // refused.
-        let word = text[PREFIX.len()..].trim_end_matches(' ');
-        if word.contains(char::is_whitespace) {
-            return Err(ParseError::new(ONE_WORD, offset));
-        }
-        let (name, value) = match word.split_once(':') {
-            Some((name, value)) => (name, Some(value)),
-            None => (word, None),
-        };
-        match name {
-            "frontend" => {
-                let value = value
-                    .filter(|value| !value.is_empty())
-                    .ok_or(ParseError::new(NEEDS_VALUE, offset))?;
-                if self.frontend.is_some() {
-                    return Err(ParseError::new(FRONTEND_REPEATED, offset));
-                }
-                self.frontend = Some((value, offset));
-            }
-            _ => return Err(ParseError::new(UNKNOWN, offset)),
-        }
-        self.cursor = next;
-        Ok(&["passed"])
-    }
+/// The line starting at `cursor`, without its line break, and the offset just past it.
+fn current_line(source: &str, cursor: usize) -> (&str, usize) {
+    let rest = &source[cursor..];
+    let length = rest.find('\n').map_or(rest.len(), |at| at + 1);
+    (
+        rest[..length].trim_end_matches(['\n', '\r']),
+        cursor + length,
+    )
+}
 
-    /// The body has started. No `@!` line may appear anywhere after it.
-    fn rest(&mut self) -> Result<&'static [&'static str], ParseError> {
-        let mut offset = self.body;
-        for line in self.source[self.body..].split_inclusive('\n') {
-            if line.starts_with(PREFIX) {
-                return Err(ParseError::new(AFTER_GRAPH, offset));
-            }
-            offset += line.len();
-        }
-        Ok(&["passed"])
+/// Reads one `@!` line, found at `offset`, and returns the front end chosen so far.
+fn directive<'a>(
+    text: &'a str,
+    offset: usize,
+    frontend: Option<(&'a str, usize)>,
+) -> Result<Option<(&'a str, usize)>, ParseError> {
+    // A trailing space is invisible in an editor, so it is not a second word. A tab is still
+    // refused.
+    let word = text[PREFIX.len()..].trim_end_matches(' ');
+    if word.contains(char::is_whitespace) {
+        return Err(ParseError::new(ONE_WORD, offset));
     }
+    let (name, value) = match word.split_once(':') {
+        Some((name, value)) => (name, Some(value)),
+        None => (word, None),
+    };
+    match name {
+        "frontend" => {
+            let value = value
+                .filter(|value| !value.is_empty())
+                .ok_or(ParseError::new(NEEDS_VALUE, offset))?;
+            if frontend.is_some() {
+                return Err(ParseError::new(FRONTEND_REPEATED, offset));
+            }
+            Ok(Some((value, offset)))
+        }
+        _ => Err(ParseError::new(UNKNOWN, offset)),
+    }
+}
+
+/// No `@!` line may appear anywhere in the body.
+fn reject_directives_after(source: &str, body: usize) -> Result<(), ParseError> {
+    let mut offset = body;
+    for line in source[body..].split_inclusive('\n') {
+        if line.starts_with(PREFIX) {
+            return Err(ParseError::new(AFTER_GRAPH, offset));
+        }
+        offset += line.len();
+    }
+    Ok(())
 }
