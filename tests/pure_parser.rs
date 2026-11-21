@@ -290,6 +290,23 @@ fn an_input_of_an_unknown_type_is_refused() {
 }
 
 #[test]
+fn a_when_test_repeated_in_one_choose_is_refused_at_the_second_arm() {
+    let source = "@!pure\ngraph g\n  enum E a b\n  input x : bool\n  choose c : E\n    when x -> a\n    when x -> b\n    else -> a\n";
+    let error = refused_pure(source);
+    assert_eq!(
+        error.message,
+        "this test is already an arm above, so this arm can never be chosen"
+    );
+    assert_eq!(error.offset, source.find("when x -> b").unwrap() + 5);
+}
+
+#[test]
+fn the_same_when_test_in_two_chooses_is_allowed() {
+    let source = "@!pure\ngraph g\n  enum E a b\n  input x : bool\n  choose c : E\n    when x -> a\n    else -> a\n  choose d : E\n    when x -> b\n    else -> a\n";
+    assert_eq!(pure(source).len(), 1);
+}
+
+#[test]
 fn a_choose_without_an_enum_is_refused_in_a_pure_file() {
     let source = "@!pure\ngraph g\n  enum E a\n  input x : bool\n  choose c\n    when x -> a\n    else -> a\n";
     let error = refused_pure(source);

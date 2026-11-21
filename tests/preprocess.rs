@@ -88,6 +88,14 @@ fn a_directive_is_one_word_with_nothing_else_on_its_line() {
 }
 
 #[test]
+fn a_trailing_space_after_a_directive_is_not_a_second_word() {
+    let source = format!("@!pure  \n{GRAPH}");
+    let directives = preprocess(&source).unwrap();
+    assert!(directives.pure.is_some());
+    assert_eq!(directives.body, "@!pure  \n".len());
+}
+
+#[test]
 fn a_repeated_directive_is_refused_at_the_second_copy() {
     let source = format!("@!pure\n@!pure\n{GRAPH}");
     let error = preprocess(&source).unwrap_err();

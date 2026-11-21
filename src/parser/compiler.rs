@@ -31,6 +31,7 @@ const WHEN_UNKNOWN_INPUT: &str = "unknown input; declare it with `input` above i
 const WHEN_BOOL_MEMBER: &str = "`:MEMBER` tests an enum input; this input is a bool";
 const WHEN_ENUM_MEMBER: &str = "an enum input needs `:MEMBER` after its name";
 const WHEN_NOT_MEMBER: &str = "not a member of this enum";
+const WHEN_REPEATED: &str = "this test is already an arm above, so this arm can never be chosen";
 const TAG_NOT_MEMBER: &str = "the arm's tag must be a member of the choose's enum";
 const ANNOTATION_KEY: &str =
     "invalid annotation key: use letters, digits, `_`, or `-`, separated by `.`";
@@ -52,6 +53,9 @@ pub(super) struct Builder<'s> {
     /// The enum and annotations of the choose block being read.
     choice_ty: Option<u32>,
     choice_annotations: Span,
+    /// The condition ids that the `when` arms of the choose being read already use. A pure
+    /// choose refuses a repeat, since the later arm could never be chosen.
+    choice_tests: HashSet<u32>,
 }
 
 /// Independent namespaces indexed by the interner's dense string IDs.
@@ -89,6 +93,7 @@ impl<'s> Builder<'s> {
             current_enum: None,
             choice_ty: None,
             choice_annotations: 0..0,
+            choice_tests: HashSet::new(),
         })
     }
 
@@ -360,6 +365,7 @@ impl<'s> Builder<'s> {
             ));
         }
         *binding = true;
+        self.choice_tests.clear();
         if self.kind == Kind::Pure {
             if !tokens.at(TokenKind::Colon)? {
                 return Err(ParseError::new(CHOOSE_ENUM, offset));
@@ -546,13 +552,19 @@ impl<'s> Builder<'s> {
         };
         let name = self.intern(tokens, &text)?;
         let binding = &mut self.bindings[name.index()].condition;
-        if let Some(id) = *binding {
-            return Ok(id.get() - 1);
+        let id = match *binding {
+            Some(id) => id.get() - 1,
+            None => {
+                let id = self.graph.conditions.len() as u32;
+                push(&mut self.graph.conditions, name, offset)?;
+                push(&mut self.graph.tests, test, offset)?;
+                self.bindings[name.index()].condition = NonZeroU32::new(id + 1);
+                id
+            }
+        };
+        if !self.choice_tests.insert(id) {
+            return Err(ParseError::new(WHEN_REPEATED, offset));
         }
-        let id = self.graph.conditions.len() as u32;
-        push(&mut self.graph.conditions, name, offset)?;
-        push(&mut self.graph.tests, test, offset)?;
-        self.bindings[name.index()].condition = NonZeroU32::new(id + 1);
         Ok(id)
     }
 

@@ -20,6 +20,9 @@ jobs:
       # Bun, purs, spago and tsc at the versions the tests pin (see scripts/setup-tools.py).
       - name: Install the test tools
         run: python3 scripts/setup-tools.py
+      # The graphite CLI finds Bun on the PATH, so the pinned copy must be there too.
+      - name: Put the pinned tools on the PATH
+        run: echo "$GITHUB_WORKSPACE/tools/bin" >> "$GITHUB_PATH"
       # src/generated/ must match what the converter writes from the .graphite rule files.
       - name: Check the generated rule data is current
         run: |
@@ -47,5 +50,7 @@ jobs:
           node-version: 22
       - name: Install the test tools
         run: python3 scripts/setup-tools.py
+      - name: Put the pinned tools on the PATH
+        run: echo "$GITHUB_WORKSPACE/tools/bin" >> "$GITHUB_PATH"
       - name: Check line coverage is at least 90%
         run: cargo llvm-cov --all-targets --fail-under-lines 90

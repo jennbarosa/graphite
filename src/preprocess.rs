@@ -137,7 +137,9 @@ impl<'a> Reader<'a> {
     fn directive(&mut self) -> Result<&'static [&'static str], ParseError> {
         let offset = self.cursor;
         let (text, next) = self.current_line();
-        let word = &text[PREFIX.len()..];
+        // A trailing space is invisible in an editor, so it is not a second word. A tab is still
+        // refused, as the test of `@!pure\t` requires.
+        let word = text[PREFIX.len()..].trim_end_matches(' ');
         if word.contains(char::is_whitespace) {
             return Err(ParseError::new(ONE_WORD, offset));
         }
