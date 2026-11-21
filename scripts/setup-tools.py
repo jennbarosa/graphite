@@ -10,7 +10,6 @@ Standard library only, so it runs unchanged on Linux and macOS (x86_64 and arm64
 """
 
 import hashlib
-import os
 import platform
 import shutil
 import stat
@@ -71,10 +70,11 @@ def sha256_of(path: Path) -> str:
 def fetch(base: str, asset: str, sha: str) -> Path:
     """Downloads the asset unless a verified copy is already there, then checks its digest."""
     file = DOWNLOADS / asset
-    if not file.is_file() or sha256_of(file) != sha:
-        print(f"downloading {asset}")
-        with urllib.request.urlopen(f"{base}/{asset}", timeout=120) as response:
-            file.write_bytes(response.read())
+    if file.is_file() and sha256_of(file) == sha:
+        return file
+    print(f"downloading {asset}")
+    with urllib.request.urlopen(f"{base}/{asset}", timeout=120) as response:
+        file.write_bytes(response.read())
     if sha256_of(file) != sha:
         sys.exit(f"checksum mismatch for {asset}; delete {file} and try again")
     return file
