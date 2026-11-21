@@ -9,7 +9,7 @@ use crate::graph::CompiledGraph;
 use crate::kind::is_machine_line_refusal;
 use crate::lexer::Diagnostic;
 use crate::parser::{ParseError, Schema};
-use crate::pipeline::{Collision, check_outputs, compile_body, write_modules};
+use crate::pipeline::{Collision, compile_body, write_modules};
 use crate::preprocess::{Directives, preprocess};
 
 /// A check on the parsed graphs. An `Err` fails the build with its message.
@@ -73,7 +73,6 @@ pub fn run(request: Request<'_>) -> Result<Vec<PathBuf>, String> {
     };
     job.read()?;
     job.parse()?;
-    job.check()?;
     job.write()?;
     Ok(job.written)
 }
@@ -115,12 +114,6 @@ impl Job<'_> {
         self.chosen = Some(chosen);
         self.graphs = graphs;
         Ok(())
-    }
-
-    fn check(&mut self) -> Result<(), String> {
-        let frontend = self.chosen()?.target.frontend;
-        check_outputs(frontend, &self.graphs)
-            .map_err(|collision: Collision| self.hinted(&collision))
     }
 
     fn write(&mut self) -> Result<(), String> {

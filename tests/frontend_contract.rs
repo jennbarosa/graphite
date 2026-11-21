@@ -42,7 +42,7 @@ impl Frontend for StringTable {
 
 #[test]
 fn borrowing_iteration_preserves_insertion_order_and_zero_based_ids() {
-    let mut strings = Interner::with_capacity(4, 64).unwrap();
+    let mut strings = Interner::default();
     let names = ["", "é", "closed", "中"];
     let ids: Vec<_> = names
         .iter()
@@ -55,7 +55,7 @@ fn borrowing_iteration_preserves_insertion_order_and_zero_based_ids() {
         assert_eq!(value.as_ptr(), strings.resolve(*id).unwrap().as_ptr());
     }
     assert_eq!(strings.strings().len(), names.len());
-    assert_eq!(Interner::with_capacity(0, 0).unwrap().strings().len(), 0);
+    assert_eq!(Interner::default().strings().len(), 0);
 }
 
 #[path = "support/parse.rs"]

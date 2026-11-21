@@ -2,54 +2,6 @@ use std::collections::{BTreeSet, HashMap};
 use std::fmt::Write;
 
 use graphite::lexer::{Lexer, TokenKind};
-use graphite::parser::Capacity;
-
-/// Bounds owned by this generator, computed from its inputs rather than DSL tokens.
-#[allow(dead_code)]
-pub fn graph_capacity(names: &[String]) -> Capacity {
-    let nodes = names.len();
-    let full_choices = nodes.div_ceil(5);
-    let partial_choices = (nodes + 1) / 5;
-    let constants = [
-        "walk",
-        "anim",
-        "idle",
-        "time.delay",
-        "250",
-        "sfx.latch",
-        "latch",
-        "sfx",
-        "step",
-        "side",
-        "flip",
-        "true",
-        "up",
-        "down",
-        "none",
-        "false",
-    ];
-    Capacity {
-        nodes,
-        edges: nodes + nodes / 2,
-        conditions: nodes,
-        choices: full_choices + partial_choices,
-        arms: full_choices * 4 + partial_choices * 2,
-        enums: 0,
-        members: 0,
-        inputs: 0,
-        annotations: nodes
-            + nodes / 3 * 2
-            + usize::from(nodes % 3 == 2)
-            + (nodes + 1) / 3
-            + full_choices * 3
-            + partial_choices,
-        flags: 0,
-        strings: nodes + constants.len(),
-        string_bytes: names.iter().map(String::len).sum::<usize>()
-            + constants.iter().map(|word| word.len()).sum::<usize>(),
-    }
-}
-
 /// Smallest graph where every construct appears: choose at stage 0, a no-`else` choose at
 /// stage 3, `end` on the last stage, and two gates on stage 0.
 pub const MIN_GRAPH_NODES: usize = 4;

@@ -7,13 +7,12 @@ use std::ops::Range;
 use crate::graph::{
     Annotation, Arm, Choice, CompiledGraph, Edge, Enum, Input, Member, Node, Span, Test, Ty, narrow,
 };
-use crate::interner::StringId;
+use crate::interner::{Interner, StringId};
 use crate::kind::Kind;
 use crate::lexer::TokenKind;
 
-use super::capacity::{buffer, push};
+use super::ParseError;
 use super::tokens::{INVALID_NAME, Tokens, valid_name};
-use super::{Capacity, ParseError};
 
 /// The line forms allowed inside a graph body, shared by the message and the fallback arm.
 pub(super) const GRAPH_FORM: &str = "expected `default`, `node`, `edge`, or `choose` line";
@@ -21,7 +20,7 @@ pub(super) const GRAPH_FORM: &str = "expected `default`, `node`, `edge`, or `cho
 pub(super) const CHOOSE_ARM: &str = "expected `when` or a final `else` arm";
 /// The refusal of a choose block with no `when` arm, whether it is empty or opens with `else`.
 pub(super) const CHOOSE_NEEDS_WHEN: &str = "choose needs at least one `when` arm";
-const STRINGS_FULL: &str = "string capacity exhausted; raise the graph's `strings` hint";
+const STRINGS_FULL: &str = "a graph's strings exceed the 4 GiB offset limit";
 const ENUM_DUPLICATE: &str = "enum name is already declared in this graph";
 const MEMBER_DUPLICATE: &str = "member is already declared in this enum";
 const INPUT_DUPLICATE: &str = "input name is already declared in this graph";
@@ -74,19 +73,37 @@ struct NameBindings {
 
 impl<'s> Builder<'s> {
     pub(super) fn new(
-        c: Capacity,
         name: &str,
         tokens: &mut Tokens<'_>,
         flags: &'s HashSet<&'s str>,
         kind: Kind,
     ) -> Result<Self, ParseError> {
-        let mut graph = c.allocate(name, tokens.offset())?;
-        graph.kind = kind;
-        let mut bindings = buffer(c.strings)?;
-        bindings.resize_with(c.strings, NameBindings::default);
+        let mut strings = Interner::default();
+        let name = strings
+            .intern(name)
+            .map_err(|_| tokens.error(STRINGS_FULL))?;
+        let graph = CompiledGraph {
+            name,
+            offset: 0,
+            kind,
+            strings,
+            nodes: Vec::new(),
+            edges: Vec::new(),
+            outgoing: Vec::new(),
+            conditions: Vec::new(),
+            tests: Vec::new(),
+            choices: Vec::new(),
+            arms: Vec::new(),
+            enums: Vec::new(),
+            members: Vec::new(),
+            inputs: Vec::new(),
+            annotations: Vec::new(),
+            flags: Vec::new(),
+            graph_annotations: 0..0,
+        };
         Ok(Self {
             graph,
-            bindings,
+            bindings: Vec::new(),
             flags,
             defaults: Vec::new(),
             kind,
@@ -96,6 +113,20 @@ impl<'s> Builder<'s> {
             choice_annotations: 0..0,
             choice_tests: HashSet::new(),
         })
+    }
+
+    /// The namespaces bound to `name`, growing the table to reach it.
+    fn slot(&mut self, name: StringId) -> &mut NameBindings {
+        let index = name.index();
+        if self.bindings.len() <= index {
+            self.bindings.resize_with(index + 1, NameBindings::default);
+        }
+        &mut self.bindings[index]
+    }
+
+    /// The namespaces bound to `name`, if it has ever been bound.
+    fn bound(&self, name: StringId) -> Option<&NameBindings> {
+        self.bindings.get(name.index())
     }
 
     pub(super) fn intern(
@@ -113,7 +144,7 @@ impl<'s> Builder<'s> {
         let (name, offset) = tokens.name("expected a node name after `node`")?;
         let id = self.graph.nodes.len() as u32;
         let name = self.intern(tokens, name)?;
-        let binding = &mut self.bindings[name.index()].node;
+        let binding = &mut self.slot(name).node;
         if binding.is_some() {
             return Err(ParseError::new(
                 "node name is already declared in this graph",
@@ -123,41 +154,33 @@ impl<'s> Builder<'s> {
         *binding = NonZeroU32::new(id + 1);
         let (looping, end, flags) = self.node_flags(tokens)?;
         let own = self.annotations(tokens)?;
-        let annotations = narrow(self.with_defaults(own, offset)?);
-        push(
-            &mut self.graph.nodes,
-            Node {
-                name,
-                looping,
-                end,
-                flags,
-                annotations,
-                outgoing: 0..0,
-                sequence: None,
-                offset,
-            },
+        let annotations = narrow(self.with_defaults(own));
+        self.graph.nodes.push(Node {
+            name,
+            looping,
+            end,
+            flags,
+            annotations,
+            outgoing: 0..0,
+            sequence: None,
             offset,
-        )?;
+        });
         Ok(())
     }
 
     /// Appends each default whose key the node's own annotations in `own` do not set. Returns the
     /// node's whole span, which stays contiguous because nothing was pushed since `own`.
-    fn with_defaults(
-        &mut self,
-        own: Range<usize>,
-        offset: usize,
-    ) -> Result<Range<usize>, ParseError> {
+    fn with_defaults(&mut self, own: Range<usize>) -> Range<usize> {
         for index in 0..self.defaults.len() {
             let default = self.defaults[index];
             let set = self.graph.annotations[own.clone()]
                 .iter()
                 .any(|annotation| annotation.key == default.key);
             if !set {
-                push(&mut self.graph.annotations, default, offset)?;
+                self.graph.annotations.push(default);
             }
         }
-        Ok(own.start..self.graph.annotations.len())
+        own.start..self.graph.annotations.len()
     }
 
     /// Finishes the `graph` line, which may carry the graph's own annotations, and opens the body.
@@ -192,7 +215,7 @@ impl<'s> Builder<'s> {
             .graph
             .strings
             .find(name)
-            .and_then(|name| self.bindings[name.index()].node)
+            .and_then(|name| self.bound(name)?.node)
         {
             return Ok(id.get() - 1);
         }
@@ -207,16 +230,15 @@ impl<'s> Builder<'s> {
     pub(super) fn condition(&mut self, tokens: &mut Tokens<'_>) -> Result<u32, ParseError> {
         let (word, offset) = tokens.word_or("expected a condition name after `when`")?;
         let name = self.intern(tokens, word)?;
-        let binding = &mut self.bindings[name.index()];
-        if let Some(id) = binding.condition {
+        if let Some(id) = self.bound(name).and_then(|binding| binding.condition) {
             return Ok(id.get() - 1);
         }
-        if binding.node.is_none() && !valid_name(word) {
+        if self.bound(name).and_then(|binding| binding.node).is_none() && !valid_name(word) {
             return Err(ParseError::new(INVALID_NAME, offset));
         }
         let id = self.graph.conditions.len() as u32;
-        push(&mut self.graph.conditions, name, offset)?;
-        binding.condition = NonZeroU32::new(id + 1);
+        self.graph.conditions.push(name);
+        self.slot(name).condition = NonZeroU32::new(id + 1);
         Ok(id)
     }
 
@@ -238,7 +260,7 @@ impl<'s> Builder<'s> {
                 "end" => end = true,
                 _ if self.flags.contains(flag) => {
                     let flag = self.intern(tokens, flag)?;
-                    push(&mut self.graph.flags, flag, token.offset)?;
+                    self.graph.flags.push(flag);
                 }
                 _ => {
                     return Err(ParseError::new(
@@ -261,16 +283,12 @@ impl<'s> Builder<'s> {
         loop {
             tokens.expect(TokenKind::Arrow)?;
             let target = self.node_reference(tokens)?;
-            push(
-                &mut self.graph.edges,
-                Edge {
-                    source,
-                    target,
-                    condition: None,
-                    annotations: 0..0,
-                },
-                offset,
-            )?;
+            self.graph.edges.push(Edge {
+                source,
+                target,
+                condition: None,
+                annotations: 0..0,
+            });
             source = target;
             if !tokens.at(TokenKind::Arrow)? {
                 break;
@@ -302,16 +320,12 @@ impl<'s> Builder<'s> {
                 let source = self.graph.edges[index].source;
                 let id = self.graph.edges.len() as u32;
                 self.link(source, id, true, offset)?;
-                push(
-                    &mut self.graph.edges,
-                    Edge {
-                        source,
-                        target,
-                        condition: None,
-                        annotations: annotations.clone(),
-                    },
-                    offset,
-                )?;
+                self.graph.edges.push(Edge {
+                    source,
+                    target,
+                    condition: None,
+                    annotations: annotations.clone(),
+                });
             }
         }
         Ok(())
@@ -355,7 +369,7 @@ impl<'s> Builder<'s> {
     ) -> Result<(StringId, usize), ParseError> {
         let (word, offset) = tokens.name("expected a choose name after `choose`")?;
         let name = self.intern(tokens, word)?;
-        let binding = &mut self.bindings[name.index()].choice;
+        let binding = &mut self.slot(name).choice;
         if *binding {
             return Err(ParseError::new(
                 "choose name is already declared in this graph",
@@ -385,13 +399,13 @@ impl<'s> Builder<'s> {
     /// The index in `graph.enums` of the enum named `word`, if one is declared.
     fn enum_index(&self, word: &str) -> Option<u32> {
         let id = self.graph.strings.find(word)?;
-        self.bindings[id.index()].enum_.map(|index| index.get() - 1)
+        self.bound(id)?.enum_.map(|index| index.get() - 1)
     }
 
     /// The index in `graph.inputs` of the input named `word`, if one is declared.
     fn input_index(&self, word: &str) -> Option<u32> {
         let id = self.graph.strings.find(word)?;
-        self.bindings[id.index()].input.map(|index| index.get() - 1)
+        self.bound(id)?.input.map(|index| index.get() - 1)
     }
 
     /// Reads `enum NAME MEMBER...` (one line) or `enum NAME` (a head whose members follow in an
@@ -399,22 +413,21 @@ impl<'s> Builder<'s> {
     pub(super) fn enum_head<'a>(&mut self, tokens: &mut Tokens<'a>) -> Result<bool, ParseError> {
         let (word, offset) = tokens.name("expected an enum name after `enum`")?;
         let name = self.intern(tokens, word)?;
-        if self.bindings[name.index()].enum_.is_some() {
+        if self
+            .bound(name)
+            .is_some_and(|binding| binding.enum_.is_some())
+        {
             return Err(ParseError::new(ENUM_DUPLICATE, offset));
         }
         let id = self.graph.enums.len() as u32;
-        self.bindings[name.index()].enum_ = NonZeroU32::new(id + 1);
+        self.slot(name).enum_ = NonZeroU32::new(id + 1);
         let start = self.graph.members.len();
-        push(
-            &mut self.graph.enums,
-            Enum {
-                name,
-                annotations: 0..0,
-                members: narrow(start..start),
-                offset,
-            },
+        self.graph.enums.push(Enum {
+            name,
+            annotations: 0..0,
+            members: narrow(start..start),
             offset,
-        )?;
+        });
         self.current_enum = Some(id);
         let mut inline = false;
         while tokens.at_word()? {
@@ -457,15 +470,11 @@ impl<'s> Builder<'s> {
             return Err(ParseError::new(MEMBER_DUPLICATE, offset));
         }
         let position = self.graph.members.len() as u32 - self.graph.enums[id].members.start;
-        push(
-            &mut self.graph.members,
-            Member {
-                name,
-                annotations,
-                offset,
-            },
+        self.graph.members.push(Member {
+            name,
+            annotations,
             offset,
-        )?;
+        });
         self.member_positions.insert(key, position);
         self.graph.enums[id].members.end = self.graph.members.len() as u32;
         Ok(())
@@ -487,7 +496,10 @@ impl<'s> Builder<'s> {
     pub(super) fn input<'a>(&mut self, tokens: &mut Tokens<'a>) -> Result<(), ParseError> {
         let (word, offset) = tokens.name("expected an input name after `input`")?;
         let name = self.intern(tokens, word)?;
-        if self.bindings[name.index()].input.is_some() {
+        if self
+            .bound(name)
+            .is_some_and(|binding| binding.input.is_some())
+        {
             return Err(ParseError::new(INPUT_DUPLICATE, offset));
         }
         if !tokens.at(TokenKind::Colon)? {
@@ -505,17 +517,14 @@ impl<'s> Builder<'s> {
         };
         let annotations = narrow(self.annotations(tokens)?);
         let id = self.graph.inputs.len() as u32;
-        self.bindings[name.index()].input = NonZeroU32::new(id + 1);
-        push(
-            &mut self.graph.inputs,
-            Input {
-                name,
-                ty,
-                annotations,
-                offset,
-            },
+        self.slot(name).input = NonZeroU32::new(id + 1);
+        self.graph.inputs.push(Input {
+            name,
+            ty,
+            annotations,
             offset,
-        )
+        });
+        Ok(())
     }
 
     /// Reads the condition of a `when` arm. A machine names a free condition; a pure file names a
@@ -546,14 +555,13 @@ impl<'s> Builder<'s> {
             }
         };
         let name = self.intern(tokens, &text)?;
-        let binding = &mut self.bindings[name.index()].condition;
-        let id = match *binding {
+        let id = match self.bound(name).and_then(|binding| binding.condition) {
             Some(id) => id.get() - 1,
             None => {
                 let id = self.graph.conditions.len() as u32;
-                push(&mut self.graph.conditions, name, offset)?;
-                push(&mut self.graph.tests, test, offset)?;
-                self.bindings[name.index()].condition = NonZeroU32::new(id + 1);
+                self.graph.conditions.push(name);
+                self.graph.tests.push(test);
+                self.slot(name).condition = NonZeroU32::new(id + 1);
                 id
             }
         };
@@ -588,7 +596,7 @@ impl<'s> Builder<'s> {
             annotations: std::mem::take(&mut self.choice_annotations),
             offset,
         };
-        push(&mut self.graph.choices, choice, offset)?;
+        self.graph.choices.push(choice);
         Ok(())
     }
 
@@ -606,7 +614,6 @@ impl<'s> Builder<'s> {
         &mut self,
         tokens: &mut Tokens<'_>,
         condition: Option<u32>,
-        offset: usize,
     ) -> Result<(), ParseError> {
         tokens.expect(TokenKind::Arrow)?;
         let (word, tag_offset) = tokens.word_or("expected a tag name after `->`")?;
@@ -620,20 +627,17 @@ impl<'s> Builder<'s> {
         };
         let own = self.annotations(tokens)?;
         let annotations = if self.kind == Kind::Pure {
-            narrow(self.with_defaults(own, offset)?)
+            narrow(self.with_defaults(own))
         } else {
             narrow(own)
         };
-        push(
-            &mut self.graph.arms,
-            Arm {
-                condition,
-                tag,
-                annotations,
-                member,
-            },
-            offset,
-        )
+        self.graph.arms.push(Arm {
+            condition,
+            tag,
+            annotations,
+            member,
+        });
+        Ok(())
     }
 
     pub(super) fn annotations(
@@ -652,11 +656,7 @@ impl<'s> Builder<'s> {
             } else {
                 None
             };
-            push(
-                &mut self.graph.annotations,
-                Annotation { key, value },
-                offset,
-            )?;
+            self.graph.annotations.push(Annotation { key, value });
         }
         tokens.expect(TokenKind::Newline)?;
         Ok(start..self.graph.annotations.len())

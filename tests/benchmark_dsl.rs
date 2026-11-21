@@ -1,26 +1,9 @@
 use graphite::lexer::{Lexer, TokenKind};
-use graphite::parser::{Schema, parse};
 
 #[path = "../benches/support/dsl.rs"]
 mod dsl;
 #[path = "../benches/support/workload.rs"]
 mod workload;
-
-#[test]
-fn producer_capacity_covers_every_generator_boundary() {
-    for count in dsl::MIN_GRAPH_NODES..=64 {
-        let names = workload::names(count, 42);
-        let capacity = dsl::graph_capacity(&names);
-        let source = dsl::graph_source(&names);
-        let graphs = parse(&source, &Schema::default(), &[capacity]).unwrap();
-        let graph = &graphs[0];
-        assert_eq!(graph.nodes.len(), capacity.nodes);
-        assert_eq!(graph.edges.len(), capacity.edges);
-        assert_eq!(graph.choices.len(), capacity.choices);
-        assert_eq!(graph.arms.len(), capacity.arms);
-        assert_eq!(graph.annotations.len(), capacity.annotations);
-    }
-}
 
 #[test]
 fn generated_graph_lexes_without_errors_and_ends_with_dedent() {

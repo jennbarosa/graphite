@@ -42,13 +42,12 @@ fn frontend_emit(criterion: &mut Criterion) {
         })
         .unwrap_or(42);
     let names = workload::names(stages, seed);
-    let capacity = [dsl::graph_capacity(&names)];
     let source = dsl::graph_source(&names);
     drop(names);
     let schema = Schema::default();
 
     // Parse and size the output outside timing; emission reads the checked graphs.
-    let graphs = parse(&source, &schema, &capacity).expect("generated DSL must compile");
+    let graphs = parse(&source, &schema).expect("generated DSL must compile");
     drop(source);
     let mut probe = Vec::new();
     emit_all(&graphs, &mut probe);

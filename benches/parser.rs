@@ -28,13 +28,12 @@ fn parser(criterion: &mut Criterion) {
         })
         .unwrap_or(42);
     let names = workload::names(stages, seed);
-    let capacity = [dsl::graph_capacity(&names)];
     let source = dsl::graph_source(&names);
     drop(names);
     let schema = Schema::default();
 
     // Verify real compiled output outside timing, and release it before measurement.
-    let graphs = parse(&source, &schema, &capacity).expect("generated DSL must compile");
+    let graphs = parse(&source, &schema).expect("generated DSL must compile");
     assert_eq!(graphs.len(), 1);
     let graph = &graphs[0];
     assert_eq!(graph.nodes.len(), stages);
@@ -50,16 +49,14 @@ fn parser(criterion: &mut Criterion) {
     );
     drop(graphs);
 
-    if profile::from_environment(&source, &schema, &capacity).expect("perf profiling failed") {
+    if profile::from_environment(&source, &schema).expect("perf profiling failed") {
         return;
     }
 
     let mut group = criterion.benchmark_group(format!("parser/{tier}/seed_{seed}"));
     group.throughput(Throughput::Elements(stages as u64));
     group.bench_function("parse_build_drop", |bencher| {
-        bencher.iter(|| {
-            black_box(parse(black_box(&source), black_box(&schema), black_box(&capacity)).unwrap())
-        });
+        bencher.iter(|| black_box(parse(black_box(&source), black_box(&schema)).unwrap()));
     });
     group.finish();
 }

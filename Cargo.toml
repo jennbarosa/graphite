@@ -28,10 +28,6 @@ name = "frontend"
 harness = false
 
 [[bench]]
-name = "compiler_storage"
-harness = false
-
-[[bench]]
 name = "lexer"
 harness = false
 

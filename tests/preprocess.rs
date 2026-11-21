@@ -2,7 +2,7 @@
 
 use graphite::lexer::{Lexer, TokenKind};
 use graphite::parser::{ParseError, Schema, parse};
-use graphite::pipeline::{block_capacities, compile};
+use graphite::pipeline::compile;
 use graphite::preprocess::preprocess;
 
 const GRAPH: &str = "graph door\n  node a end\n";
@@ -152,21 +152,10 @@ fn compile_builds_a_file_with_a_directive_header() {
 }
 
 #[test]
-fn block_capacities_of_a_header_match_its_body_alone() {
-    let body = "graph door\n  node a end\n  node b end\n    a -> b\n";
-    let with_header = format!("@!frontend:typescript\n\n{body}");
-    assert_eq!(
-        block_capacities(&with_header, &Schema::default()),
-        block_capacities(body, &Schema::default())
-    );
-}
-
-#[test]
 fn a_direct_parse_of_a_directive_header_fails_at_the_at_sign() {
     // `parse` lexes from byte 0 and does not read directives, so the header is a parse error.
     let source = format!("@!frontend:typescript\n{GRAPH}");
-    let capacities = block_capacities(&source, &Schema::default());
-    let error = match parse(&source, &Schema::default(), &capacities) {
+    let error = match parse(&source, &Schema::default()) {
         Err(error) => error,
         Ok(_) => panic!("expected `parse` to refuse the header"),
     };

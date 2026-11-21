@@ -5,13 +5,9 @@ use std::hint::black_box;
 use std::io::{self, BufRead, BufReader, Write};
 
 use graphite::graph::CompiledGraph;
-use graphite::parser::{Capacity, ParseError, Schema, parse};
+use graphite::parser::{ParseError, Schema, parse};
 
-pub fn from_environment(
-    source: &str,
-    schema: &Schema<'_>,
-    capacity: &[Capacity],
-) -> io::Result<bool> {
+pub fn from_environment(source: &str, schema: &Schema<'_>) -> io::Result<bool> {
     let Some(control_path) = std::env::var_os("GRAPHITE_PROFILE_CONTROL") else {
         return Ok(false);
     };
@@ -28,7 +24,7 @@ pub fn from_environment(
     let mut control = OpenOptions::new().write(true).open(control_path)?;
     let mut acknowledgements = BufReader::new(File::open(ack_path)?);
     run(&mut control, &mut acknowledgements, iterations, || {
-        profile_parse(black_box(source), black_box(schema), black_box(capacity))
+        profile_parse(black_box(source), black_box(schema))
     })?;
     eprintln!("Isolated parse profile: {iterations} calls; output drop excluded");
     Ok(true)
@@ -36,12 +32,8 @@ pub fn from_environment(
 
 // Preserve a named root and its frame in profile builds, without changing the library.
 #[inline(never)]
-pub fn profile_parse(
-    source: &str,
-    schema: &Schema<'_>,
-    capacity: &[Capacity],
-) -> Result<Vec<CompiledGraph>, ParseError> {
-    black_box(parse(source, schema, capacity))
+pub fn profile_parse(source: &str, schema: &Schema<'_>) -> Result<Vec<CompiledGraph>, ParseError> {
+    black_box(parse(source, schema))
 }
 
 pub fn run<T>(

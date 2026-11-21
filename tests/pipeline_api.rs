@@ -6,27 +6,13 @@ use std::path::Path;
 use graphite::frontend::registry;
 use graphite::parser::Schema;
 use graphite::pipeline::build::{Chosen, compile_file, file_name};
-use graphite::pipeline::{block_capacities, check_outputs, compile_body};
+use graphite::pipeline::{check_outputs, compile_body};
 
 const TWO_GRAPHS: &str =
     "graph a\n  node x\n  node y end\n  edge x -> y\n\ngraph b\n  node p end\n";
 
 fn typescript() -> &'static registry::Target {
     registry::lookup("typescript").expect("the typescript front end is registered")
-}
-
-#[test]
-fn block_capacities_gives_one_bound_per_graph() {
-    let bounds = block_capacities(TWO_GRAPHS, &Schema::default());
-    assert_eq!(bounds.len(), 2);
-    assert!(bounds[0].nodes >= 2, "{:?}", bounds[0]);
-    assert!(bounds[0].edges >= 1, "{:?}", bounds[0]);
-    assert!(bounds[1].nodes >= 1, "{:?}", bounds[1]);
-}
-
-#[test]
-fn block_capacities_of_text_before_any_graph_is_empty() {
-    assert!(block_capacities("", &Schema::default()).is_empty());
 }
 
 #[test]
