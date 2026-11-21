@@ -120,7 +120,15 @@ fn capacity_bounds_cover_distinct_names_in_every_interned_role() {
         strings: names.len() + 2,
         string_bytes: names.iter().map(String::len).sum::<usize>() + "doortime.delay".len(),
     };
-    let graphs = parse(&source, &Schema { node_flags: &flags }, &[capacity]).unwrap();
+    let graphs = parse(
+        &source,
+        &Schema {
+            node_flags: &flags,
+            ..Default::default()
+        },
+        &[capacity],
+    )
+    .unwrap();
     let graph = &graphs[0];
     assert_eq!(graph.nodes.len(), count);
     assert_eq!(graph.conditions.len(), count * 2);

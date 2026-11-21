@@ -116,6 +116,7 @@ fn adjacency_groups_interleaved_sources_without_reordering_gates() {
 fn schema_flags_and_namespaced_valueless_annotations_are_data() {
     let schema = Schema {
         node_flags: &["looping"],
+        ..Default::default()
     };
     let graphs = parse(
         "graph walk\n  node stopped end looping @time.delay @anim:idle",

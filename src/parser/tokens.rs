@@ -38,6 +38,13 @@ impl<'a> Tokens<'a> {
         Ok(self.peek()?.is_some_and(|token| token.kind == kind))
     }
 
+    /// Whether the next token is a word, such as a member name or a keyword.
+    pub fn at_word(&mut self) -> Result<bool, ParseError> {
+        Ok(self
+            .peek()?
+            .is_some_and(|token| matches!(token.kind, TokenKind::Word(_))))
+    }
+
     pub fn expect(&mut self, kind: TokenKind<'a>) -> Result<(), ParseError> {
         if !self.at(kind)? {
             return Err(self.error(expected(kind)));

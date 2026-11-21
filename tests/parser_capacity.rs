@@ -64,6 +64,7 @@ fn capacity() -> Capacity {
 fn exact_capacity_compiles_all_storage_roles() {
     let schema = Schema {
         node_flags: &["looping"],
+        ..Default::default()
     };
     let graphs = parse(SOURCE, &schema, &[capacity()]).unwrap();
     let graph = &graphs[0];
@@ -81,6 +82,7 @@ fn exact_capacity_compiles_all_storage_roles() {
 fn underestimating_any_storage_role_returns_an_error() {
     let schema = Schema {
         node_flags: &["looping"],
+        ..Default::default()
     };
     for role in 0..9 {
         let mut hint = capacity();
@@ -152,6 +154,7 @@ fn unrepresentable_capacities_fail_without_panicking() {
             SOURCE,
             &Schema {
                 node_flags: &["looping"],
+                ..Default::default()
             },
             &[hint],
         )

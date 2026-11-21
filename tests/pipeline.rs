@@ -32,6 +32,7 @@ fn block_bounds_are_enough_for_a_compile_that_uses_every_line() {
     let source = "graph walk\n  node windup @anim:windup\n  node going loop @anim:walk\n  node stopped end @anim:idle\n  edge windup -> stopped when keyup\n  edge windup -> going\n  edge going -> stopped when keyup\n  choose facing\n    when left -> side @flip:true\n    else -> down\n";
     let schema = Schema {
         node_flags: &["loop"],
+        ..Default::default()
     };
     let graphs = compile(source, &schema).unwrap();
     assert_eq!(graphs.len(), 1);

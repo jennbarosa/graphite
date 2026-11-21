@@ -13,7 +13,10 @@ fn main() -> Result<(), ParseError> {
 
     // A domain flag is allowed only when the schema names it.
     let flags = ["retry"];
-    let schema = Schema { node_flags: &flags };
+    let schema = Schema {
+        node_flags: &flags,
+        ..Default::default()
+    };
     compile("graph job\n  node run retry end\n", &schema)?;
     Ok(())
 }

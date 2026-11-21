@@ -74,7 +74,10 @@ impl Job<'_> {
 
     fn parse(&mut self) -> Result<(), String> {
         let flags: Vec<&str> = self.request.node_flags.iter().map(String::as_str).collect();
-        let schema = Schema { node_flags: &flags };
+        let schema = Schema {
+            node_flags: &flags,
+            ..Default::default()
+        };
         self.graphs = compile(&self.source, &schema)
             .map_err(|error| error.diagnostic(&self.source).to_string())?;
         if let Some(verify) = self.request.verify {

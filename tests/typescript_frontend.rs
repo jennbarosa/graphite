@@ -30,6 +30,7 @@ fn emitted_text<const SHIFT: u32>(frontend: &TypeScript<SHIFT>, source: &str) ->
         source,
         &graphite::parser::Schema {
             node_flags: &["looping"],
+            ..Default::default()
         },
     )
     .unwrap();
@@ -239,6 +240,7 @@ fn export_modules_for_cross_language_checks() {
                     source,
                     &graphite::parser::Schema {
                         node_flags: &["looping"],
+                        ..Default::default()
                     },
                 )
                 .unwrap()

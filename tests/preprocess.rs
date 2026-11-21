@@ -121,7 +121,7 @@ fn a_directive_after_other_text_is_refused_too() {
 #[test]
 fn errors_in_the_body_point_at_the_same_line_with_or_without_the_header() {
     let body = "graph door\n  node a end\n  node a end\n";
-    let header = "@!pure\n\n@!frontend:purescript\n\n";
+    let header = "@!frontend:typescript\n\n";
     let plain = error_of(body);
     let with_header = error_of(&format!("{header}{body}"));
     assert_eq!(with_header.message, plain.message);
@@ -130,7 +130,7 @@ fn errors_in_the_body_point_at_the_same_line_with_or_without_the_header() {
 
 #[test]
 fn compile_builds_a_file_with_a_directive_header() {
-    let source = format!("@!pure\n\n{GRAPH}");
+    let source = format!("@!frontend:typescript\n\n{GRAPH}");
     let graphs = compile(&source, &Schema::default()).unwrap();
     assert_eq!(graphs.len(), 1);
 }
@@ -138,7 +138,7 @@ fn compile_builds_a_file_with_a_directive_header() {
 #[test]
 fn block_capacities_of_a_header_match_its_body_alone() {
     let body = "graph door\n  node a end\n  node b end\n    a -> b\n";
-    let with_header = format!("@!pure\n\n{body}");
+    let with_header = format!("@!frontend:typescript\n\n{body}");
     assert_eq!(
         block_capacities(&with_header, &Schema::default()),
         block_capacities(body, &Schema::default())

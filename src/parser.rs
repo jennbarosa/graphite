@@ -15,10 +15,12 @@ pub use error::ParseError;
 /// The keyword that opens each graph block.
 pub const GRAPH_KEYWORD: &str = "graph";
 
-/// Additional legal node flags. Core `loop` and `end` are always available.
+/// Additional legal node flags. Core `loop` and `end` are always available. `pure` makes the
+/// graphs pure, for signals the library cannot read from the text (flags, names, targets).
 #[derive(Default)]
 pub struct Schema<'a> {
     pub node_flags: &'a [&'a str],
+    pub pure: bool,
 }
 
 /// Compile one lexer stream directly into owned, checked graph arrays.

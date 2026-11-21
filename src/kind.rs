@@ -39,11 +39,11 @@ impl Kind {
         }
     }
 
-    /// The condition the structure graph's first task returns for this kind.
-    pub fn structure_route(self) -> &'static str {
+    /// The conditions the structure graph's first task returns for this kind.
+    pub fn structure_route(self) -> &'static [&'static str] {
         match self {
-            Kind::Machine => "machine",
-            Kind::Pure => "pure",
+            Kind::Machine => &["machine"],
+            Kind::Pure => &["pure"],
         }
     }
 
@@ -109,8 +109,8 @@ mod tests {
 
     #[test]
     fn structure_route_runnable_and_label_for_each_kind() {
-        assert_eq!(Kind::Machine.structure_route(), "machine");
-        assert_eq!(Kind::Pure.structure_route(), "pure");
+        assert_eq!(Kind::Machine.structure_route(), ["machine"]);
+        assert_eq!(Kind::Pure.structure_route(), ["pure"]);
         assert!(Kind::Machine.runnable());
         assert!(!Kind::Pure.runnable());
         assert_eq!(Kind::Machine.label(), "machine");

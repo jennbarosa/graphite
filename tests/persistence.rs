@@ -22,6 +22,7 @@ fn compile_workflow(name: &str, path: &Path) -> PathBuf {
         &source,
         &Schema {
             node_flags: &["retry"],
+            ..Default::default()
         },
     )
     .unwrap();

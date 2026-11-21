@@ -22,6 +22,7 @@ fn host_accessors_workflow_host_and_persistence_run_on_the_fixtures() {
         &workflow,
         &Schema {
             node_flags: &["retry"],
+            ..Default::default()
         },
     )
     .unwrap();

@@ -35,6 +35,13 @@ pub struct Directives<'a> {
     pub body: usize,
 }
 
+impl Directives<'_> {
+    /// Whether a directive makes the file pure: `@!pure`, or `@!frontend:pure`.
+    pub fn is_pure(&self) -> bool {
+        self.pure.is_some() || self.frontend.is_some_and(|(value, _)| value == "pure")
+    }
+}
+
 fn directive_graph() -> &'static CompiledGraph {
     static GRAPH: OnceLock<CompiledGraph> = OnceLock::new();
     GRAPH.get_or_init(bootstrap::directive::graph)

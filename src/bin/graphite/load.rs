@@ -26,6 +26,7 @@ pub fn graphs_with(
     let node_flags = allowlist.map_or(Vec::new(), Allowlist::node_flags);
     let schema = Schema {
         node_flags: &node_flags,
+        ..Default::default()
     };
     let graphs =
         compile(&source, &schema).map_err(|error| error.diagnostic(&source).to_string())?;

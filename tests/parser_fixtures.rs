@@ -14,7 +14,7 @@ macro_rules! fixture {
             let source = include_str!(concat!("fixtures/parser/", stringify!($name), ".graphite"));
             let expected =
                 include_str!(concat!("fixtures/parser/", stringify!($name), ".expected"));
-            let schema = Schema { node_flags: &[$($flag),*] };
+            let schema = Schema { node_flags: &[$($flag),*], ..Default::default() };
             let graphs = parse(source, &schema).unwrap();
             let actual = inspect::graphs(&graphs);
             println!("{actual}");

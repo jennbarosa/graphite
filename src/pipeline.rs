@@ -28,8 +28,18 @@ use crate::preprocess::preprocess;
 /// Text before the first graph gets no bounds, so `parse` rejects it. The directives at the top
 /// of the file are not counted: the bounds are those of the body that [`compile`] parses.
 pub fn block_capacities(source: &str, schema: &Schema<'_>) -> Vec<Capacity> {
-    let body = preprocess(source).map_or(0, |directives| directives.body);
-    capacities_of(&source[body..], schema)
+    let directives = preprocess(source).ok();
+    let body = directives.as_ref().map_or(0, |found| found.body);
+    let pure = schema.pure || directives.is_some_and(|found| found.is_pure());
+    capacities_of(&source[body..], &effective(schema, pure))
+}
+
+/// `schema` with its `pure` signal raised when the file's directives make it pure.
+fn effective<'a>(schema: &Schema<'a>, pure: bool) -> Schema<'a> {
+    Schema {
+        node_flags: schema.node_flags,
+        pure,
+    }
 }
 
 /// [`block_capacities`] for text that has no directives.
@@ -59,9 +69,10 @@ fn capacities_of(source: &str, schema: &Schema<'_>) -> Vec<Capacity> {
             conditions: block.lines,
             choices: block.lines,
             arms: block.lines,
-            enums: 0,
-            members: 0,
-            inputs: 0,
+            // A declaration takes a line, and one line may hold several members.
+            enums: if schema.pure { block.lines } else { 0 },
+            members: if schema.pure { block.bytes } else { 0 },
+            inputs: if schema.pure { block.lines } else { 0 },
             annotations: block.bytes + block.lines * block.defaults,
             flags: if schema.node_flags.is_empty() {
                 0
@@ -93,12 +104,14 @@ fn opens_graph(line: &str) -> bool {
 /// Reads the directives, then lexes and parses the rest of `source` into checked graphs. The
 /// storage is sized by [`block_capacities`], which counts the same body.
 pub fn compile(source: &str, schema: &Schema<'_>) -> Result<Vec<CompiledGraph>, ParseError> {
-    let body = preprocess(source)?.body;
+    let directives = preprocess(source)?;
+    let schema = effective(schema, schema.pure || directives.is_pure());
+    let body = directives.body;
     parse_body(
         source,
         body,
-        schema,
-        &capacities_of(&source[body..], schema),
+        &schema,
+        &capacities_of(&source[body..], &schema),
     )
 }
 
