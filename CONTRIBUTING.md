@@ -39,15 +39,15 @@ cargo run -- doctor
 
 ## Bootstrap
 
-Graphite reads its own grammar from five rule files in `src/graphs/`: `lex.graphite`,
-`grammar.graphite`, `structure.graphite`, `build.graphite` and `directive.graphite`. The compiled form of each is
+Graphite reads its own grammar from four rule files in `src/graphs/`: `lex.graphite`,
+`grammar.graphite`, `structure.graphite` and `directive.graphite`. The compiled form of each is
 committed in `src/generated/`, and the library builds from those files. Nothing parses
 `.graphite` text at build time.
 
 After you edit a `.graphite` file, regenerate its compiled form from the repository root:
 
 ```sh
-for rule in lex grammar structure build directive; do
+for rule in lex grammar structure directive; do
   cargo run --example bootstrap_dump -- "src/graphs/$rule.graphite" "src/generated/$rule.rs"
 done
 ```

@@ -1,11 +1,9 @@
-//! The build pipeline as a stage graph. `build.graphite` holds the stages and their order: read the
-//! source, parse it, check the output names, and write the modules. Each task here does one stage.
+//! The build pipeline: read the source, parse it, check the output names, and write the modules, in
+//! that order. The first stage that fails ends the build with its message.
 
 use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 
-use crate::bootstrap;
-use crate::bootstrap::build::{Task, task};
 use crate::frontend::registry::Target;
 use crate::graph::CompiledGraph;
 use crate::kind::is_machine_line_refusal;
@@ -13,7 +11,6 @@ use crate::lexer::Diagnostic;
 use crate::parser::{ParseError, Schema};
 use crate::pipeline::{Collision, check_outputs, compile_body, write_modules};
 use crate::preprocess::{Directives, preprocess};
-use crate::stage;
 
 /// A check on the parsed graphs. An `Err` fails the build with its message.
 pub type Verify<'a> = dyn Fn(&[CompiledGraph]) -> Result<(), String> + 'a;
@@ -75,13 +72,11 @@ pub fn run(request: Request<'_>) -> Result<Vec<PathBuf>, String> {
         chosen: None,
         graphs: Vec::new(),
         written: Vec::new(),
-        error: None,
     };
-    let graph = bootstrap::build::graph();
-    let end = stage::drive(&graph, task, |task| job.run_task(task))?;
-    if end == "failed" {
-        return Err(job.error.unwrap_or_else(|| "build failed".to_string()));
-    }
+    job.read()?;
+    job.parse()?;
+    job.check()?;
+    job.write()?;
     Ok(job.written)
 }
 
@@ -92,27 +87,9 @@ struct Job<'a> {
     chosen: Option<Chosen>,
     graphs: Vec<CompiledGraph>,
     written: Vec<PathBuf>,
-    /// The message to show when the build ends at the `failed` node.
-    error: Option<String>,
 }
 
 impl Job<'_> {
-    fn run_task(&mut self, task: Task) -> &'static [&'static str] {
-        let result = match task {
-            Task::Read => self.read(),
-            Task::Parse => self.parse(),
-            Task::Check => self.check(),
-            Task::Write => self.write(),
-        };
-        match result {
-            Ok(()) => &["passed"],
-            Err(message) => {
-                self.error = Some(message);
-                &["failed"]
-            }
-        }
-    }
-
     fn read(&mut self) -> Result<(), String> {
         self.source = std::fs::read_to_string(self.request.input)
             .map_err(|error| format!("{}: {error}", self.request.input.display()))?;
@@ -188,43 +165,5 @@ fn explain_pure(error: ParseError, source: &str, because: Option<&str>) -> Strin
             Diagnostic::new(Cow::Owned(message), error.offset, source).to_string()
         }
         _ => error.diagnostic(source).to_string(),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::bootstrap;
-    use crate::bootstrap::build::task;
-    use crate::stage;
-
-    fn visit(fail_at: Option<&str>) -> (String, Vec<String>) {
-        let graph = bootstrap::build::graph();
-        let mut seen = Vec::new();
-        let end = stage::drive(&graph, task, |task| {
-            let name = format!("{task:?}").to_lowercase();
-            let outcome = if Some(name.as_str()) == fail_at {
-                &["failed"]
-            } else {
-                &["passed"]
-            };
-            seen.push(name);
-            outcome
-        })
-        .unwrap();
-        (end, seen)
-    }
-
-    #[test]
-    fn every_stage_runs_in_order_when_all_pass() {
-        let (end, seen) = visit(None);
-        assert_eq!(end, "done");
-        assert_eq!(seen, ["read", "parse", "check", "write"]);
-    }
-
-    #[test]
-    fn a_failing_stage_routes_to_failed_and_stops_there() {
-        let (end, seen) = visit(Some("check"));
-        assert_eq!(end, "failed");
-        assert_eq!(seen, ["read", "parse", "check"]);
     }
 }

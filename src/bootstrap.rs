@@ -41,11 +41,6 @@ pub(crate) mod structure {
     include!("generated/structure.rs");
 }
 
-pub(crate) mod build {
-    use super::*;
-    include!("generated/build.rs");
-}
-
 pub(crate) mod directive {
     use super::*;
     include!("generated/directive.rs");

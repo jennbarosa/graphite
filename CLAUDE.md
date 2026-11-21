@@ -60,7 +60,7 @@ Run these steps in order before calling a change done or committing. Each step m
    a. `cargo clippy --all-targets -- -D warnings`
    b. Generated rule data is current:
       ```sh
-      for rule in lex grammar structure build directive; do
+      for rule in lex grammar structure directive; do
         cargo run --quiet --example bootstrap_dump -- "src/graphs/$rule.graphite" "src/generated/$rule.rs"
       done
       git diff --exit-code -- src/generated
