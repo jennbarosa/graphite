@@ -21,106 +21,121 @@ const USAGE =
 	'usage: cli.ts <graph.ts> <state.json> [--runner <tasks.ts> | --tasks <tasks.json>] [--input <input.json>] [--each <item.ts> --key <field>]';
 const NEEDS_TASKS = 3;
 
-const args = process.argv.slice(2);
-const positional = args.filter((arg, index) => !isFlag(arg, index, args));
-const [modulePath, statePath] = positional;
-const runnerPath = flag(args, '--runner');
-const tasksPath = flag(args, '--tasks');
-const inputPath = flag(args, '--input');
-const eachPath = flag(args, '--each');
-const keyField = flag(args, '--key');
-const seenPath = flag(args, '--seen');
-const untilText = flag(args, '--until-passed');
-if (!modulePath || !statePath) {
-	console.error(USAGE);
-	process.exit(2);
-}
-if (runnerPath !== undefined && tasksPath !== undefined) {
-	console.error('--runner and --tasks both name the task code: pass one');
-	process.exit(2);
-}
-if ((eachPath === undefined) !== (keyField === undefined)) {
-	console.error('--each and --key go together: each item is run by --each, named by --key');
-	process.exit(2);
-}
-if (eachPath === undefined && (seenPath !== undefined || untilText !== undefined)) {
-	console.error('--seen and --until-passed apply to --each only');
-	process.exit(2);
-}
-const untilPassed = untilText === undefined ? undefined : parseCount(untilText);
+/** A command line that cannot run: its message is printed, and the exit status is 2. */
+class UsageError extends Error {}
 
-const { graph } = await import(resolve(modulePath));
-const itemGraph = eachPath === undefined ? undefined : (await import(resolve(eachPath))).graph;
-const table = tasksPath === undefined ? undefined : await loadTable(tasksPath);
-
-// A graph with tasks needs a runner or a command for each task. Checked before the run starts,
-// so nothing is locked or recorded.
-for (const g of itemGraph === undefined ? [graph] : [graph, itemGraph]) {
-	const tasks = taskNames(g, 'task');
-	if (tasks.length > 0 && runnerPath === undefined && table === undefined) {
-		console.error(
-			`the graph has tasks (${tasks.map((t) => t.label).join(', ')}) but no runner or commands: pass --runner <tasks.ts> or --tasks <tasks.json>`
-		);
-		process.exit(NEEDS_TASKS);
+/** Runs the command line and returns the exit status. */
+export async function main(args: string[]): Promise<number> {
+	try {
+		return await run(args);
+	} catch (error) {
+		if (!(error instanceof UsageError)) throw error;
+		console.error(error.message);
+		return 2;
 	}
-	if (table !== undefined) {
-		const missing = tasks.filter((task) => !Object.hasOwn(table.commands, task.name));
-		if (missing.length > 0) {
+}
+
+async function run(args: string[]): Promise<number> {
+	const positional = args.filter((arg, index) => !isFlag(arg, index, args));
+	const [modulePath, statePath] = positional;
+	const runnerPath = flag(args, '--runner');
+	const tasksPath = flag(args, '--tasks');
+	const inputPath = flag(args, '--input');
+	const eachPath = flag(args, '--each');
+	const keyField = flag(args, '--key');
+	const seenPath = flag(args, '--seen');
+	const untilText = flag(args, '--until-passed');
+	if (!modulePath || !statePath) {
+		throw new UsageError(USAGE);
+	}
+	if (runnerPath !== undefined && tasksPath !== undefined) {
+		throw new UsageError('--runner and --tasks both name the task code: pass one');
+	}
+	if ((eachPath === undefined) !== (keyField === undefined)) {
+		throw new UsageError('--each and --key go together: each item is run by --each, named by --key');
+	}
+	if (eachPath === undefined && (seenPath !== undefined || untilText !== undefined)) {
+		throw new UsageError('--seen and --until-passed apply to --each only');
+	}
+	const untilPassed = untilText === undefined ? undefined : parseCount(untilText);
+
+	const { graph } = await import(resolve(modulePath));
+	const itemGraph = eachPath === undefined ? undefined : (await import(resolve(eachPath))).graph;
+	const table = tasksPath === undefined ? undefined : await loadTable(tasksPath);
+
+	// A graph with tasks needs a runner or a command for each task. Checked before the run starts,
+	// so nothing is locked or recorded.
+	for (const g of itemGraph === undefined ? [graph] : [graph, itemGraph]) {
+		const tasks = taskNames(g, 'task');
+		if (tasks.length > 0 && runnerPath === undefined && table === undefined) {
 			console.error(
-				`no command in ${table.source ?? tasksPath} for: ${missing.map((t) => t.name).join(', ')}`
+				`the graph has tasks (${tasks.map((t) => t.label).join(', ')}) but no runner or commands: pass --runner <tasks.ts> or --tasks <tasks.json>`
 			);
-			process.exit(NEEDS_TASKS);
+			return NEEDS_TASKS;
+		}
+		if (table !== undefined) {
+			const missing = tasks.filter((task) => !Object.hasOwn(table.commands, task.name));
+			if (missing.length > 0) {
+				console.error(
+					`no command in ${table.source ?? tasksPath} for: ${missing.map((t) => t.name).join(', ')}`
+				);
+				return NEEDS_TASKS;
+			}
 		}
 	}
+
+	const runner = await pickRunner(table, runnerPath);
+	// One log sink for every run: it clears its own counts at each run's start.
+	const log = runLog(console.error);
+	const input = inputPath === undefined ? undefined : loadJson(inputPath);
+	const modulePathResolved = resolve(modulePath);
+	const statePathResolved = resolve(statePath);
+
+	/** The options for one run of `g` from `module`, with the state file and input given. */
+	const optionsFor = (
+		g: GraphLike,
+		module: string,
+		stateFile: string,
+		runInput: unknown
+	): DurableOptions => ({
+		modulePath: module,
+		stateFile,
+		runner,
+		input: runInput,
+		taskAnnotation: 'task',
+		retryFlag: 'retry',
+		outcomeConditions: outcomeConditionsOf(g),
+		onEvent: log,
+	});
+
+	if (itemGraph === undefined || eachPath === undefined || keyField === undefined) {
+		const result = await runDurable(
+			optionsFor(graph, modulePathResolved, statePathResolved, input)
+		);
+		console.log(JSON.stringify(result));
+		return result.status === 'ended' ? 0 : 1;
+	}
+
+	// Fan-out: the state path is a directory for the item states, and the seen file defaults beside it.
+	const itemDir = `${statePathResolved}.items`;
+	mkdirSync(itemDir, { recursive: true });
+	const eachModule = resolve(eachPath);
+	const summary = await fanOut({
+		list: optionsFor(graph, modulePathResolved, statePathResolved, input),
+		item: (item, stateFile) => optionsFor(itemGraph, eachModule, stateFile, item),
+		itemStateFile: (key) => `${itemDir}/${key}.state.json`,
+		seenFile: seenPath === undefined ? `${statePathResolved}.seen.json` : resolve(seenPath),
+		key: keyField,
+		...(untilPassed === undefined ? {} : { untilPassed }),
+		onItem: (key, result) => console.error(`[item] ${key} ${JSON.stringify(result)}`),
+	});
+	console.log(JSON.stringify(summary));
+	return summary.status === 'ended' ? 0 : 1;
 }
 
-const runner = await pickRunner(table, runnerPath);
-// One log sink for every run: it clears its own counts at each run's start.
-const log = runLog(console.error);
-const input = inputPath === undefined ? undefined : loadJson(inputPath);
-const modulePathResolved = resolve(modulePath);
-const statePathResolved = resolve(statePath);
-
-/** The options for one run of `g` from `module`, with the state file and input given. */
-const optionsFor = (
-	g: GraphLike,
-	module: string,
-	stateFile: string,
-	runInput: unknown
-): DurableOptions => ({
-	modulePath: module,
-	stateFile,
-	runner,
-	input: runInput,
-	taskAnnotation: 'task',
-	retryFlag: 'retry',
-	outcomeConditions: outcomeConditionsOf(g),
-	onEvent: log,
+main(process.argv.slice(2)).then((code) => {
+	process.exitCode = code;
 });
-
-if (itemGraph === undefined || eachPath === undefined || keyField === undefined) {
-	const result = await runDurable(
-		optionsFor(graph, modulePathResolved, statePathResolved, input)
-	);
-	console.log(JSON.stringify(result));
-	process.exit(result.status === 'ended' ? 0 : 1);
-}
-
-// Fan-out: the state path is a directory for the item states, and the seen file defaults beside it.
-const itemDir = `${statePathResolved}.items`;
-mkdirSync(itemDir, { recursive: true });
-const eachModule = resolve(eachPath);
-const summary = await fanOut({
-	list: optionsFor(graph, modulePathResolved, statePathResolved, input),
-	item: (item, stateFile) => optionsFor(itemGraph, eachModule, stateFile, item),
-	itemStateFile: (key) => `${itemDir}/${key}.state.json`,
-	seenFile: seenPath === undefined ? `${statePathResolved}.seen.json` : resolve(seenPath),
-	key: keyField,
-	...(untilPassed === undefined ? {} : { untilPassed }),
-	onItem: (key, result) => console.error(`[item] ${key} ${JSON.stringify(result)}`),
-});
-console.log(JSON.stringify(summary));
-process.exit(summary.status === 'ended' ? 0 : 1);
 
 /** The task runner: the task commands when given, else the runner module, else none. */
 async function pickRunner(
@@ -139,10 +154,7 @@ function flag(list: string[], name: string): string | undefined {
 	const index = list.indexOf(name);
 	if (index === -1) return undefined;
 	const value = list[index + 1];
-	if (value === undefined) {
-		console.error(`${name} needs a value`);
-		process.exit(2);
-	}
+	if (value === undefined) throw new UsageError(`${name} needs a value`);
 	return value;
 }
 
@@ -156,8 +168,7 @@ function isFlag(arg: string, index: number, list: string[]): boolean {
 function parseCount(text: string): number {
 	const value = Number(text);
 	if (!Number.isInteger(value) || value < 0) {
-		console.error(`--until-passed needs a whole number, got ${text}`);
-		process.exit(2);
+		throw new UsageError(`--until-passed needs a whole number, got ${text}`);
 	}
 	return value;
 }
