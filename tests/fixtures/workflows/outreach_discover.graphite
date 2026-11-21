@@ -1,0 +1,7 @@
+graph discover
+  node load @task:load
+  node items end @task:emit
+  node stop end
+
+  edge load -> items when passed
+  edge load -> stop when failed

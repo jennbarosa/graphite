@@ -1,0 +1,9 @@
+graph prospect
+  node draft @task:draft
+  node review @task:review
+  node hold end
+  node send end @task:send
+
+  edge draft -> review
+  edge review -> send when passed
+  edge review -> hold when failed

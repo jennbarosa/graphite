@@ -1,0 +1,16 @@
+graph player_walk @choice:facing @idle:stopped
+  default @fps:10
+  node windup   @frames:1 @fps:20
+  node going    loop @frames:1-7
+  node winddown end @frames:1 @fps:20
+  node stopped  end @frames:0
+
+  edge windup -> stopped when keyup
+  edge windup -> going
+  edge going  -> winddown when keyup
+
+  choose facing
+    when left  -> side @flip:true
+    when right -> side
+    when up    -> up
+    else       -> down @sheet:marone_run_forward @columns:8

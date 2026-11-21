@@ -1,0 +1,28 @@
+graph npc
+  node root end
+
+  choose tactic
+    when onEdge    -> escape
+    when hitReady  -> hit
+    when pearlReady -> pearl
+    else           -> approach
+
+  choose escapeX
+    when homeEast -> east
+    when homeWest -> west
+    else          -> none
+
+  choose escapeY
+    when homeSouth -> south
+    when homeNorth -> north
+    else           -> none
+
+  choose approachX
+    when foeEast -> east
+    when foeWest -> west
+    else         -> none
+
+  choose approachY
+    when foeSouth -> south
+    when foeNorth -> north
+    else          -> none
