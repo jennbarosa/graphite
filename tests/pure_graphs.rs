@@ -11,6 +11,7 @@ mod tools;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 use cli::{graphite, manifest, scratch, stderr, stdout};
 use graphite::frontend::lang::purescript::PURESCRIPT;
@@ -275,8 +276,15 @@ fn write_project(project: &Path) {
     }
 }
 
+/// Serializes `spago` runs: they share one SQLite cache, which fails with "database is locked"
+/// when two tests build at once.
+static SPAGO: Mutex<()> = Mutex::new(());
+
 /// Builds the project with `spago build --strict`, and returns the log. Any warning or error fails.
 fn build(project: &Path) -> String {
+    let _guard = SPAGO
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     let output = tools::command("spago", "GRAPHITE_SPAGO")
         .current_dir(project)
         .env("PATH", tools::path_with_tools())
