@@ -42,6 +42,18 @@ impl CompiledGraph {
     }
 }
 
+/// The node annotation whose value names a stage's task.
+pub const TASK_ANNOTATION: &str = "task";
+
+/// The value of node `node`'s `task` annotation, if it has one.
+pub fn task_of(graph: &CompiledGraph, node: usize) -> Option<&str> {
+    graph.annotations[index(&graph.nodes[node].annotations)]
+        .iter()
+        .find(|entry| graph.text(entry.key) == TASK_ANNOTATION)
+        .and_then(|entry| entry.value)
+        .map(|value| graph.text(value))
+}
+
 /// Ranges into the graph's arrays, stored as `u32` to keep records small.
 pub type Span = Range<u32>;
 
@@ -50,7 +62,7 @@ pub fn narrow(range: Range<usize>) -> Span {
     range.start as u32..range.end as u32
 }
 
-/// Widens a stored span for slicing. Counts are checked against `u32` at allocation.
+/// Widens a stored span for slicing. Callers check that counts fit in `u32` as they grow.
 pub fn index(span: &Span) -> Range<usize> {
     span.start as usize..span.end as usize
 }

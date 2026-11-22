@@ -3,7 +3,7 @@ use std::hash::BuildHasher;
 
 #[test]
 fn equal_hashes_still_require_equal_string_bytes() {
-    let mut pool = Interner::with_capacity(2, 32).unwrap();
+    let mut pool = Interner::default();
     let closed = pool.intern("closed").unwrap();
     let hash = pool.hasher.hash_one("opening");
 
@@ -17,14 +17,27 @@ fn equal_hashes_still_require_equal_string_bytes() {
     assert_eq!(pool.resolve(closed), Some("closed"));
     assert_eq!(pool.resolve(opening), Some("opening"));
     assert_eq!(pool.intern("opening"), Ok(opening));
-    assert_eq!(pool.intern("open"), Err(InternerFull));
 }
 
 #[test]
 fn out_of_range_symbols_do_not_index_the_offset_array() {
-    let mut pool = Interner::with_capacity(1, 6).unwrap();
+    let mut pool = Interner::default();
     assert_eq!(pool.resolve(StringId::from_index(0)), None);
     pool.intern("closed").unwrap();
     assert_eq!(pool.resolve(StringId::from_index(1)), None);
     assert_eq!(pool.resolve(StringId::from_index(u32::MAX - 1)), None);
+}
+
+#[test]
+fn offsets_and_ids_past_u32_are_an_error_not_a_wrap() {
+    assert_eq!(super::end_offset(u32::MAX as usize, 0), Ok(u32::MAX));
+    assert_eq!(super::end_offset(u32::MAX as usize, 1), Err(InternerFull));
+    assert_eq!(super::end_offset(usize::MAX, 1), Err(InternerFull));
+    assert_eq!(super::next_id(0), Ok(StringId::from_index(0)));
+    assert_eq!(
+        super::next_id(u32::MAX as usize - 1),
+        Ok(StringId::from_index(u32::MAX - 1))
+    );
+    assert_eq!(super::next_id(u32::MAX as usize), Err(InternerFull));
+    assert_eq!(super::next_id(u32::MAX as usize + 1), Err(InternerFull));
 }

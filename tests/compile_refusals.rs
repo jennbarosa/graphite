@@ -100,7 +100,7 @@ fn an_existing_runtime_is_never_overwritten() {
 #[test]
 fn a_pure_file_is_refused_by_a_machine_front_end() {
     let file = dsl(
-        "compile_pure_on_machine.pure.graphite",
+        "compile_pure_on_machine.purs.graphite",
         "graph combat\n  enum E\n    a\n  input i : E\n  choose c : E\n    else -> a\n",
     );
     let out = scratch("compile_pure_on_machine_out");
@@ -114,7 +114,7 @@ fn a_pure_file_is_refused_by_a_machine_front_end() {
     ]);
     assert!(!output.status.success());
     assert!(
-        stderr(&output).contains("is a machine front end (pure front ends: purescript)"),
+        stderr(&output).contains("`enum` needs a pure file"),
         "{}",
         stderr(&output)
     );

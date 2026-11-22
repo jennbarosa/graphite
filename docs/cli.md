@@ -12,8 +12,6 @@ graphite debug <file.graphite> [command...]                 step through a graph
 graphite debug <file.graphite> --simulate <task>=<outcomes> check a graph's routes, with no task run
 graphite inspect <file.graphite> [--json]                   print the compiled graph
 graphite doctor [--json]                               report this build, its front ends, and what works here
-graphite completions <bash|zsh|fish>                   print a shell completion script
-graphite man                                           print the manual page
 graphite help [command]                                show help for a command
 graphite --version                                     print the version
 ```
@@ -29,28 +27,18 @@ graphite --version                                     print the version
 | `debug <file>` | Runs the debugger with the given commands, or reads them from stdin. With `--simulate`, runs the durable engine with stubbed task outcomes instead. | No |
 | `inspect <file>` | Prints the compiled nodes, edges, conditions, choices and annotations. | No |
 | `doctor` | Reports the graphite version, each front end, and whether `debug` and `run` can work here. | No |
-| `completions <shell>` | Prints a completion script for `bash`, `zsh` or `fish`. | No |
-| `man` | Prints the manual page in roff. | No |
 
 ## Options
 
+`graphite help <command>` lists every option of a command and what it does. The main ones:
+
 | Option | Commands | Meaning |
 | --- | --- | --- |
-| `--out <dir>` | `compile`, `debug` | Output directory. `compile` defaults to `graphite-out/<stem>`. `debug` uses a temporary directory. |
-| `--allow <list.toml>` | `check`, `compile`, `run`, `debug` | Allowlist of flags and annotation values, as names only. It holds no commands. See [allowlists](dsl.md#allowlists). |
-| `--graph <name>` | `debug` | Debug this graph instead of the file's first one. |
-| `--simulate <task>=<outcomes>` | `debug` | Runs the graph under the durable engine with each task's outcome stubbed, and runs no task code. Repeatable. Takes no commands. Outcomes are `pass`, `fail`, `none` or `throw`. See [checking routes](durable-workflows.md#checking-routes-without-running-tasks). |
-| `--state <file.json>` | `run` | Checkpoint file. Defaults to `<stem>.state.json` beside the file. |
-| `--runner <tasks.ts>` | `run` | Module whose default export runs tasks. Runs as code with your permissions. |
-| `--tasks <tasks.toml>` | `run` | Runs each task as a command, from a manifest whose `[tasks]` table holds the commands. Cannot be combined with `--runner`. See [command tasks](durable-workflows.md#command-tasks). |
-| `--input <input.json>` | `run` | A JSON value every task receives as `context.input`. See [input](durable-workflows.md#input). |
-| `--each <item.graphite>` | `run` | Runs the item graph once per item the graph produces. Needs `--key`. See [fan-out](durable-workflows.md#fan-out). |
-| `--key <field>` | `run` | The item field that identifies each item. |
-| `--seen <file.json>` | `run` | Item keys already started. A later run with the same `--state` resumes those items without running finished tasks again. A key started under another `--state` is skipped. Defaults beside the state file. |
-| `--until-passed <N>` | `run` | Stops starting items once N have passed. |
-| `--retry <key>` | `run` | Clears the stored error of the task with that key, so this run runs it again. Not used with `--each`. See [retrying a failed task](durable-workflows.md#retrying-a-failed-task). |
-| `--frontend <key>` | `check`, `compile`, `debug` | The front end to use. Without it, the file's name and directives pick one; see [choosing the front end](#choosing-the-front-end-and-mode). `debug` defaults to `typescript`. `pure` is not a front end name: use `--pure`, or `@!frontend:pure`, to make a file pure. |
-| `--pure` | `check`, `compile`, `inspect` | Reads the file as a pure file, as an `@!pure` directive does. Refused by `run` and `debug`, which run machine graphs only. |
+| `--frontend <key>` | `check`, `compile`, `debug` | The front end to use; see [choosing the front end](#choosing-the-front-end-and-mode). |
+| `--out <dir>` | `compile`, `debug` | Output directory. `compile` defaults to `graphite-out/<stem>`. |
+| `--allow <list.toml>` | `check`, `compile`, `run`, `debug` | Allowlist of flags and annotation values. See [allowlists](dsl.md#allowlists). |
+| `--simulate <task>=<outcomes>` | `debug` | Checks a graph's routes with stubbed outcomes. See [checking routes](durable-workflows.md#checking-routes-without-running-tasks). |
+| `--state`, `--runner`, `--tasks`, `--input`, `--each`, `--retry` | `run` | See [durable workflows](durable-workflows.md). |
 
 ## Choosing the front end and mode
 
@@ -60,31 +48,25 @@ A file's front end comes from the first of these that applies:
 2. An `@!frontend:<key>` directive at the top of the file. A directive loses to the flag, and is
    then ignored completely.
 3. The file's infix. `door.ts.graphite` uses the target whose extension is `ts`, and
-   `door.rs.graphite` uses `rust`. A name without `.graphite` has no infix.
-4. The default: `typescript` for a machine file, and `purescript` for a pure file.
+   `door.rs.graphite` uses `rust`. The last infix counts, so `combat.ts.purs.graphite` is
+   PureScript. A name without `.graphite` has no infix. `compile` and `check` refuse an infix no
+   front end writes; the other commands fall back to the default.
+4. The default: `typescript`.
 
-A file is pure when any of these holds: `--pure`; an `@!pure` directive; an `@!frontend:pure`
-directive; a name ending in `.pure.graphite`; a target that is pure (`--frontend purescript`, or
-`@!frontend:purescript`); or an infix whose targets are all pure (`combat.purs.graphite`).
+A file's mode is the kind of its front end. A pure front end, such as `purescript`, makes the file
+a pure file. Nothing else changes the mode.
 
 | File | Front end | Mode |
 | --- | --- | --- |
 | `door.graphite` | `typescript` | machine |
 | `door.rs.graphite` | `rust` | machine |
-| `combat.pure.graphite` | `purescript` | pure |
 | `combat.purs.graphite` | `purescript` | pure |
-| `combat.ts.pure.graphite` | error: no pure front end writes `.ts` | |
+| `door.graphite` with `@!frontend:purescript` | `purescript` | pure |
+| `combat.pure.graphite` | error: no front end for the infix `.pure` (`compile` and `check` only) | |
 | `my.walk.graphite` | error: no front end for the infix `.walk` (`compile` and `check` only) | |
 
-Two signals that disagree are an error that names both sides, for example
-"pure (by `--pure`), but `typescript` is a machine front end (pure front ends: purescript)". A
-machine line in a pure file says why the file is pure, as in "`node` is not allowed in a pure file
-(pure because of `--frontend purescript`)".
-
-**Breaking change.** A dotted name used to pick no front end and always use TypeScript. Now the
-infix picks one: `door.rs.graphite` builds Rust. Pass `--frontend typescript` or add
-`@!frontend:typescript` to keep the old output. A name such as `my.walk.graphite` with no known
-infix now needs one of those as well.
+A machine line in a pure file names the front end that made it pure, as in "`node` is not allowed
+in a pure file (the `purescript` front end writes pure files)".
 
 ## Exit status
 
@@ -107,7 +89,7 @@ and editors. Every object starts with `"ok"`:
 | --- | --- | --- |
 | `check --json` | `{"ok":true,"graphs":1}` | `{"ok":false,"error":"..."}`, exit 1 |
 | `inspect --json` | `{"ok":true,"graphs":[{"name":...,"nodes":[...],"conditions":[...],"choices":[...],"edges":[...]}]}` | `{"ok":false,"error":"..."}`, exit 1 |
-| `doctor --json` | `{"ok":true,"graphite":{...},"core":{...},"front_ends":[...],"test_tools":[...],"blocked":[]}` | `"ok":false` with the `blocked` list, exit 1 |
+| `doctor --json` | `{"ok":true,"graphite":{...},"core":{...},"front_ends":[...],"blocked":[]}` | `"ok":false` with the `blocked` list, exit 1 |
 
 On failure, `error` holds the same text the command prints to stderr without `--json`. Usage errors
 (exit 2) still go to stderr, because the arguments were not understood and no JSON is produced.
@@ -115,31 +97,11 @@ On failure, `error` holds the same text the command prints to stderr without `--
 In `inspect`, a choice arm's `condition` is `null` for `else`, and an annotation's `value` is `null`
 for a bare annotation such as `@flip`. Lists keep the order the text form prints.
 
-## Shell completions and the manual page
-
-`graphite completions <bash|zsh|fish>` prints a completion script for the shell. The script is built
-from the same command table as the parser, so it lists the commands and options the binary accepts.
-
-```sh
-graphite completions bash > ~/.local/share/bash-completion/completions/graphite
-graphite completions zsh > "${fpath[1]}/_graphite"
-graphite completions fish > ~/.config/fish/completions/graphite.fish
-```
-
-`graphite man` prints the manual page in roff. The command sections come from the same help text as
-`graphite help`:
-
-```sh
-graphite man > ~/.local/share/man/man1/graphite.1
-man graphite
-```
-
 ## Environment variables
 
 | Variable | Effect |
 | --- | --- |
 | `GRAPHITE_JS_RUNNER` | The command used to run TypeScript, such as `bun` or `npx tsx`. Takes precedence over the default search. |
-| `GRAPHITE_TSC` | The path to `tsc`, used by the TypeScript type-check test. `doctor` reports it. |
 
 ## Where the TypeScript comes from
 

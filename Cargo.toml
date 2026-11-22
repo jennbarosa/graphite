@@ -12,10 +12,6 @@ categories = ["command-line-utilities", "development-tools"]
 
 [workspace]
 
-[features]
-default = ["lexer-simd"]
-lexer-simd = []
-
 [lib]
 path = "src/lib.rs"
 
@@ -23,22 +19,3 @@ path = "src/lib.rs"
 foldhash = { version = "0.2.0", default-features = false }
 hashbrown = { version = "0.17.1", default-features = false, features = ["inline-more"] }
 toml = "1.1"
-
-[dev-dependencies]
-criterion = { version = "0.8.2", default-features = false, features = ["cargo_bench_support"] }
-
-[[bench]]
-name = "frontend"
-harness = false
-
-[[bench]]
-name = "compiler_storage"
-harness = false
-
-[[bench]]
-name = "lexer"
-harness = false
-
-[[bench]]
-name = "parser"
-harness = false

@@ -21,7 +21,7 @@ syntax keyword graphiteClause when else
 syntax keyword graphiteFlag loop end
 " Annotations: @key or @key:value.
 syntax match graphiteAnnotation "@[^[:space:]]\+"
-" Directives: @!pure and @!frontend:KEY, at the top of a file. This rule comes after the
+" Directives: @!frontend:KEY, at the top of a file. This rule comes after the
 " annotation rule, so it wins at the same position.
 syntax match graphiteDirective "^@![^[:space:]]\+"
 " The arrow between nodes and to a choose arm's tag.

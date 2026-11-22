@@ -17,22 +17,19 @@ pub enum Command {
         input: PathBuf,
         /// `None` means `graphite-out/<file stem>`, resolved by the command.
         out: Option<PathBuf>,
-        /// `None` lets the file's name, directives and `--pure` pick the front end.
+        /// `None` lets the file's directives and name pick the front end.
         front_end: Option<String>,
         allow: Option<PathBuf>,
-        pure: bool,
     },
     Check {
         input: PathBuf,
         front_end: Option<String>,
         allow: Option<PathBuf>,
-        pure: bool,
         json: bool,
     },
     Inspect {
         input: PathBuf,
         json: bool,
-        pure: bool,
     },
     Debug {
         input: PathBuf,
@@ -70,12 +67,6 @@ pub enum Command {
     Doctor {
         json: bool,
     },
-    /// `graphite completions <shell>`: the shell is `bash`, `zsh` or `fish`.
-    Completions {
-        shell: String,
-    },
-    /// `graphite man`: the manual page, in roff.
-    Man,
     /// `graphite help [command]`, or `--help` after any command.
     Help {
         topic: Option<String>,
@@ -89,7 +80,6 @@ struct Options {
     given: Vec<String>,
     out: Option<PathBuf>,
     front_end: Option<String>,
-    pure: bool,
     graph: Option<String>,
     allow: Option<PathBuf>,
     state: Option<PathBuf>,
@@ -138,8 +128,6 @@ fn parse_standalone(verb: &str, args: &[String]) -> Option<Result<Command, Strin
         }
         "--version" | "-V" => Ok(Command::Version),
         "help" | "--help" | "-h" => help_command(args),
-        "completions" => completions_command(args),
-        "man" => man_command(args),
         "doctor" => doctor_command(args),
         _ => return None,
     };
@@ -157,31 +145,6 @@ fn help_command(args: &[String]) -> Result<Command, String> {
         return Err(format!("no help for \"{name}\"\n\n{}", help::OVERVIEW));
     }
     Ok(Command::Help { topic })
-}
-
-fn completions_command(args: &[String]) -> Result<Command, String> {
-    match args.get(1).map(String::as_str) {
-        Some("--help" | "-h") => Ok(Command::Help {
-            topic: Some("completions".into()),
-        }),
-        Some(shell @ ("bash" | "zsh" | "fish")) if args.len() == 2 => Ok(Command::Completions {
-            shell: shell.to_string(),
-        }),
-        Some(other) if args.len() == 2 => Err(format!(
-            "unknown shell \"{other}\"; expected bash, zsh or fish"
-        )),
-        _ => Err("completions needs a shell: bash, zsh or fish".into()),
-    }
-}
-
-fn man_command(args: &[String]) -> Result<Command, String> {
-    match args.get(1).map(String::as_str) {
-        None => Ok(Command::Man),
-        Some("--help" | "-h") => Ok(Command::Help {
-            topic: Some("man".into()),
-        }),
-        Some(_) => Err(format!("man takes no arguments, got \"{}\"", args[1])),
-    }
 }
 
 fn doctor_command(args: &[String]) -> Result<Command, String> {
@@ -207,7 +170,6 @@ fn parse_options(args: &[String]) -> Result<(Options, Vec<String>), String> {
         match arg.as_str() {
             "--out" => options.out = Some(PathBuf::from(value(&mut words, "--out")?)),
             "--frontend" => options.front_end = Some(value(&mut words, "--frontend")?),
-            "--pure" => options.pure = true,
             "--graph" => options.graph = Some(value(&mut words, "--graph")?),
             "--allow" => options.allow = Some(PathBuf::from(value(&mut words, "--allow")?)),
             "--state" => options.state = Some(PathBuf::from(value(&mut words, "--state")?)),
@@ -269,7 +231,6 @@ fn command(
                 out: options.out,
                 front_end: options.front_end,
                 allow: options.allow,
-                pure: options.pure,
             })
         }
         "check" => {
@@ -278,7 +239,6 @@ fn command(
                 input,
                 front_end: options.front_end,
                 allow: options.allow,
-                pure: options.pure,
                 json: options.json,
             })
         }
@@ -287,7 +247,6 @@ fn command(
             Ok(Command::Inspect {
                 input,
                 json: options.json,
-                pure: options.pure,
             })
         }
         "run" => {

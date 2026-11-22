@@ -45,14 +45,11 @@ writing anything. Front ends are listed in `graphite::frontend::registry::TARGET
 `graphite::frontend::typescript::TYPESCRIPT`.
 
 `write_modules` never overwrites a file. If a file already exists, or two graphs would write the
-same name, it fails before writing anything.
-
-## Advanced: fixed storage
-
-`graphite::parser::parse(source, schema, capacities)` takes one `Capacity` per graph, in source
-order, and fails if a capacity is too small rather than growing. Use it when storage must be
-allocated up front, for example in a loop that must not allocate.
-`graphite::pipeline::block_capacities(source, schema)` computes capacities that always fit.
+same name, it fails before writing anything. It renders every file in memory first, so a render
+error leaves nothing on disk. `check_outputs` checks the names and each front end's cheaper name check,
+without rendering the files.
+`compile` reads `@!frontend:KEY` only to see whether the key names a pure front end. It does not
+refuse an unregistered key; the caller does, as the CLI does.
 
 ## Compiled data
 

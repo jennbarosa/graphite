@@ -8,8 +8,8 @@ use graphite::kind::Kind;
 use crate::resolve::Output;
 use crate::{Failure, json, load};
 
-pub fn run(input: &Path, json: bool, pure: bool) -> Result<(), Failure> {
-    let loaded = load::read(input, None, None, pure, Output::Unused)?;
+pub fn run(input: &Path, json: bool) -> Result<(), Failure> {
+    let loaded = load::read(input, None, None, Output::Unused)?;
     let graphs = loaded.graphs;
     if json {
         println!("{}", describe_json(&graphs));

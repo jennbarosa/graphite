@@ -21,7 +21,6 @@ pub fn run(
     out: Option<&Path>,
     front_end: Option<&str>,
     allow: Option<&Path>,
-    pure: bool,
 ) -> Result<(), String> {
     let allowlist = allow.map(Allowlist::load).transpose()?;
     let out = match out {
@@ -36,7 +35,7 @@ pub fn run(
         None => Ok(()),
     };
     let select = |name: &str, directives: &graphite::preprocess::Directives<'_>| {
-        resolve::resolve(name, front_end, pure, directives, Output::Written)
+        resolve::resolve(name, front_end, directives, Output::Written)
     };
     let written = build::run(Request {
         input,
@@ -60,8 +59,8 @@ mod tests {
     #[test]
     fn the_default_output_keeps_the_pure_name_and_the_infix() {
         assert_eq!(
-            default_out(Path::new("examples/combat.pure.graphite")).unwrap(),
-            Path::new("graphite-out").join("combat.pure")
+            default_out(Path::new("examples/combat.purs.graphite")).unwrap(),
+            Path::new("graphite-out").join("combat.purs")
         );
         assert_eq!(
             default_out(Path::new("door.ts.graphite")).unwrap(),

@@ -47,7 +47,7 @@ fn names(
 }
 
 const TACTIC: &str = "\
-@!pure
+@!frontend:purescript
 graph combat @owner:ai
   default @log:off
   enum Tactic flee hit hold @ui:icon
@@ -181,7 +181,7 @@ fn default_applies_to_every_arm_that_does_not_set_the_key() {
 #[test]
 fn two_arms_with_the_same_tag_keep_their_own_annotations() {
     let graphs = pure(
-        "@!pure\n\
+        "@!frontend:purescript\n\
          graph g\n\
          \x20 enum E a b\n\
          \x20 input x : bool\n\
@@ -198,7 +198,7 @@ fn two_arms_with_the_same_tag_keep_their_own_annotations() {
 #[test]
 fn the_same_member_name_may_appear_in_two_enums() {
     let graphs = pure(
-        "@!pure\n\
+        "@!frontend:purescript\n\
          graph g\n\
          \x20 enum A x y\n\
          \x20 enum B x z\n",
@@ -209,7 +209,7 @@ fn the_same_member_name_may_appear_in_two_enums() {
 #[test]
 fn a_pure_graph_with_no_node_is_accepted() {
     let graphs = pure(
-        "@!pure\ngraph g\n  enum E a\n  input x : bool\n  choose c : E\n    when x -> a\n    else -> a\n",
+        "@!frontend:purescript\ngraph g\n  enum E a\n  input x : bool\n  choose c : E\n    when x -> a\n    else -> a\n",
     );
     assert_eq!(graphs[0].nodes.len(), 0);
 }
@@ -240,14 +240,14 @@ fn a_machine_file_refuses_input_and_enum_with_the_pure_hint() {
 
 #[test]
 fn a_pure_file_refuses_nodes_and_edges() {
-    let error = refused_pure("@!pure\ngraph g\n  node a end\n");
+    let error = refused_pure("@!frontend:purescript\ngraph g\n  node a end\n");
     assert_eq!(error.message, "`node` is not allowed in a pure file");
-    assert_eq!(error.offset, "@!pure\ngraph g\n  ".len());
+    assert_eq!(error.offset, "@!frontend:purescript\ngraph g\n  ".len());
 }
 
 #[test]
 fn a_duplicate_enum_name_is_refused_at_its_second_line() {
-    let source = "@!pure\ngraph g\n  enum E a\n  enum E b\n";
+    let source = "@!frontend:purescript\ngraph g\n  enum E a\n  enum E b\n";
     let error = refused_pure(source);
     assert_eq!(error.message, "enum name is already declared in this graph");
     assert_eq!(error.offset, source.rfind("E b").unwrap());
@@ -255,7 +255,7 @@ fn a_duplicate_enum_name_is_refused_at_its_second_line() {
 
 #[test]
 fn a_duplicate_member_within_one_enum_is_refused() {
-    let source = "@!pure\ngraph g\n  enum E a a\n";
+    let source = "@!frontend:purescript\ngraph g\n  enum E a a\n";
     let error = refused_pure(source);
     assert_eq!(error.message, "member is already declared in this enum");
     assert_eq!(error.offset, source.rfind('a').unwrap());
@@ -263,7 +263,7 @@ fn a_duplicate_member_within_one_enum_is_refused() {
 
 #[test]
 fn a_duplicate_input_name_is_refused() {
-    let source = "@!pure\ngraph g\n  input x : bool\n  input x : bool\n";
+    let source = "@!frontend:purescript\ngraph g\n  input x : bool\n  input x : bool\n";
     let error = refused_pure(source);
     assert_eq!(
         error.message,
@@ -274,13 +274,13 @@ fn a_duplicate_input_name_is_refused() {
 
 #[test]
 fn an_enum_with_no_members_is_refused() {
-    let error = refused_pure("@!pure\ngraph g\n  enum E\n    \n");
+    let error = refused_pure("@!frontend:purescript\ngraph g\n  enum E\n    \n");
     assert_eq!(error.message, "an enum needs at least one member");
 }
 
 #[test]
 fn an_input_of_an_unknown_type_is_refused() {
-    let source = "@!pure\ngraph g\n  input x : Missing\n";
+    let source = "@!frontend:purescript\ngraph g\n  input x : Missing\n";
     let error = refused_pure(source);
     assert_eq!(
         error.message,
@@ -291,7 +291,7 @@ fn an_input_of_an_unknown_type_is_refused() {
 
 #[test]
 fn a_when_test_repeated_in_one_choose_is_refused_at_the_second_arm() {
-    let source = "@!pure\ngraph g\n  enum E a b\n  input x : bool\n  choose c : E\n    when x -> a\n    when x -> b\n    else -> a\n";
+    let source = "@!frontend:purescript\ngraph g\n  enum E a b\n  input x : bool\n  choose c : E\n    when x -> a\n    when x -> b\n    else -> a\n";
     let error = refused_pure(source);
     assert_eq!(
         error.message,
@@ -302,13 +302,13 @@ fn a_when_test_repeated_in_one_choose_is_refused_at_the_second_arm() {
 
 #[test]
 fn the_same_when_test_in_two_chooses_is_allowed() {
-    let source = "@!pure\ngraph g\n  enum E a b\n  input x : bool\n  choose c : E\n    when x -> a\n    else -> a\n  choose d : E\n    when x -> b\n    else -> a\n";
+    let source = "@!frontend:purescript\ngraph g\n  enum E a b\n  input x : bool\n  choose c : E\n    when x -> a\n    else -> a\n  choose d : E\n    when x -> b\n    else -> a\n";
     assert_eq!(pure(source).len(), 1);
 }
 
 #[test]
 fn a_choose_without_an_enum_is_refused_in_a_pure_file() {
-    let source = "@!pure\ngraph g\n  enum E a\n  input x : bool\n  choose c\n    when x -> a\n    else -> a\n";
+    let source = "@!frontend:purescript\ngraph g\n  enum E a\n  input x : bool\n  choose c\n    when x -> a\n    else -> a\n";
     let error = refused_pure(source);
     assert_eq!(
         error.message,
@@ -319,7 +319,7 @@ fn a_choose_without_an_enum_is_refused_in_a_pure_file() {
 
 #[test]
 fn a_choose_naming_an_unknown_enum_is_refused() {
-    let source = "@!pure\ngraph g\n  choose c : Nope\n    else -> a\n";
+    let source = "@!frontend:purescript\ngraph g\n  choose c : Nope\n    else -> a\n";
     let error = refused_pure(source);
     assert_eq!(
         error.message,
@@ -330,7 +330,7 @@ fn a_choose_naming_an_unknown_enum_is_refused() {
 
 #[test]
 fn a_when_naming_no_declared_input_is_refused_at_the_name() {
-    let source = "@!pure\ngraph g\n  enum E a\n  input x : bool\n  choose c : E\n    when lowHelth -> a\n    else -> a\n";
+    let source = "@!frontend:purescript\ngraph g\n  enum E a\n  input x : bool\n  choose c : E\n    when lowHelth -> a\n    else -> a\n";
     let error = refused_pure(source);
     assert_eq!(
         error.message,
@@ -341,7 +341,7 @@ fn a_when_naming_no_declared_input_is_refused_at_the_name() {
 
 #[test]
 fn a_bool_input_with_a_member_is_refused() {
-    let source = "@!pure\ngraph g\n  enum E a\n  input x : bool\n  choose c : E\n    when x:a -> a\n    else -> a\n";
+    let source = "@!frontend:purescript\ngraph g\n  enum E a\n  input x : bool\n  choose c : E\n    when x:a -> a\n    else -> a\n";
     let error = refused_pure(source);
     assert_eq!(
         error.message,
@@ -352,7 +352,7 @@ fn a_bool_input_with_a_member_is_refused() {
 
 #[test]
 fn an_enum_input_without_a_member_is_refused() {
-    let source = "@!pure\ngraph g\n  enum E a\n  input x : E\n  choose c : E\n    when x -> a\n    else -> a\n";
+    let source = "@!frontend:purescript\ngraph g\n  enum E a\n  input x : E\n  choose c : E\n    when x -> a\n    else -> a\n";
     let error = refused_pure(source);
     assert_eq!(
         error.message,
@@ -363,7 +363,7 @@ fn an_enum_input_without_a_member_is_refused() {
 
 #[test]
 fn a_member_that_is_not_in_the_enum_is_refused_at_the_member() {
-    let source = "@!pure\ngraph g\n  enum E a\n  input x : E\n  choose c : E\n    when x:up -> a\n    else -> a\n";
+    let source = "@!frontend:purescript\ngraph g\n  enum E a\n  input x : E\n  choose c : E\n    when x:up -> a\n    else -> a\n";
     let error = refused_pure(source);
     assert_eq!(error.message, "not a member of this enum");
     assert_eq!(error.offset, source.find("up").unwrap());
@@ -371,7 +371,7 @@ fn a_member_that_is_not_in_the_enum_is_refused_at_the_member() {
 
 #[test]
 fn a_tag_outside_the_choose_enum_is_refused_at_the_tag() {
-    let source = "@!pure\ngraph g\n  enum E a\n  enum F b\n  input x : bool\n  choose c : E\n    when x -> b\n    else -> a\n";
+    let source = "@!frontend:purescript\ngraph g\n  enum E a\n  enum F b\n  input x : bool\n  choose c : E\n    when x -> b\n    else -> a\n";
     let error = refused_pure(source);
     assert_eq!(
         error.message,
@@ -382,7 +382,7 @@ fn a_tag_outside_the_choose_enum_is_refused_at_the_tag() {
 
 #[test]
 fn a_choose_without_an_else_arm_is_refused_at_the_choose() {
-    let source = "@!pure\ngraph g\n  enum E a\n  input x : bool\n  choose c : E\n    when x -> a\n";
+    let source = "@!frontend:purescript\ngraph g\n  enum E a\n  input x : bool\n  choose c : E\n    when x -> a\n";
     let error = refused_pure(source);
     assert_eq!(error.message, "choose needs an `else` arm in a pure file");
     assert_eq!(error.offset, source.find("c : E").unwrap());
@@ -413,16 +413,18 @@ const SMALL_PURE: &str =
 
 #[test]
 fn a_pure_directive_alone_makes_the_graph_pure() {
-    let source = format!("@!pure\n{SMALL_PURE}");
+    let source = format!("@!frontend:purescript\n{SMALL_PURE}");
     let graphs = compile(&source, &Schema::default()).unwrap();
     assert_eq!(graphs[0].kind, Kind::Pure);
 }
 
 #[test]
-fn frontend_pure_is_a_pure_signal_too() {
+fn the_old_frontend_pure_alias_is_no_longer_a_pure_signal() {
     let source = format!("@!frontend:pure\n{SMALL_PURE}");
-    let graphs = compile(&source, &Schema::default()).unwrap();
-    assert_eq!(graphs[0].kind, Kind::Pure);
+    match compile(&source, &Schema::default()) {
+        Err(error) => assert!(error.message.starts_with("`enum` needs a pure file")),
+        Ok(_) => panic!("`@!frontend:pure` should not make the file pure"),
+    }
 }
 
 #[test]

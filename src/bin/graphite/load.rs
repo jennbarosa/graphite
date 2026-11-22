@@ -18,7 +18,7 @@ pub struct Loaded {
     pub front_end: &'static Target,
 }
 
-/// Reads `path` with no front end or mode named on the command line.
+/// Reads `path` with no front end named on the command line.
 pub fn graphs(path: &Path, allow: Option<&Path>) -> Result<(String, Vec<CompiledGraph>), String> {
     let allowlist = allow.map(Allowlist::load).transpose()?;
     graphs_with(path, allowlist.as_ref())
@@ -29,25 +29,24 @@ pub fn graphs_with(
     path: &Path,
     allowlist: Option<&Allowlist>,
 ) -> Result<(String, Vec<CompiledGraph>), String> {
-    let loaded = read(path, allowlist, None, false, Output::Unused)?;
+    let loaded = read(path, allowlist, None, Output::Unused)?;
     Ok((loaded.source, loaded.graphs))
 }
 
-/// Reads `path`, resolving its front end from `front_end` (the `--frontend` flag), `pure` (the
-/// `--pure` flag), its name and its directives. The allowlist's node flags are legal in the graphs.
+/// Reads `path`, resolving its front end from `front_end` (the `--frontend` flag), its directives
+/// and its name. The allowlist's node flags are legal in the graphs.
 /// `output` says whether the command writes front-end output. See [`Output`].
 pub fn read(
     path: &Path,
     allowlist: Option<&Allowlist>,
     front_end: Option<&str>,
-    pure: bool,
     output: Output,
 ) -> Result<Loaded, String> {
     let source =
         std::fs::read_to_string(path).map_err(|error| format!("{}: {error}", path.display()))?;
     let node_flags = allowlist.map_or(Vec::new(), Allowlist::node_flags);
     let select = |name: &str, directives: &Directives<'_>| {
-        resolve::resolve(name, front_end, pure, directives, output)
+        resolve::resolve(name, front_end, directives, output)
     };
     let (chosen, graphs) = compile_file(&source, path, &node_flags, &select)?;
     if let Some(allowlist) = allowlist {

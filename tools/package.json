@@ -1,9 +1,0 @@
-{
-  "name": "graphite-tools",
-  "private": true,
-  "description": "Pinned npm tools the test suite runs: the TypeScript compiler and the PureScript build tool.",
-  "devDependencies": {
-    "spago": "1.0.5",
-    "typescript": "6.0.3"
-  }
-}

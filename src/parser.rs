@@ -1,6 +1,5 @@
-//! Single-pass DSL compilation into caller-sized buffers for trusted input.
+//! Single-pass DSL compilation: the lexer's tokens are read straight into checked graph arrays.
 
-mod capacity;
 mod compiler;
 mod error;
 mod grammar;
@@ -9,7 +8,6 @@ mod tokens;
 
 use crate::graph::CompiledGraph;
 
-pub use capacity::Capacity;
 pub use error::ParseError;
 
 /// The keyword that opens each graph block.
@@ -23,30 +21,20 @@ pub struct Schema<'a> {
     pub pure: bool,
 }
 
-/// Compile one lexer stream directly into owned, checked graph arrays.
-///
-/// Each graph consumes one capacity hint in source order; extra hints are unused.
-/// Missing or insufficient hints return an error, without growing buffers or
-/// scanning the source again. No tokens or intermediate syntax tree are retained.
-/// Expected O(source bytes + reserved strings + V + E), with fixed allocations per graph.
-pub fn parse(
-    source: &str,
-    schema: &Schema<'_>,
-    capacities: &[Capacity],
-) -> Result<Vec<CompiledGraph>, ParseError> {
-    parse_body(source, 0, schema, capacities)
+/// Compile one lexer stream directly into owned, checked graph arrays. Each graph block in
+/// the source yields one graph, in source order.
+pub fn parse(source: &str, schema: &Schema<'_>) -> Result<Vec<CompiledGraph>, ParseError> {
+    parse_body(source, 0, schema)
 }
 
-/// [`parse`] from byte `body`, past the directives that [`crate::preprocess`] reads. The
-/// capacities count the same text as `body..`.
+/// [`parse`] from byte `body`, past the directives that [`crate::preprocess`] reads.
 pub(crate) fn parse_body(
     source: &str,
     body: usize,
     schema: &Schema<'_>,
-    capacities: &[Capacity],
 ) -> Result<Vec<CompiledGraph>, ParseError> {
     check_source_len(source)?;
-    grammar::parse(source, body, schema, capacities)
+    grammar::parse(source, body, schema)
 }
 
 /// Positions are `u32`, so a longer source cannot be parsed.

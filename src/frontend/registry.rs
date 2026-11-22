@@ -2,7 +2,6 @@ use std::path::{Path, PathBuf};
 
 use super::pure::purescript;
 use super::{Frontend, rust, typescript};
-use crate::kind::Kind;
 
 /// A runtime that a front end's `debug` and `run` need on the machine.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -37,9 +36,6 @@ pub static TARGETS: &[Target] = &[typescript::TARGET, rust::TARGET, purescript::
 /// The front end used when `--frontend` is not given.
 pub const DEFAULT_FRONT_END: &str = "typescript";
 
-/// The front end used for a pure file when `--frontend` is not given.
-pub const DEFAULT_PURE_FRONT_END: &str = "purescript";
-
 /// The front end whose runtime runs `graphite run`. The durable engine is written for it alone.
 pub const DURABLE_FRONT_END: &str = "typescript";
 
@@ -47,12 +43,12 @@ pub fn lookup(key: &str) -> Option<&'static Target> {
     TARGETS.iter().find(|target| target.key == key)
 }
 
-/// The target whose extension is `infix` and whose kind is `kind`, if one is registered. A new
-/// target joins inference by being in `TARGETS`; there is no separate table of infixes.
-pub fn for_infix(infix: &str, kind: Kind) -> Option<&'static Target> {
+/// The target whose extension is `infix`, if one is registered. A new target joins inference by
+/// being in `TARGETS`; there is no separate table of infixes.
+pub fn for_infix(infix: &str) -> Option<&'static Target> {
     TARGETS
         .iter()
-        .find(|target| target.frontend.extension() == infix && target.frontend.kind() == kind)
+        .find(|target| target.frontend.extension() == infix)
 }
 
 #[cfg(test)]
@@ -60,24 +56,21 @@ mod tests {
     use std::collections::HashSet;
 
     use super::{TARGETS, for_infix};
-    use crate::kind::Kind;
 
     #[test]
-    fn no_two_targets_share_an_extension_and_a_kind() {
+    fn no_two_targets_share_an_extension() {
         let mut seen = HashSet::new();
         for target in TARGETS {
-            let key = (target.frontend.extension(), target.frontend.kind());
-            assert!(seen.insert(key), "two targets write {key:?}");
+            let extension = target.frontend.extension();
+            assert!(seen.insert(extension), "two targets write .{extension}");
         }
     }
 
     #[test]
-    fn an_infix_finds_the_machine_target_of_its_extension() {
-        assert_eq!(
-            for_infix("ts", Kind::Machine).map(|t| t.key),
-            Some("typescript")
-        );
-        assert_eq!(for_infix("rs", Kind::Machine).map(|t| t.key), Some("rust"));
-        assert!(for_infix("ts", Kind::Pure).is_none());
+    fn an_infix_finds_the_target_of_its_extension() {
+        assert_eq!(for_infix("ts").map(|t| t.key), Some("typescript"));
+        assert_eq!(for_infix("rs").map(|t| t.key), Some("rust"));
+        assert_eq!(for_infix("purs").map(|t| t.key), Some("purescript"));
+        assert!(for_infix("walk").is_none());
     }
 }

@@ -33,7 +33,7 @@ describes:
 
 ```sh
 graphite compile door.graphite --frontend typescript
-graphite compile combat.pure.graphite          # PureScript, from the name
+graphite compile combat.purs.graphite          # PureScript, from the name
 ```
 
 In Rust, `graphite::frontend::registry::lookup` finds a front end by its key.

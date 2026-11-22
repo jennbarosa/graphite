@@ -22,13 +22,45 @@ change the interface.
   own state, and `--until-passed` counts the items that passed in earlier runs.
 - The results file drops the records of finished stages, so it no longer grows with a long run.
 
+### Removed
+
+- **Breaking:** `graphite completions` and `graphite man` are removed, with their generated shell
+  scripts and manual page.
+
 ### Changed
 
+- The README and FAQ now say which commands need a JavaScript runtime: `run`, and `debug` on the TypeScript
+  front end. `debug` on the Rust front end needs only `rustc`.
+- Building and testing need only Rust. The tests that ran Bun, `tsc`, PureScript and spago, and
+  `scripts/setup-tools.py` with its pinned downloads, are removed. `scripts/check` formats, lints and
+  tests, and CI runs it. One smoke test still runs the generated TypeScript under Bun, and skips when
+  there is no runtime. `graphite doctor` no longer reports a `test_tools` list.
+- The Criterion benchmarks, the allocation-count benches and the experimental parallel lexer are removed.
+- The SIMD lexer and its `lexer-simd` feature are removed. The scalar scan is the only path. On the
+  medium lexer benchmark the SIMD scan ran in 8.03 ms and the scalar scan in 8.19 ms, about 2% apart.
+- **Breaking:** a file is pure only when its front end is pure: `@!frontend:purescript`, a `.purs`
+  name, or `--frontend purescript`. The `--pure` flag, the `@!pure` directive, `@!frontend:pure` and
+  a `.pure` name no longer make a file pure. Rename `x.pure.graphite` to `x.purs.graphite`.
+- **Breaking (library):** the `graphite::arena` module is removed. Nothing in the library used it.
+- **Breaking (library):** `graphite::parser::parse` takes `(source, schema)`. The per-graph `Capacity`
+  hints, `graphite::pipeline::block_capacities` and `Interner::with_capacity` are removed, and so is
+  the `graphite::stage` module. The string table and the graph arrays grow as the source is read, so
+  no caller sizes them. A string table that would pass the 4 GiB offset limit reports
+  "a graph's strings exceed the 4 GiB offset limit", in place of the old capacity messages.
+- The string table and the graph annotations report an error, and never wrap, when an offset or an
+  id passes `u32`.
+- The lexer, grammar, structure checks and `@!` directive reader are plain Rust. The `.graphite` rule
+  files under `src/graphs`, their generated data under `src/generated`, and `examples/bootstrap_dump.rs`
+  are removed, and so is the CI and CONTRIBUTING step that regenerated them. Nothing in the build reads
+  them now.
+- `pipeline::write_modules` renders every output in memory before it creates the output directory. A
+  failed render writes nothing and leaves no empty directory, where it used to leave an empty one.
 - **Breaking:** a dotted file name now picks its front end from the infix. `door.rs.graphite`
   builds Rust, where it used to build TypeScript, with no warning. Pass `--frontend typescript` or add
   `@!frontend:typescript` to keep the old output. A name such as `my.walk.graphite` with no known
   infix is now an error for `compile` and `check` unless a flag or directive names the front end.
-  Other commands ignore the infix. See the
+  Other commands use a known infix, so `run`, `inspect` and `debug` read `combat.purs.graphite` as
+  PureScript, and fall back to the default for an unknown infix. See the
   [CLI reference](docs/cli.md#choosing-the-front-end-and-mode).
 - `check` and `compile` pick the front end from the file's name and directives when `--frontend` is
   not given. The default is still `typescript` for machine files.

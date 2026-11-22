@@ -106,15 +106,8 @@ fn expected(kind: TokenKind<'_>) -> &'static str {
 }
 
 pub(super) fn valid_name(word: &str) -> bool {
-    #[cfg(test)]
-    tests::VALIDATIONS.with(|count| count.set(count.get() + 1));
-
     !word.is_empty()
         && word
             .chars()
             .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
 }
-
-#[cfg(test)]
-#[path = "../../tests/support/name_validation.rs"]
-mod tests;

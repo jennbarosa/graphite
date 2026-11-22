@@ -2,36 +2,29 @@
 //! then through a front end into files. The lexer runs inside `parse`, which streams its
 //! tokens straight into the compiled arrays.
 
-use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt;
 use std::fs::File;
-use std::io::{self, BufWriter, Write};
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 pub mod build;
 
+use crate::frontend::registry;
 use crate::frontend::{Frontend, NameClash};
 use crate::graph::CompiledGraph;
+use crate::kind::Kind;
 use crate::lexer::Diagnostic;
-use crate::parser::{Capacity, GRAPH_KEYWORD, ParseError, Schema, parse_body};
-use crate::preprocess::preprocess;
+use crate::parser::{ParseError, Schema, parse_body};
+use crate::preprocess::{Directives, preprocess};
 
-/// Storage bounds for each graph block in `source`, in source order.
-///
-/// A block starts at a `graph` line and runs to the next one. Every declaration in a block
-/// occupies at least one line of that block, so its line count bounds the node, choice,
-/// arm and condition counts. An edge line may chain several hops, so each `->` bounds one hop,
-/// and an `else` adds at most one edge per hop: twice the arrow count bounds the edges.
-/// Annotations, flags and strings are bounded by the block's bytes, and every node may also copy
-/// each `default` annotation.
-/// Text before the first graph gets no bounds, so `parse` rejects it. The directives at the top
-/// of the file are not counted: the bounds are those of the body that [`compile`] parses.
-pub fn block_capacities(source: &str, schema: &Schema<'_>) -> Vec<Capacity> {
-    let directives = preprocess(source).ok();
-    let body = directives.as_ref().map_or(0, |found| found.body);
-    let pure = schema.pure || directives.is_some_and(|found| found.is_pure());
-    capacities_of(&source[body..], &effective(schema, pure))
+/// Whether a file's `@!frontend` directive names a pure front end. A file that picks its front end
+/// by name or by flag is read by the CLI, which passes the mode in `Schema::pure`.
+fn names_pure_front_end(directives: &Directives<'_>) -> bool {
+    directives
+        .frontend
+        .and_then(|(key, _)| registry::lookup(key))
+        .is_some_and(|target| target.frontend.kind() == Kind::Pure)
 }
 
 /// `schema` with its `pure` signal raised when the file's directives make it pure.
@@ -42,74 +35,10 @@ fn effective<'a>(schema: &Schema<'a>, pure: bool) -> Schema<'a> {
     }
 }
 
-/// [`block_capacities`] for text that has no directives.
-fn capacities_of(source: &str, schema: &Schema<'_>) -> Vec<Capacity> {
-    let mut blocks: Vec<Block> = Vec::new();
-    let mut current: Option<Block> = None;
-    for line in source.split_inclusive('\n') {
-        if opens_graph(line) {
-            blocks.extend(current.take());
-            current = Some(Block::default());
-        }
-        if let Some(block) = current.as_mut() {
-            block.lines += 1;
-            block.bytes += line.len();
-            block.arrows += line.matches("->").count();
-            if line.trim_start().starts_with("default ") {
-                block.defaults += line.matches('@').count();
-            }
-        }
-    }
-    blocks.extend(current);
-    blocks
-        .into_iter()
-        .map(|block| Capacity {
-            nodes: block.lines,
-            edges: 2 * block.arrows,
-            conditions: block.lines,
-            choices: block.lines,
-            arms: block.lines,
-            // A declaration takes a line, and one line may hold several members.
-            enums: if schema.pure { block.lines } else { 0 },
-            members: if schema.pure {
-                block.bytes.div_ceil(2)
-            } else {
-                0
-            },
-            inputs: if schema.pure { block.lines } else { 0 },
-            annotations: block.bytes + block.lines * block.defaults,
-            flags: if schema.node_flags.is_empty() {
-                0
-            } else {
-                block.bytes
-            },
-            strings: block.bytes,
-            string_bytes: block.bytes,
-        })
-        .collect()
-}
-
-/// What one graph block's text measures, for sizing its storage.
-#[derive(Default)]
-struct Block {
-    lines: usize,
-    bytes: usize,
-    arrows: usize,
-    /// Annotations on `default` lines, which every node may copy.
-    defaults: usize,
-}
-
-/// Whether `line` opens a graph block: the keyword followed by a space.
-fn opens_graph(line: &str) -> bool {
-    line.strip_prefix(GRAPH_KEYWORD)
-        .is_some_and(|rest| rest.starts_with(' '))
-}
-
-/// Reads the directives, then lexes and parses the rest of `source` into checked graphs. The
-/// storage is sized by [`block_capacities`], which counts the same body.
+/// Reads the directives, then lexes and parses the rest of `source` into checked graphs.
 pub fn compile(source: &str, schema: &Schema<'_>) -> Result<Vec<CompiledGraph>, ParseError> {
     let directives = preprocess(source)?;
-    let schema = effective(schema, schema.pure || directives.is_pure());
+    let schema = effective(schema, schema.pure || names_pure_front_end(&directives));
     compile_body(source, directives.body, &schema)
 }
 
@@ -121,18 +50,13 @@ pub fn compile_body(
     body: usize,
     schema: &Schema<'_>,
 ) -> Result<Vec<CompiledGraph>, ParseError> {
-    parse_body(
-        source,
-        body,
-        schema,
-        &capacities_of(&source[body..], schema),
-    )
+    parse_body(source, body, schema)
 }
 
 /// Two graphs, or a graph and the runtime, would write the same output file.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Collision {
-    message: Cow<'static, str>,
+    message: String,
     offset: usize,
     /// Whether the clash is with a file that already exists in the output directory. Only then
     /// does removing that directory help.
@@ -142,7 +66,7 @@ pub struct Collision {
 impl Collision {
     fn new(message: String, offset: usize) -> Self {
         Self {
-            message: Cow::Owned(message),
+            message,
             offset,
             existing: false,
         }
@@ -171,11 +95,9 @@ impl fmt::Display for Collision {
 impl std::error::Error for Collision {}
 
 /// Checks that the graphs can be written: no two outputs share a file name, none replaces the
-/// runtime, and every front end accepts every graph (each graph is rendered into nowhere, so a
-/// clash found while rendering is reported too).
-///
-/// Names are compared case-insensitively, so a graph set that builds on Linux also builds on
-/// macOS and Windows. Returns the first collision in source order. Nothing is written.
+/// runtime, and every front end accepts every graph. Names are compared case-insensitively, so a
+/// graph set that builds on Linux also builds on macOS and Windows. Returns the first collision in
+/// source order. Nothing is written.
 pub fn check_outputs(frontend: &dyn Frontend, graphs: &[CompiledGraph]) -> Result<(), Collision> {
     check_plan(frontend, graphs, None)?;
     for graph in graphs {
@@ -184,6 +106,46 @@ pub fn check_outputs(frontend: &dyn Frontend, graphs: &[CompiledGraph]) -> Resul
             .map_err(|error| collision_at(graph, &error))?;
     }
     Ok(())
+}
+
+/// Renders every output in memory, so a clash found while rendering is reported before anything is
+/// written. The caller checks the names first. Returns each output's file name and text, in write order.
+/// A clash comes back as an I/O error wrapping a [`Collision`].
+fn render_outputs(
+    frontend: &dyn Frontend,
+    graphs: &[CompiledGraph],
+) -> io::Result<Vec<(String, Vec<u8>)>> {
+    let mut outputs = Vec::new();
+    if let Some(name) = frontend.runtime_file_name() {
+        let mut text = Vec::new();
+        frontend.emit_runtime(&mut text)?;
+        outputs.push((name.to_owned(), text));
+    }
+    for graph in graphs {
+        for module in frontend.modules(graph) {
+            let mut text = Vec::new();
+            frontend
+                .emit_module(graph, module, &mut text)
+                .map_err(|error| {
+                    if is_name_clash(&error) {
+                        io::Error::new(error.kind(), collision_at(graph, &error))
+                    } else {
+                        error
+                    }
+                })?;
+            outputs.push((frontend.file_name(graph, module), text));
+        }
+    }
+    Ok(outputs)
+}
+
+/// The I/O error that carries a collision, so callers can recover it with `downcast_ref`.
+fn collision_error(collision: Collision) -> io::Error {
+    io::Error::new(io::ErrorKind::AlreadyExists, collision)
+}
+
+fn is_name_clash(error: &io::Error) -> bool {
+    name_clash(error).is_some()
 }
 
 /// A front end's error for `graph`. A name clash carries the offset of the declaration that
@@ -196,10 +158,6 @@ fn collision_at(graph: &CompiledGraph, error: &io::Error) -> Collision {
 /// The name clash inside a front end's error, if the error is one.
 fn name_clash(error: &io::Error) -> Option<&NameClash> {
     error.get_ref()?.downcast_ref::<NameClash>()
-}
-
-fn is_name_clash(error: &io::Error) -> bool {
-    name_clash(error).is_some()
 }
 
 /// [`check_outputs`], plus a refusal for any output that already exists in `directory`.
@@ -294,65 +252,39 @@ fn claim_output(
 /// Writes the runtime and every module of every graph into `directory`, and returns the paths
 /// in the order written. Nothing is overwritten: if any output would replace an existing file,
 /// or two outputs share a name, this fails before writing anything. The error wraps a
-/// [`Collision`], which callers can recover with `get_ref` and `downcast_ref`. If a write fails
-/// midway, the files this call created are removed, so a retry is not blocked by them.
+/// [`Collision`], which callers can recover with `get_ref` and `downcast_ref`. Everything is
+/// rendered before the directory is created, so a clash found while rendering leaves no trace.
+/// If a write fails midway, the files this call created are removed, so a retry is not blocked
+/// by them.
 pub fn write_modules(
     frontend: &dyn Frontend,
     graphs: &[CompiledGraph],
     directory: &Path,
 ) -> io::Result<Vec<PathBuf>> {
-    check_plan(frontend, graphs, Some(directory))
-        .map_err(|collision| io::Error::new(io::ErrorKind::AlreadyExists, collision))?;
+    check_plan(frontend, graphs, Some(directory)).map_err(collision_error)?;
+    let outputs = render_outputs(frontend, graphs)?;
     std::fs::create_dir_all(directory)?;
     let mut written = Vec::new();
-    let result = write_each(frontend, graphs, directory, &mut written);
-    if result.is_err() {
-        for path in &written {
-            let _ = std::fs::remove_file(path);
+    for (name, text) in outputs {
+        let path = directory.join(name);
+        if let Err(error) = create_new(&path, &text) {
+            for path in &written {
+                let _ = std::fs::remove_file(path);
+            }
+            return Err(error);
         }
+        written.push(path);
     }
-    result.map(|()| written)
+    Ok(written)
 }
 
-fn write_each(
-    frontend: &dyn Frontend,
-    graphs: &[CompiledGraph],
-    directory: &Path,
-    written: &mut Vec<PathBuf>,
-) -> io::Result<()> {
-    if let Some(name) = frontend.runtime_file_name() {
-        let runtime = directory.join(name);
-        write_file(&runtime, |output| frontend.emit_runtime(output))?;
-        written.push(runtime);
-    }
-    for graph in graphs {
-        for module in frontend.modules(graph) {
-            let path = directory.join(frontend.file_name(graph, module));
-            // A name clash found while rendering is located at its declaration. Other errors pass
-            // through unchanged.
-            write_file(&path, |output| frontend.emit_module(graph, module, output)).map_err(
-                |error| {
-                    if is_name_clash(&error) {
-                        io::Error::new(error.kind(), collision_at(graph, &error))
-                    } else {
-                        error
-                    }
-                },
-            )?;
-            written.push(path);
-        }
-    }
-    Ok(())
-}
-
-/// Creates a new file. `create_new` makes the write fail, rather than replace, if the file
-/// appeared after the check, so nothing is ever overwritten. If the emit fails, the partial
-/// file this call created is removed; a file that was never created is never touched.
-fn write_file(path: &Path, emit: impl FnOnce(&mut dyn Write) -> io::Result<()>) -> io::Result<()> {
-    let mut output = BufWriter::new(File::create_new(path)?);
-    let result = emit(&mut output).and_then(|()| output.flush());
+/// Creates a new file holding `text`. `create_new` makes the write fail, rather than replace, if
+/// the file appeared after the check, so nothing is ever overwritten.
+fn create_new(path: &Path, text: &[u8]) -> io::Result<()> {
+    let mut file = File::create_new(path)?;
+    let result = file.write_all(text);
     if result.is_err() {
-        drop(output);
+        drop(file);
         let _ = std::fs::remove_file(path);
     }
     result

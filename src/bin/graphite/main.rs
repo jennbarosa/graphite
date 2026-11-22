@@ -4,7 +4,6 @@ mod allow;
 mod args;
 mod check;
 mod compile;
-mod completions;
 mod debug;
 mod debugger;
 mod doctor;
@@ -14,7 +13,6 @@ mod inspect;
 mod js;
 mod json;
 mod load;
-mod man;
 mod resolve;
 mod run;
 mod runtime_assets;
@@ -86,10 +84,9 @@ fn run(command: Command) -> Result<(), Failure> {
             input,
             front_end,
             allow,
-            pure,
             json,
-        } => check::run(&input, front_end.as_deref(), allow.as_deref(), pure, json),
-        Command::Inspect { input, json, pure } => inspect::run(&input, json, pure),
+        } => check::run(&input, front_end.as_deref(), allow.as_deref(), json),
+        Command::Inspect { input, json } => inspect::run(&input, json),
         other => dispatch(other).map_err(Failure::Message),
     }
 }
@@ -107,29 +104,17 @@ fn dispatch(command: Command) -> Result<(), String> {
             println!("graphite {}", env!("CARGO_PKG_VERSION"));
             Ok(())
         }
-        Command::Completions { shell } => {
-            let script =
-                completions::script(&shell).ok_or_else(|| format!("unknown shell \"{shell}\""))?;
-            print!("{script}");
-            Ok(())
-        }
-        Command::Man => {
-            print!("{}", man::page());
-            Ok(())
-        }
         Command::Init { input } => init::run(&input),
         Command::Compile {
             input,
             out,
             front_end,
             allow,
-            pure,
         } => compile::run(
             &input,
             out.as_deref(),
             front_end.as_deref(),
             allow.as_deref(),
-            pure,
         ),
         Command::Run {
             input,

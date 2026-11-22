@@ -1,45 +1,16 @@
 use std::io;
-use std::path::{Path, PathBuf};
-
-#[path = "support/bun.rs"]
-mod bun;
-#[allow(dead_code)]
-#[path = "support/tools.rs"]
-mod tools;
+use std::path::PathBuf;
 
 use graphite::frontend::typescript::TYPESCRIPT;
 use graphite::frontend::{Frontend, Module, registry};
 use graphite::graph::CompiledGraph;
 use graphite::parser::Schema;
-use graphite::pipeline::{Collision, block_capacities, check_outputs, compile, write_modules};
+use graphite::pipeline::{Collision, check_outputs, compile, write_modules};
 
 fn scratch(name: &str) -> PathBuf {
     let directory = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(name);
     let _ = std::fs::remove_dir_all(&directory);
     directory
-}
-
-#[test]
-fn each_graph_block_gets_bounds_from_its_own_lines_and_bytes() {
-    let source = "graph a\n  node x end\ngraph b\n  node y\n  node z end\n  edge y -> z\n";
-    let capacities = block_capacities(source, &Schema::default());
-    assert_eq!(capacities.len(), 2);
-    assert_eq!(capacities[0].nodes, 2);
-    assert_eq!(capacities[1].nodes, 4);
-    assert_eq!(capacities[0].string_bytes, "graph a\n  node x end\n".len());
-    assert_eq!(capacities[0].flags, 0);
-}
-
-#[test]
-fn block_bounds_are_enough_for_a_compile_that_uses_every_line() {
-    let source = "graph walk\n  node windup @anim:windup\n  node going loop @anim:walk\n  node stopped end @anim:idle\n  edge windup -> stopped when keyup\n  edge windup -> going\n  edge going -> stopped when keyup\n  choose facing\n    when left -> side @flip:true\n    else -> down\n";
-    let schema = Schema {
-        node_flags: &["loop"],
-        ..Default::default()
-    };
-    let graphs = compile(source, &schema).unwrap();
-    assert_eq!(graphs.len(), 1);
-    assert_eq!(graphs[0].nodes.len(), 3);
 }
 
 #[test]
@@ -51,6 +22,15 @@ fn compile_reports_the_source_offset_of_a_semantic_error() {
         panic!("an undeclared target must not compile");
     };
     assert!(error.offset > 0);
+}
+
+#[test]
+fn an_empty_graph_list_writes_only_the_runtime_and_does_not_panic() {
+    let directory = scratch("pipeline-empty");
+    assert!(check_outputs(typescript(), &[]).is_ok());
+    let written = write_modules(typescript(), &[], &directory).unwrap();
+    assert_eq!(written.len(), 1);
+    assert!(written[0].ends_with("graphite.ts"));
 }
 
 #[test]
@@ -84,33 +64,6 @@ fn writes_one_index_and_chunks_per_graph_plus_the_runtime() {
     }
     let door = std::fs::read_to_string(directory.join("door.ts")).unwrap();
     assert!(door.contains("export const graph = defineGraph<Vocab>({\nname:\"door\","));
-}
-
-#[test]
-fn a_source_without_any_graph_line_has_no_block_bounds() {
-    assert!(block_capacities("", &Schema::default()).is_empty());
-    assert!(block_capacities("   \n", &Schema::default()).is_empty());
-}
-
-/// The whole path from DSL text. The lexer and parser build the spec's walk cycle, codegen
-/// writes its TypeScript modules, and the bun host in `tests/typescript/walk_host.test.ts`
-/// runs them and checks the behavior.
-#[test]
-fn walk_cycle_runs_through_the_full_pipeline() {
-    let directory = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("walk-host");
-    let _ = std::fs::remove_dir_all(&directory);
-    let source = include_str!("fixtures/runtime/walk_spec.graphite");
-    let graphs = compile(source, &Schema::default()).unwrap();
-    let frontend = registry::lookup("typescript").unwrap().frontend;
-    write_modules(frontend, &graphs, &directory).unwrap();
-
-    let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
-    bun::assert_bun_test_passes(
-        manifest,
-        "tests/typescript/walk_host.test.ts",
-        "GRAPHITE_WALK_HOST",
-        &directory,
-    );
 }
 
 fn typescript() -> &'static dyn graphite::frontend::Frontend {
@@ -226,7 +179,8 @@ fn a_failed_write_removes_what_it_created_so_a_retry_succeeds() {
     .unwrap();
     let error = write_modules(&FailingOn(Module::Nodes(0)), &graphs, &directory).unwrap_err();
     assert_eq!(error.to_string(), "disk full");
-    assert_eq!(std::fs::read_dir(&directory).unwrap().count(), 0);
+    // Rendering happens before the directory is created, so a failed render leaves no trace.
+    assert!(!directory.exists());
 
     write_modules(typescript(), &graphs, &directory).unwrap();
     assert!(directory.join("door.ts").exists());

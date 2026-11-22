@@ -17,6 +17,7 @@ impl StringId {
         (self.0.get() - 1) as usize
     }
 
+    #[cfg(test)]
     pub(crate) fn from_index(index: u32) -> Self {
         Self(NonZeroU32::new(index + 1).unwrap())
     }
@@ -27,60 +28,43 @@ pub struct InternerFull;
 
 impl std::fmt::Display for InternerFull {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str("interner capacity exhausted or unavailable")
+        formatter.write_str("string table exceeds the 4 GiB offset limit")
     }
 }
 
 impl std::error::Error for InternerFull {}
 
-/// Fixed-capacity UTF-8 storage with SwissTable lookup. The hash is unkeyed;
-/// callers must only intern trusted input.
+/// Append-only UTF-8 storage with SwissTable lookup. The hash is unkeyed; callers must only intern
+/// trusted input. Storage grows as strings arrive, and fails only when offsets no longer fit in `u32`.
+#[derive(Default)]
 pub struct Interner {
     bytes: String,
     // Append-only storage needs only end offsets; the preceding end is the start.
     ends: Vec<u32>,
     slots: HashTable<StringId>,
-    max_strings: usize,
-    max_bytes: usize,
     hasher: FixedState,
 }
 
+/// The end offset of a string of `added` bytes appended after `used` bytes.
+fn end_offset(used: usize, added: usize) -> Result<u32, InternerFull> {
+    used.checked_add(added)
+        .and_then(|end| u32::try_from(end).ok())
+        .ok_or(InternerFull)
+}
+
+/// The id of the string after `count` stored ones.
+fn next_id(count: usize) -> Result<StringId, InternerFull> {
+    u32::try_from(count)
+        .ok()
+        .and_then(|count| NonZeroU32::new(count.checked_add(1)?))
+        .map(StringId)
+        .ok_or(InternerFull)
+}
+
 impl Interner {
-    /// Allocates storage once. Returns `InternerFull` if the capacity cannot be represented
-    /// or the allocator refuses the memory.
-    pub fn with_capacity(strings: usize, bytes: usize) -> Result<Self, InternerFull> {
-        if u32::try_from(strings).is_err() || u32::try_from(bytes).is_err() {
-            return Err(InternerFull);
-        }
-
-        let mut byte_buf = String::new();
-        byte_buf
-            .try_reserve_exact(bytes)
-            .map_err(|_| InternerFull)?;
-        let mut ends = Vec::new();
-        ends.try_reserve_exact(strings).map_err(|_| InternerFull)?;
-        let mut slots = HashTable::new();
-        // Reserve while empty; the capacity guard below prevents later growth.
-        slots
-            .try_reserve(strings, |_| 0)
-            .map_err(|_| InternerFull)?;
-
-        Ok(Self {
-            bytes: byte_buf,
-            ends,
-            slots,
-            max_strings: strings,
-            max_bytes: bytes,
-            hasher: FixedState::default(),
-        })
-    }
-
-    /// Expected O(value.len()) hashing plus O(1) probing; never allocates.
-    /// Capacity failures leave stored strings and IDs intact.
+    /// Expected O(value.len()) hashing plus O(1) probing. Fails only when the string table's byte
+    /// offsets or string count would exceed `u32`.
     pub fn intern(&mut self, value: &str) -> Result<StringId, InternerFull> {
-        if self.ends.len() == self.max_strings {
-            return self.find(value).ok_or(InternerFull);
-        }
         let hash = self.hasher.hash_one(value);
         let bytes = &mut self.bytes;
         let ends = &mut self.ends;
@@ -92,19 +76,17 @@ impl Interner {
         ) {
             Entry::Occupied(entry) => Ok(*entry.get()),
             Entry::Vacant(entry) => {
-                if value.len() > self.max_bytes - bytes.len() {
-                    return Err(InternerFull);
-                }
-                let id = StringId(NonZeroU32::new(ends.len() as u32 + 1).ok_or(InternerFull)?);
+                let end = end_offset(bytes.len(), value.len())?;
+                let id = next_id(ends.len())?;
                 bytes.push_str(value);
-                ends.push(bytes.len() as u32);
+                ends.push(end);
                 entry.insert(id);
                 Ok(id)
             }
         }
     }
 
-    /// Resolve a reference without inserting it or consuming storage capacity.
+    /// Resolve a reference without inserting it.
     pub(crate) fn find(&self, value: &str) -> Option<StringId> {
         self.slots
             .find(self.hasher.hash_one(value), |id| {

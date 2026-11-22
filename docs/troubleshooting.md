@@ -65,14 +65,3 @@ The option is not recognized, or it is for a different command. Run `graphite he
 
 **`check does not take --out`** (and similar)
 That option belongs to another command. The message names both.
-
-## Tests
-
-**`cannot run "tsc"`**
-The type-check test needs TypeScript. Run `scripts/setup-tools.py` to install the pinned
-version into `tools/`, or set `GRAPHITE_TSC` to your own `tsc`.
-`graphite doctor` reports whether it found `tsc`, and where.
-
-**`cannot run spago`**
-The PureScript test builds the generated modules with `spago` and `purs`. Run
-`scripts/setup-tools.py`, or set `GRAPHITE_SPAGO` and `GRAPHITE_PURS`. Node.js 22.5 or newer is required.

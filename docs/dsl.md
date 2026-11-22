@@ -1,7 +1,7 @@
 # DSL reference
 
 A file holds one or more `graph` blocks. Indentation sets the structure, and there are no
-parentheses. Terms such as *gate* and *sequence edge* are defined in the [glossary](glossary.md).
+parentheses. Terms such as *gate* and *sequence edge* are defined in the [FAQ](faq.md#what-do-the-terms-mean).
 
 Graph files end in `.graphite`, for example `door.graphite`. Editor support is in
 [Editor support](#editor-support) below.
@@ -154,8 +154,7 @@ may follow the first graph.
 
 | Directive | Meaning |
 | --- | --- |
-| `@!pure` | The file is pure. Takes no value. |
-| `@!frontend:KEY` | Use the front end `KEY` (`typescript`, `rust` or `purescript`). `@!frontend:pure` names no front end, and only makes the file pure. |
+| `@!frontend:KEY` | Use the front end `KEY` (`typescript`, `rust` or `purescript`). A pure front end makes the file pure. |
 
 Each directive can appear once. A directive is one word with nothing else on its line. The flag
 `--frontend` beats `@!frontend`, and a losing directive is ignored completely. See the
@@ -163,7 +162,8 @@ Each directive can appear once. A directive is one word with nothing else on its
 
 ## Pure files
 
-A pure file is a decision table. It has no nodes or edges, so it cannot run: `graphite run` and
+A file is pure when its front end is a pure one, such as `purescript`: by its `.purs` name, or by
+`@!frontend:purescript`. A pure file is a decision table. It has no nodes or edges, so it cannot run: `graphite run` and
 `graphite debug` refuse it. Its body holds these lines:
 
 - `enum NAME MEMBER...` on one line, or `enum NAME` with its members in an indented block below.
