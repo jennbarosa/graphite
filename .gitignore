@@ -1,5 +1,6 @@
 /target
 graphite-out/
+*.profraw
 
 # Local agent skills and Claude settings, not part of the project
 /.agents/

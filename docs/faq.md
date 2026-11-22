@@ -31,15 +31,15 @@ language, and new front ends can be added without changing the graph language. S
 
 ## Why does `run` need Bun?
 
-`run` and `debug` execute TypeScript, and Bun is the default runtime for it. `npx tsx` also works.
+`run`, and `debug` on the TypeScript front end, execute TypeScript, and Bun is the default runtime for it. `npx tsx` also works.
 Set `GRAPHITE_JS_RUNNER` to choose another. The generated TypeScript needs no runtime to be
 compiled, only to be executed. [`graphite doctor`](cli.md) reports which front ends can run here.
 
 ## Do I have to use TypeScript?
 
 No. `check`, `inspect` and the Rust API need no host language at all. `compile` writes the output of
-one front end, which is TypeScript today. You need a JavaScript runtime only for `run`, `debug`, and
-TypeScript hosts that you write.
+one front end, which is TypeScript today. You need a JavaScript runtime only for `run`, `debug` on the TypeScript front end, and
+TypeScript hosts that you write. `debug` on the Rust front end needs only `rustc`.
 
 ## Can a graph have more than one start?
 

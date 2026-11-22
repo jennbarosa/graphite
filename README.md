@@ -34,8 +34,9 @@ git clone https://github.com/jennbarosa/graphite && cd graphite
 cargo install --path .
 ```
 
-`graphite run` and `graphite debug` also need a JavaScript runtime, [Bun](https://bun.sh) or
-`npx tsx`. `graphite doctor` says what works on your machine and what is missing.
+Running graphs needs a little more. `graphite run` and `graphite debug` on the TypeScript front end need a
+JavaScript runtime, [Bun](https://bun.sh) or `npx tsx`. `graphite debug` on the Rust front end needs only
+`rustc`. `graphite doctor` says what works on your machine and what is missing.
 
 ## Quick start
 

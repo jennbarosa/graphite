@@ -29,6 +29,8 @@ change the interface.
 
 ### Changed
 
+- The README and FAQ now say which commands need a JavaScript runtime: `run`, and `debug` on the TypeScript
+  front end. `debug` on the Rust front end needs only `rustc`.
 - Building and testing need only Rust. The tests that ran Bun, `tsc`, PureScript and spago, and
   `scripts/setup-tools.py` with its pinned downloads, are removed. `scripts/check` formats, lints and
   tests, and CI runs it. One smoke test still runs the generated TypeScript under Bun, and skips when
