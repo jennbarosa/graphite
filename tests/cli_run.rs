@@ -234,10 +234,7 @@ print(sys.argv[1])
         std::fs::write(dir.join("tasks.toml"), tasks).unwrap();
 
         let first = run(&dir, &tasks_flag(&dir));
-        if !first.status.success()
-            && stderr(&first).contains("install bun")
-            && std::env::var_os("CI").is_none()
-        {
+        if cli::skip_without_js_runtime(&first) {
             eprintln!("skipped: no JavaScript runtime (install Bun)");
             return;
         }
@@ -419,6 +416,29 @@ mod cli_fanout {
         assert_eq!(not_a_number.status.code(), Some(2));
         assert!(stderr(&not_a_number).contains("whole number"));
     }
+
+    /// `--until-passed` counts the items that passed in earlier runs of the same state. The first run
+    /// starts one item and stops at the limit; a second run with the same state starts no new item.
+    #[test]
+    fn until_passed_counts_items_that_passed_in_an_earlier_run() {
+        let dir = workdir(
+            "cli-fanout-counter",
+            r#"[{"domain":"a.test"},{"domain":"b.test"}]"#,
+        );
+        let seen = dir.join("state.json.seen.json");
+
+        let first = fan_out(&dir, &["--until-passed", "1"]);
+        if cli::skip_without_js_runtime(&first) {
+            eprintln!("skipped: no JavaScript runtime (install Bun)");
+            return;
+        }
+        assert!(first.status.success(), "{}", stderr(&first));
+        assert_eq!(std::fs::read_to_string(&seen).unwrap().lines().count(), 1);
+
+        let second = fan_out(&dir, &["--until-passed", "1"]);
+        assert!(second.status.success(), "{}", stderr(&second));
+        assert_eq!(std::fs::read_to_string(&seen).unwrap().lines().count(), 1);
+    }
 }
 
 // Merged from `tests/cli_retry.rs`.
@@ -496,10 +516,7 @@ mod cli_debug {
             "step".as_ref(),
             "show".as_ref(),
         ]);
-        if !output.status.success()
-            && stderr(&output).contains("install bun")
-            && std::env::var_os("CI").is_none()
-        {
+        if cli::skip_without_js_runtime(&output) {
             eprintln!("skipped: no JavaScript runtime (install Bun)");
             return;
         }

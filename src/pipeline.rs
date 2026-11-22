@@ -108,14 +108,13 @@ pub fn check_outputs(frontend: &dyn Frontend, graphs: &[CompiledGraph]) -> Resul
     Ok(())
 }
 
-/// Checks the names, then renders every output in memory, so a clash found while rendering is
-/// reported before anything is written. Returns each output's file name and text, in write order.
-/// A clash comes back as an `AlreadyExists` error wrapping a [`Collision`].
+/// Renders every output in memory, so a clash found while rendering is reported before anything is
+/// written. The caller checks the names first. Returns each output's file name and text, in write order.
+/// A clash comes back as an I/O error wrapping a [`Collision`].
 fn render_outputs(
     frontend: &dyn Frontend,
     graphs: &[CompiledGraph],
 ) -> io::Result<Vec<(String, Vec<u8>)>> {
-    check_plan(frontend, graphs, None).map_err(collision_error)?;
     let mut outputs = Vec::new();
     if let Some(name) = frontend.runtime_file_name() {
         let mut text = Vec::new();
@@ -262,8 +261,8 @@ pub fn write_modules(
     graphs: &[CompiledGraph],
     directory: &Path,
 ) -> io::Result<Vec<PathBuf>> {
-    let outputs = render_outputs(frontend, graphs)?;
     check_plan(frontend, graphs, Some(directory)).map_err(collision_error)?;
+    let outputs = render_outputs(frontend, graphs)?;
     std::fs::create_dir_all(directory)?;
     let mut written = Vec::new();
     for (name, text) in outputs {

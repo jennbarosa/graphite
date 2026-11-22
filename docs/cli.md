@@ -62,7 +62,7 @@ a pure file. Nothing else changes the mode.
 | `door.rs.graphite` | `rust` | machine |
 | `combat.purs.graphite` | `purescript` | pure |
 | `door.graphite` with `@!frontend:purescript` | `purescript` | pure |
-| `combat.pure.graphite` | error: no front end for the infix `.pure` | |
+| `combat.pure.graphite` | error: no front end for the infix `.pure` (`compile` and `check` only) | |
 | `my.walk.graphite` | error: no front end for the infix `.walk` (`compile` and `check` only) | |
 
 A machine line in a pure file names the front end that made it pure, as in "`node` is not allowed

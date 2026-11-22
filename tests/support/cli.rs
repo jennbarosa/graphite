@@ -46,6 +46,14 @@ pub fn stderr(output: &Output) -> String {
     String::from_utf8_lossy(&output.stderr).into_owned()
 }
 
+/// True when a test that runs the durable engine should skip: the run failed only because no
+/// JavaScript runtime is installed. CI installs Bun, so there it is a failure, not a skip.
+pub fn skip_without_js_runtime(output: &Output) -> bool {
+    !output.status.success()
+        && stderr(output).contains("install bun")
+        && std::env::var_os("CI").is_none()
+}
+
 /// The keys of every registered front end that has a debugger, in registry order. The
 /// TypeScript front end comes first, because it is the reference the others must match.
 pub fn debugging_front_ends() -> Vec<&'static str> {

@@ -59,7 +59,8 @@ change the interface.
   builds Rust, where it used to build TypeScript, with no warning. Pass `--frontend typescript` or add
   `@!frontend:typescript` to keep the old output. A name such as `my.walk.graphite` with no known
   infix is now an error for `compile` and `check` unless a flag or directive names the front end.
-  Other commands ignore the infix. See the
+  Other commands use a known infix, so `run`, `inspect` and `debug` read `combat.purs.graphite` as
+  PureScript, and fall back to the default for an unknown infix. See the
   [CLI reference](docs/cli.md#choosing-the-front-end-and-mode).
 - `check` and `compile` pick the front end from the file's name and directives when `--frontend` is
   not given. The default is still `typescript` for machine files.
