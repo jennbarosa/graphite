@@ -13,8 +13,6 @@ enum State {
     Ok(String),
     /// Does not work until the text's fix is applied. Counts against the exit status.
     Blocked(String),
-    /// Missing, but optional: nothing depends on it.
-    Missing(String),
     /// Not provided by this front end. The text says why.
     Unavailable(String),
 }
@@ -24,17 +22,13 @@ impl State {
         match self {
             State::Ok(_) => "ok",
             State::Blocked(_) => "blocked",
-            State::Missing(_) => "missing",
             State::Unavailable(_) => "unavailable",
         }
     }
 
     fn text(&self) -> &str {
         match self {
-            State::Ok(text)
-            | State::Blocked(text)
-            | State::Missing(text)
-            | State::Unavailable(text) => text,
+            State::Ok(text) | State::Blocked(text) | State::Unavailable(text) => text,
         }
     }
 
@@ -44,7 +38,6 @@ impl State {
             State::Ok(text) if text.is_empty() => "ok".to_string(),
             State::Ok(text) => format!("ok       {text}"),
             State::Blocked(text) => format!("blocked  {text}"),
-            State::Missing(text) => format!("missing  {text}"),
             State::Unavailable(text) => format!("not available: {text}"),
         }
     }
@@ -68,7 +61,6 @@ struct FrontEnd {
 struct Report {
     core: State,
     front_ends: Vec<FrontEnd>,
-    test_tools: Vec<State>,
 }
 
 impl Report {
@@ -125,19 +117,6 @@ fn rustc_state() -> State {
     }
 }
 
-fn tsc_state() -> State {
-    let program = std::env::var("GRAPHITE_TSC").unwrap_or_else(|_| "tsc".into());
-    match js::version(&program, &["--version"]) {
-        Some(found) => State::Ok(format!(
-            "tsc for the TypeScript type-check test: {program} {found}"
-        )),
-        None => State::Missing(
-            "tsc for the TypeScript type-check test: install TypeScript 5 or later, or set GRAPHITE_TSC"
-                .into(),
-        ),
-    }
-}
-
 fn build() -> Report {
     let mut probes = Vec::new();
     let mut front_ends = Vec::new();
@@ -168,7 +147,6 @@ fn build() -> Report {
             "core: check, inspect, init, compile, and the Rust API need no outside tools".into(),
         ),
         front_ends,
-        test_tools: vec![tsc_state()],
     }
 }
 
@@ -188,11 +166,6 @@ fn print_text(report: &Report, blocked: &[String]) {
         println!("    {:<8} {}", "compile", front_end.compile.cell());
         println!("    {:<8} {}", "debug", front_end.debug.cell());
         println!("    {:<8} {}", "run", front_end.run.cell());
-    }
-    println!();
-    println!("test tools (only `cargo test` uses these):");
-    for tool in &report.test_tools {
-        println!("  {}", tool.cell());
     }
     println!();
     if blocked.is_empty() {
@@ -216,7 +189,6 @@ fn print_json(report: &Report, blocked: &[String]) {
             ])
         })
         .collect();
-    let test_tools: Vec<String> = report.test_tools.iter().map(State::json).collect();
     let blocked: Vec<String> = blocked.iter().map(|name| json::quote(name)).collect();
     println!(
         "{}",
@@ -232,7 +204,6 @@ fn print_json(report: &Report, blocked: &[String]) {
             ),
             ("core", report.core.json()),
             ("front_ends", json::array(&front_ends)),
-            ("test_tools", json::array(&test_tools)),
             ("blocked", json::array(&blocked)),
         ])
     );

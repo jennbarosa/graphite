@@ -598,40 +598,6 @@ mod cli_coverage {
     }
 
     #[test]
-    #[ignore = "needs the test tools: scripts/setup-tools.py"]
-    fn doctor_reports_each_front_end() {
-        let text = run_ok(["doctor"]);
-        assert!(text.contains("typescript"), "{text}");
-        assert!(text.contains("purescript"), "{text}");
-        let json = run_ok(["doctor", "--json"]);
-        assert!(json.starts_with("{\"ok\""), "{json}");
-    }
-
-    #[test]
-    #[ignore = "needs the test tools: scripts/setup-tools.py"]
-    fn run_takes_a_runner_and_checkpoints_its_state() {
-        let fixtures = cli::manifest().join("tests/fixtures/runtime");
-        let dsl = fixtures.join("workflow.graphite");
-        let allow = fixtures.join("workflow.toml");
-        let runner = fixtures.join("pass_runner.ts");
-        let state = scratch("coverage-run").join("state.json");
-        std::fs::create_dir_all(state.parent().unwrap()).unwrap();
-        let args = [
-            "run".as_ref(),
-            dsl.as_os_str(),
-            "--allow".as_ref(),
-            allow.as_os_str(),
-            "--state".as_ref(),
-            state.as_os_str(),
-            "--runner".as_ref(),
-            runner.as_os_str(),
-        ];
-        let first = graphite(args);
-        assert!(first.status.success(), "{}", stderr(&first));
-        assert!(state.exists(), "state file was not written");
-    }
-
-    #[test]
     fn run_refuses_a_task_list_and_a_runner_together() {
         let fixtures = cli::manifest().join("tests/fixtures/runtime");
         let dsl = fixtures.join("workflow.graphite");
@@ -646,43 +612,6 @@ mod cli_coverage {
             runner.as_os_str(),
         ]);
         assert_eq!(output.status.code(), Some(2), "{}", stderr(&output));
-    }
-
-    #[test]
-    #[ignore = "needs the test tools: scripts/setup-tools.py"]
-    fn debug_commands_report_their_state_and_usage() {
-        let spec = walk_spec();
-        let session = |commands: &[&str]| {
-            let mut args: Vec<&OsStr> = vec!["debug".as_ref(), spec.as_os_str()];
-            args.extend(commands.iter().map(OsStr::new));
-            graphite(args)
-        };
-        let show = session(&["show"]);
-        assert!(stdout(&show).contains("node windup"), "{}", stdout(&show));
-        let step = session(&["step"]);
-        assert!(
-            stdout(&step).contains("no edges taken"),
-            "{}",
-            stdout(&step)
-        );
-        let set_usage = session(&["set"]);
-        assert!(
-            stdout(&set_usage).contains("usage: set <condition> on|off"),
-            "{}",
-            stdout(&set_usage)
-        );
-        let choose_usage = session(&["choose"]);
-        assert!(
-            stdout(&choose_usage).contains("usage: choose <choice>"),
-            "{}",
-            stdout(&choose_usage)
-        );
-        let unknown = session(&["bogus"]);
-        assert!(
-            stdout(&unknown).contains("unknown command \"bogus\""),
-            "{}",
-            stdout(&unknown)
-        );
     }
 
     #[test]

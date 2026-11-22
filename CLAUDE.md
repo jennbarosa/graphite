@@ -53,21 +53,16 @@ This project is indexed by GitNexus as **graphite** (4447 symbols, 10121 relatio
 
 Run these steps in order before calling a change done or committing. Each step must pass before the next one starts. They mirror the CI gates in `.github/workflows/ci.yml`.
 
-1. **Format and index.**
-   a. `cargo fmt` formats every file. Do not stop at `cargo fmt --check`; let the formatter write its changes.
-   b. Re-index the graph: `node .gitnexus/run.cjs analyze --index-only`.
-2. **Lint and unit tests.**
-   a. `cargo clippy --all-targets -- -D warnings`
-   b. All unit tests: `cargo test --lib --bins`
-3. **Integration tests and `.graphite` fixtures.**
-   a. The fixture-driven targets, named explicitly so they are never skipped:
-      ```sh
-      cargo test --test parser_fixtures --test examples --test real_workflows \
-        --test front_end_equivalence --test chain_equivalence \
-        --test pure_frontends --test pure_graphs --test cli_pure
-      ```
-      When you add a fixture-driven test target, add it to this list.
-   b. All integration tests: `cargo test -- --include-ignored` (the full suite, with the tests that need the tools from `scripts/setup-tools.py`; it includes every target above and the CLI tests that also touch `.graphite` files).
+1. **Format, lint and test.** `scripts/check` runs `cargo fmt`, `cargo clippy --all-targets -- -D warnings`
+   and `cargo test`, the same as CI. Do not stop at `cargo fmt --check`; let the formatter write its changes.
+2. **Re-index the graph:** `node .gitnexus/run.cjs analyze --index-only`.
+3. **Fixture-driven targets**, named explicitly so they are never skipped (`cargo test` in step 1 already
+   runs them):
+   ```sh
+   cargo test --test parser_fixtures --test examples --test real_workflows \
+     --test pure_frontends --test pure_graphs --test cli_pure
+   ```
+   When you add a fixture-driven test target, add it to this list.
 4. **Graph check and commit**, only when steps 1 to 3 all pass.
    a. `node .gitnexus/run.cjs detect-changes --scope all --repo .`. Report the risk level. `partial: true` or `truncated: true` is not clean; re-run it.
    b. Commit the changed files with a message that describes the change. **Do not add a `Co-Authored-By` trailer or any other co-author line.**

@@ -89,7 +89,7 @@ and editors. Every object starts with `"ok"`:
 | --- | --- | --- |
 | `check --json` | `{"ok":true,"graphs":1}` | `{"ok":false,"error":"..."}`, exit 1 |
 | `inspect --json` | `{"ok":true,"graphs":[{"name":...,"nodes":[...],"conditions":[...],"choices":[...],"edges":[...]}]}` | `{"ok":false,"error":"..."}`, exit 1 |
-| `doctor --json` | `{"ok":true,"graphite":{...},"core":{...},"front_ends":[...],"test_tools":[...],"blocked":[]}` | `"ok":false` with the `blocked` list, exit 1 |
+| `doctor --json` | `{"ok":true,"graphite":{...},"core":{...},"front_ends":[...],"blocked":[]}` | `"ok":false` with the `blocked` list, exit 1 |
 
 On failure, `error` holds the same text the command prints to stderr without `--json`. Usage errors
 (exit 2) still go to stderr, because the arguments were not understood and no JSON is produced.

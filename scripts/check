@@ -1,0 +1,7 @@
+#!/bin/sh
+# The one command for contributors: format, lint and test. CI runs the same script.
+set -eu
+cd "$(dirname "$0")/.."
+if [ -n "${CI:-}" ]; then cargo fmt --check; else cargo fmt; fi
+cargo clippy --all-targets -- -D warnings
+cargo test

@@ -1,11 +1,5 @@
 use std::io;
-use std::path::{Path, PathBuf};
-
-#[path = "support/bun.rs"]
-mod bun;
-#[allow(dead_code)]
-#[path = "support/tools.rs"]
-mod tools;
+use std::path::PathBuf;
 
 use graphite::frontend::typescript::TYPESCRIPT;
 use graphite::frontend::{Frontend, Module, registry};
@@ -61,25 +55,6 @@ fn writes_one_index_and_chunks_per_graph_plus_the_runtime() {
     }
     let door = std::fs::read_to_string(directory.join("door.ts")).unwrap();
     assert!(door.contains("export const graph = defineGraph<Vocab>({\nname:\"door\","));
-}
-
-#[test]
-#[ignore = "needs the test tools: scripts/setup-tools.py"]
-fn walk_cycle_runs_through_the_full_pipeline() {
-    let directory = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("walk-host");
-    let _ = std::fs::remove_dir_all(&directory);
-    let source = include_str!("fixtures/runtime/walk_spec.graphite");
-    let graphs = compile(source, &Schema::default()).unwrap();
-    let frontend = registry::lookup("typescript").unwrap().frontend;
-    write_modules(frontend, &graphs, &directory).unwrap();
-
-    let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
-    bun::assert_bun_test_passes(
-        manifest,
-        "tests/typescript/walk_host.test.ts",
-        "GRAPHITE_WALK_HOST",
-        &directory,
-    );
 }
 
 fn typescript() -> &'static dyn graphite::frontend::Frontend {

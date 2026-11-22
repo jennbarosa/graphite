@@ -1,14 +1,6 @@
 /target
 graphite-out/
 
-# Tools installed by scripts/setup-tools.py (the package-lock.json is committed; the rest is not)
-/tools/bin/
-/tools/downloads/
-/tools/node_modules/
-
 # Local agent skills and Claude settings, not part of the project
 /.agents/
 /.claude/
-
-# Python bytecode from scripts/
-__pycache__/

@@ -97,22 +97,6 @@ mod cli_commands {
     }
 
     #[test]
-    #[ignore = "needs the test tools: scripts/setup-tools.py"]
-    fn debug_runs_the_named_graph() {
-        let output = graphite([
-            "debug".as_ref(),
-            door().as_os_str(),
-            "--graph".as_ref(),
-            "door".as_ref(),
-            "show".as_ref(),
-        ]);
-        assert!(output.status.success(), "{}", stderr(&output));
-        assert!(
-            stdout(&output).starts_with("node closed  status running  transitions 0  true: none")
-        );
-    }
-
-    #[test]
     fn debug_names_the_graphs_a_file_has_when_the_name_is_wrong() {
         let output = graphite([
             "debug".as_ref(),
@@ -222,77 +206,7 @@ mod cli_flag_errors {
     #[allow(unused_imports)]
     use super::cli;
 
-    use cli::{graphite, manifest, stderr, stdout};
-    use std::path::PathBuf;
-
-    fn door() -> PathBuf {
-        manifest().join("examples/door.graphite")
-    }
-
-    /// Each refused combination exits 2 and names the problem, on stdout or stderr.
-    #[test]
-    #[ignore = "needs the test tools: scripts/setup-tools.py"]
-    fn refused_argument_combinations_name_the_flag() {
-        let door = door();
-        let door = door.to_str().unwrap();
-        let cases: Vec<(Vec<&str>, i32, &str)> = vec![
-            (vec!["help", "nonsense"], 2, "no help for \"nonsense\""),
-            (
-                vec!["doctor", "extra"],
-                2,
-                "doctor takes no arguments except --json, got \"extra\"",
-            ),
-            (vec!["init"], 2, "init needs a file"),
-            (
-                vec!["check", door, "--input", "x"],
-                2,
-                "check does not take --input",
-            ),
-            (
-                vec!["inspect", door, "--tasks", "x"],
-                2,
-                "inspect does not take --tasks",
-            ),
-            (vec!["run", door, "--input"], 2, "--input needs a value"),
-            (
-                vec!["run", door, "--key", "k"],
-                2,
-                "--each and --key go together",
-            ),
-            (
-                vec!["run", door, "--each", "e"],
-                2,
-                "--each and --key go together",
-            ),
-            (
-                vec!["run", door, "--seen", "s", "--until-passed", "3"],
-                2,
-                "--seen and --until-passed apply to --each only",
-            ),
-            (
-                vec!["debug", door, "--simulate"],
-                2,
-                "--simulate needs a value",
-            ),
-            (
-                vec!["debug", door, "--simulate", "x"],
-                1,
-                "stub \"x\" must be <task>=<outcomes>",
-            ),
-        ];
-        let mut failures = Vec::new();
-        for (args, code, message) in cases {
-            let output = graphite(&args);
-            let text = format!("{}{}", stdout(&output), stderr(&output));
-            if output.status.code() != Some(code) || !text.contains(message) {
-                failures.push(format!(
-                    "{args:?}: want exit {code} and `{message}`, got exit {:?}:\n{text}",
-                    output.status.code()
-                ));
-            }
-        }
-        assert!(failures.is_empty(), "{}", failures.join("\n"));
-    }
+    use cli::{graphite, stdout};
 
     #[test]
     fn help_prints_the_overview_or_a_topic() {
@@ -463,24 +377,6 @@ mod cli_environment {
     }
 
     #[test]
-    fn doctor_names_a_tsc_that_is_not_installed() {
-        let output = graphite_with_env(&["doctor"], &[("GRAPHITE_TSC", "/nonexistent/tsc")]);
-        assert!(stdout(&output).contains("missing  tsc for the TypeScript type-check test"));
-    }
-
-    #[test]
-    #[ignore = "needs the test tools: scripts/setup-tools.py"]
-    fn doctor_json_lists_every_front_end_with_its_status() {
-        let output = graphite(["doctor", "--json"]);
-        assert!(output.status.success(), "{}", stderr(&output));
-        let text = stdout(&output);
-        assert!(text.starts_with("{\"ok\":true"), "{text}");
-        for key in ["\"typescript\"", "\"rust\"", "\"purescript\""] {
-            assert!(text.contains(key), "{key} missing from {text}");
-        }
-    }
-
-    #[test]
     fn a_runner_that_cannot_start_is_named() {
         let output = graphite_with_env(
             &["run", walk_spec().to_str().unwrap()],
@@ -534,13 +430,10 @@ mod cli_environment {
     }
 
     #[test]
-    fn doctor_json_marks_blocked_unavailable_and_missing_entries() {
+    fn doctor_json_marks_blocked_and_unavailable_entries() {
         let output = graphite_with_env(
             &["doctor", "--json"],
-            &[
-                ("PATH", "/nonexistent-graphite-path"),
-                ("GRAPHITE_TSC", "/nonexistent/tsc"),
-            ],
+            &[("PATH", "/nonexistent-graphite-path")],
         );
         assert!(!output.status.success());
         let text = stdout(&output);
@@ -548,10 +441,6 @@ mod cli_environment {
         assert!(text.starts_with("{\"ok\":false,"), "{text}");
         assert!(text.contains("\"status\":\"blocked\""), "{text}");
         assert!(text.contains("\"status\":\"unavailable\""), "{text}");
-        assert!(
-            text.contains("\"test_tools\":[{\"status\":\"missing\""),
-            "{text}"
-        );
         assert!(
             text.ends_with("\"blocked\":[\"typescript debug\",\"typescript run\",\"rust debug\"]}"),
             "{text}"

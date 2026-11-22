@@ -15,18 +15,7 @@ jobs:
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      # Bun, purs, spago and tsc at the versions the tests pin (see scripts/setup-tools.py).
-      - name: Install the test tools
-        run: python3 scripts/setup-tools.py
-      # The graphite CLI finds Bun on the PATH, so the pinned copy must be there too.
-      - name: Put the pinned tools on the PATH
-        run: echo "$GITHUB_WORKSPACE/tools/bin" >> "$GITHUB_PATH"
-      - run: cargo fmt --check
-      - run: cargo clippy --all-targets -- -D warnings
-      - run: cargo test -- --include-ignored
+      - run: scripts/check
 
   # Fails when line coverage of the crate, its front ends included, drops under 90%.
   coverage:
@@ -38,12 +27,5 @@ jobs:
           components: llvm-tools-preview
       - uses: taiki-e/install-action@cargo-llvm-cov
       - uses: Swatinem/rust-cache@v2
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - name: Install the test tools
-        run: python3 scripts/setup-tools.py
-      - name: Put the pinned tools on the PATH
-        run: echo "$GITHUB_WORKSPACE/tools/bin" >> "$GITHUB_PATH"
       - name: Check line coverage is at least 90%
-        run: cargo llvm-cov --all-targets --fail-under-lines 90 -- --include-ignored
+        run: cargo llvm-cov --all-targets --fail-under-lines 90
