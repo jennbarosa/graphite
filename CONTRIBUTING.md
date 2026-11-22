@@ -18,7 +18,8 @@ You need Rust 1.88 or newer, and nothing else. One command formats, lints and te
 scripts/check
 ```
 
-It runs `cargo fmt`, `cargo clippy --all-targets -- -D warnings` and `cargo test`. CI runs the same
+It runs `cargo fmt`, `cargo clippy --all-targets -- -D warnings` and `cargo test`. One test runs generated TypeScript under a real runtime. It is skipped when Bun is not installed, and
+fails in CI, which installs Bun. CI runs the same
 script, so a green run here is a green run there. Clippy warnings fail the build, so fix them rather
 than adding `#[allow]` unless there is a clear reason, and say that reason in a comment.
 

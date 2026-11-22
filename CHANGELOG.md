@@ -31,7 +31,8 @@ change the interface.
 
 - Building and testing need only Rust. The tests that ran Bun, `tsc`, PureScript and spago, and
   `scripts/setup-tools.py` with its pinned downloads, are removed. `scripts/check` formats, lints and
-  tests, and CI runs it. `graphite doctor` no longer reports a `test_tools` list.
+  tests, and CI runs it. One smoke test still runs the generated TypeScript under Bun, and skips when
+  there is no runtime. `graphite doctor` no longer reports a `test_tools` list.
 - The Criterion benchmarks, the allocation-count benches and the experimental parallel lexer are removed.
 - The SIMD lexer and its `lexer-simd` feature are removed. The scalar scan is the only path. On the
   medium lexer benchmark the SIMD scan ran in 8.03 ms and the scalar scan in 8.19 ms, about 2% apart.

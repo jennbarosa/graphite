@@ -424,7 +424,35 @@ mod cli_debug {
     #[allow(unused_imports)]
     use super::cli;
 
-    use cli::{dsl, graphite, scratch, stderr, stdout, walk_spec};
+    use cli::{dsl, graphite, manifest, scratch, stderr, stdout, walk_spec};
+
+    /// The one end-to-end check of generated code: the door graph is compiled to TypeScript and
+    /// stepped under a real JavaScript runtime. It is skipped on a machine with no runtime (Bun, or
+    /// `npx tsx`), and fails in CI, where a runtime is installed, so the check cannot rot unseen.
+    #[test]
+    fn the_generated_typescript_runs_under_a_real_runtime() {
+        let door = manifest().join("examples/door.graphite");
+        let output = graphite([
+            "debug".as_ref(),
+            door.as_os_str(),
+            "set request on".as_ref(),
+            "step".as_ref(),
+            "show".as_ref(),
+        ]);
+        if !output.status.success()
+            && stderr(&output).contains("install bun")
+            && std::env::var_os("CI").is_none()
+        {
+            eprintln!("skipped: no JavaScript runtime (install Bun)");
+            return;
+        }
+        assert!(output.status.success(), "{}", stderr(&output));
+        assert!(
+            stdout(&output).contains("node opening"),
+            "{}",
+            stdout(&output)
+        );
+    }
 
     /// A graph where task `t` fails and nothing routes the failure: the run stalls at `a`.
     const STALLS_ON_FAILURE: &str = "graph g\n  node a @task:t\n  node b\n  node c end\n\n  edge a -> b when passed\n  edge b -> c when failed\n";
