@@ -45,7 +45,10 @@ writing anything. Front ends are listed in `graphite::frontend::registry::TARGET
 `graphite::frontend::typescript::TYPESCRIPT`.
 
 `write_modules` never overwrites a file. If a file already exists, or two graphs would write the
-same name, it fails before writing anything.
+same name, it fails before writing anything. It renders every file in memory first, so a render
+error leaves nothing on disk. `check_outputs` renders into nowhere, so it holds no output in memory.
+`compile` reads `@!frontend:KEY` only to see whether the key names a pure front end. It does not
+refuse an unregistered key; the caller does, as the CLI does.
 
 ## Compiled data
 

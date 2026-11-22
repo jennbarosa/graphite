@@ -96,7 +96,7 @@ src/
   graph.rs, interner.rs    compiled graph data, and the string interner
   kind.rs                  machine and pure graph kinds
   frontend/                output front ends: typescript/ (index, chunks, runtime.ts)
-  pipeline.rs              compile and write_modules
+  pipeline.rs              compile, check_outputs and write_modules
   bin/graphite/            the CLI; runtime_assets.rs bundles the TypeScript durable engine
 src/frontend/typescript/durable/  durable engine, run log, and the run CLI (TypeScript)
 cli/                       debugger session (TypeScript)
