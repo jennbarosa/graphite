@@ -24,6 +24,7 @@ change the interface.
 
 ### Changed
 
+- The Criterion benchmarks, the allocation-count benches and the experimental parallel lexer are removed.
 - The SIMD lexer and its `lexer-simd` feature are removed. The scalar scan is the only path. On the
   medium lexer benchmark the SIMD scan ran in 8.03 ms and the scalar scan in 8.19 ms, about 2% apart.
 - **Breaking:** a file is pure only when its front end is pure: `@!frontend:purescript`, a `.purs`

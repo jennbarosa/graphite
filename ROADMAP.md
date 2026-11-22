@@ -8,8 +8,7 @@ What Graphite does not do yet, and known limits. Items are roughly in priority o
   become true.
 - **A condition handler for gate cases source order cannot express.** Not designed.
 - **Very large graphs in TypeScript.** Generated modules over about 536 million characters are too
-  large for `tsc` and V8. The million-stage benchmark output is one such case. See the benchmarks
-  section of [CONTRIBUTING.md](CONTRIBUTING.md).
+  large for `tsc` and V8.
 
 ## Known limits
 
@@ -18,8 +17,6 @@ What Graphite does not do yet, and known limits. Items are roughly in priority o
 - **The index holds every node name in one union.** TypeScript gives up on very large unions, so a
   huge graph may need its vocabulary split per chunk. See
   [`src/frontend/typescript/index.rs`](src/frontend/typescript/index.rs).
-- **One top-level block runs serially in the parallel benchmark.** Parallelizing it needs
-  indentation checkpoints. See [`benches/support/parallel.rs`](benches/support/parallel.rs).
 - **`run` and `debug --simulate` are TypeScript only.** The Rust front end writes a stepping
   runtime, and the PureScript front end writes pure functions with no runtime. Neither has the
   durable engine. See [front ends](docs/front-ends.md).
