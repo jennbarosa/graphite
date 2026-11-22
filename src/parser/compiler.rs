@@ -21,6 +21,7 @@ pub(super) const CHOOSE_ARM: &str = "expected `when` or a final `else` arm";
 /// The refusal of a choose block with no `when` arm, whether it is empty or opens with `else`.
 pub(super) const CHOOSE_NEEDS_WHEN: &str = "choose needs at least one `when` arm";
 const STRINGS_FULL: &str = "a graph's strings exceed the 4 GiB offset limit";
+const ANNOTATIONS_FULL: &str = "a graph's annotations exceed the 4 GiB offset limit";
 const ENUM_DUPLICATE: &str = "enum name is already declared in this graph";
 const MEMBER_DUPLICATE: &str = "member is already declared in this enum";
 const INPUT_DUPLICATE: &str = "input name is already declared in this graph";
@@ -154,7 +155,7 @@ impl<'s> Builder<'s> {
         *binding = NonZeroU32::new(id + 1);
         let (looping, end, flags) = self.node_flags(tokens)?;
         let own = self.annotations(tokens)?;
-        let annotations = narrow(self.with_defaults(own));
+        let annotations = narrow(self.with_defaults(tokens, own)?);
         self.graph.nodes.push(Node {
             name,
             looping,
@@ -170,7 +171,11 @@ impl<'s> Builder<'s> {
 
     /// Appends each default whose key the node's own annotations in `own` do not set. Returns the
     /// node's whole span, which stays contiguous because nothing was pushed since `own`.
-    fn with_defaults(&mut self, own: Range<usize>) -> Range<usize> {
+    fn with_defaults(
+        &mut self,
+        tokens: &mut Tokens<'_>,
+        own: Range<usize>,
+    ) -> Result<Range<usize>, ParseError> {
         for index in 0..self.defaults.len() {
             let default = self.defaults[index];
             let set = self.graph.annotations[own.clone()]
@@ -180,7 +185,10 @@ impl<'s> Builder<'s> {
                 self.graph.annotations.push(default);
             }
         }
-        own.start..self.graph.annotations.len()
+        if u32::try_from(self.graph.annotations.len()).is_err() {
+            return Err(tokens.error(ANNOTATIONS_FULL));
+        }
+        Ok(own.start..self.graph.annotations.len())
     }
 
     /// Finishes the `graph` line, which may carry the graph's own annotations, and opens the body.
@@ -627,7 +635,7 @@ impl<'s> Builder<'s> {
         };
         let own = self.annotations(tokens)?;
         let annotations = if self.kind == Kind::Pure {
-            narrow(self.with_defaults(own))
+            narrow(self.with_defaults(tokens, own)?)
         } else {
             narrow(own)
         };

@@ -25,6 +25,15 @@ fn compile_reports_the_source_offset_of_a_semantic_error() {
 }
 
 #[test]
+fn an_empty_graph_list_writes_only_the_runtime_and_does_not_panic() {
+    let directory = scratch("pipeline-empty");
+    assert!(check_outputs(typescript(), &[]).is_ok());
+    let written = write_modules(typescript(), &[], &directory).unwrap();
+    assert_eq!(written.len(), 1);
+    assert!(written[0].ends_with("graphite.ts"));
+}
+
+#[test]
 fn stray_text_before_any_graph_is_an_error_not_an_empty_success() {
     assert!(compile("node floating end\n", &Schema::default()).is_err());
 }

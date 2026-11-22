@@ -62,7 +62,7 @@ pub fn narrow(range: Range<usize>) -> Span {
     range.start as u32..range.end as u32
 }
 
-/// Widens a stored span for slicing. Counts are checked against `u32` at allocation.
+/// Widens a stored span for slicing. Callers check that counts fit in `u32` as they grow.
 pub fn index(span: &Span) -> Range<usize> {
     span.start as usize..span.end as usize
 }

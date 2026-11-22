@@ -47,8 +47,8 @@ change the interface.
   the `graphite::stage` module. The string table and the graph arrays grow as the source is read, so
   no caller sizes them. A string table that would pass the 4 GiB offset limit reports
   "a graph's strings exceed the 4 GiB offset limit", in place of the old capacity messages.
-- `graphite check` renders each output into nowhere, so it does not hold the generated files in
-  memory. The string table reports an error, and never wraps, when an offset or an id passes `u32`.
+- The string table and the graph annotations report an error, and never wrap, when an offset or an
+  id passes `u32`.
 - The lexer, grammar, structure checks and `@!` directive reader are plain Rust. The `.graphite` rule
   files under `src/graphs`, their generated data under `src/generated`, and `examples/bootstrap_dump.rs`
   are removed, and so is the CI and CONTRIBUTING step that regenerated them. Nothing in the build reads

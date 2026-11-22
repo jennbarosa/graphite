@@ -160,7 +160,7 @@ mod cli_tasks {
     use std::ffi::OsString;
     use std::path::{Path, PathBuf};
 
-    use cli::{graphite, manifest, scratch, stderr};
+    use cli::{graphite, manifest, scratch, stderr, stdout};
 
     /// A script that appends its stdin to `log.txt`, then prints its first argument: the report.
     const LOG_SCRIPT: &str = r#"import sys
@@ -209,6 +209,63 @@ print(sys.argv[1])
 
     fn tasks_flag(dir: &Path) -> [OsString; 2] {
         ["--tasks".into(), dir.join("tasks.toml").into_os_string()]
+    }
+
+    /// The durable engine end to end: a task that throws stops the run and stores its error, a later
+    /// run refuses to run it again, and `--retry` clears that error so the run finishes. It needs a
+    /// JavaScript runtime, so it is skipped without one, and fails in CI, where Bun is installed.
+    #[test]
+    fn a_thrown_task_stops_the_run_and_retry_lets_it_finish() {
+        const PASS: &str = "import sys\nsys.stdin.read()\nprint('{\"outcome\":\"pass\"}')\n";
+        // The lint task throws until the `ok` file exists.
+        const LINT: &str = "import os\nimport sys\nsys.stdin.read()\nif os.path.exists(sys.argv[1]):\n    print('{\"outcome\":\"pass\"}')\n    sys.exit(0)\nsys.exit(1)\n";
+        let dir = workdir(
+            "cli-tasks-retry",
+            "[tasks]\n",
+            &[("pass.py", PASS), ("lint.py", LINT)],
+        );
+        let path = |name: &str| format!("'{}'", dir.join(name).display());
+        let tasks = format!(
+            "[tasks]\nwrite = [\"python3\", {pass}]\nlint = [\"python3\", {lint}, {ok}]\nfix = [\"python3\", {pass}]\ndeploy = [\"python3\", {pass}]\n",
+            pass = path("pass.py"),
+            lint = path("lint.py"),
+            ok = path("ok"),
+        );
+        std::fs::write(dir.join("tasks.toml"), tasks).unwrap();
+
+        let first = run(&dir, &tasks_flag(&dir));
+        if !first.status.success()
+            && stderr(&first).contains("install bun")
+            && std::env::var_os("CI").is_none()
+        {
+            eprintln!("skipped: no JavaScript runtime (install Bun)");
+            return;
+        }
+        assert!(!first.status.success(), "{}", stdout(&first));
+        assert!(
+            stdout(&first).contains("\"key\":\"1:check\""),
+            "{}",
+            stdout(&first)
+        );
+
+        let again = run(&dir, &tasks_flag(&dir));
+        assert!(!again.status.success());
+        assert!(
+            stdout(&again).contains("failed in an earlier run"),
+            "{}",
+            stdout(&again)
+        );
+
+        std::fs::write(dir.join("ok"), "").unwrap();
+        let mut extra = tasks_flag(&dir).to_vec();
+        extra.extend(["--retry".into(), "1:check".into()]);
+        let retried = run(&dir, &extra);
+        assert!(retried.status.success(), "{}", stderr(&retried));
+        assert!(
+            stdout(&retried).contains("\"status\":\"ended\""),
+            "{}",
+            stdout(&retried)
+        );
     }
 
     #[test]

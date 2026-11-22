@@ -59,8 +59,8 @@ mod tests {
     #[test]
     fn the_default_output_keeps_the_pure_name_and_the_infix() {
         assert_eq!(
-            default_out(Path::new("examples/combat.pure.graphite")).unwrap(),
-            Path::new("graphite-out").join("combat.pure")
+            default_out(Path::new("examples/combat.purs.graphite")).unwrap(),
+            Path::new("graphite-out").join("combat.purs")
         );
         assert_eq!(
             default_out(Path::new("door.ts.graphite")).unwrap(),
