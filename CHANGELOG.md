@@ -30,6 +30,17 @@ change the interface.
   name, or `--frontend purescript`. The `--pure` flag, the `@!pure` directive, `@!frontend:pure` and
   a `.pure` name no longer make a file pure. Rename `x.pure.graphite` to `x.purs.graphite`.
 - **Breaking (library):** the `graphite::arena` module is removed. Nothing in the library used it.
+- **Breaking (library):** `graphite::parser::parse` takes `(source, schema)`. The per-graph `Capacity`
+  hints, `graphite::pipeline::block_capacities` and `Interner::with_capacity` are removed, and so is
+  the `graphite::stage` module. The string table and the graph arrays grow as the source is read, so
+  no caller sizes them. A string table that would pass the 4 GiB offset limit reports
+  "a graph's strings exceed the 4 GiB offset limit", in place of the old capacity messages.
+- The lexer, grammar, structure checks and `@!` directive reader are plain Rust. The `.graphite` rule
+  files under `src/graphs`, their generated data under `src/generated`, and `examples/bootstrap_dump.rs`
+  are removed, and so is the CI and CONTRIBUTING step that regenerated them. Nothing in the build reads
+  them now.
+- `pipeline::write_modules` renders every output in memory before it creates the output directory. A
+  failed render writes nothing and leaves no empty directory, where it used to leave an empty one.
 - **Breaking:** a dotted file name now picks its front end from the infix. `door.rs.graphite`
   builds Rust, where it used to build TypeScript, with no warning. Pass `--frontend typescript` or add
   `@!frontend:typescript` to keep the old output. A name such as `my.walk.graphite` with no known
