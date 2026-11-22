@@ -17,8 +17,9 @@ const AFTER_GRAPH: &str = "directives go at the top of the file, before the firs
 /// The directives at the top of a file, and where the body starts.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Directives<'a> {
-    /// The value and offset of `@!frontend:VALUE`, if the file has it. The value is text: the CLI
-    /// checks it against the registered targets, so the library knows no front ends.
+    /// The value and offset of `@!frontend:VALUE`, if the file has it. The value is text. The CLI
+    /// checks it against the registered targets; `compile` only asks the registry whether it names a
+    /// pure front end, and an unregistered key is left for the caller to refuse.
     pub frontend: Option<(&'a str, usize)>,
     /// The offset where the graphs start. Lexing and parsing begin here.
     pub body: usize,

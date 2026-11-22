@@ -45,6 +45,22 @@ pub struct Interner {
     hasher: FixedState,
 }
 
+/// The end offset of a string of `added` bytes appended after `used` bytes.
+fn end_offset(used: usize, added: usize) -> Result<u32, InternerFull> {
+    used.checked_add(added)
+        .and_then(|end| u32::try_from(end).ok())
+        .ok_or(InternerFull)
+}
+
+/// The id of the string after `count` stored ones.
+fn next_id(count: usize) -> Result<StringId, InternerFull> {
+    u32::try_from(count)
+        .ok()
+        .and_then(|count| NonZeroU32::new(count.checked_add(1)?))
+        .map(StringId)
+        .ok_or(InternerFull)
+}
+
 impl Interner {
     /// Expected O(value.len()) hashing plus O(1) probing. Fails only when the string table's byte
     /// offsets or string count would exceed `u32`.
@@ -60,8 +76,8 @@ impl Interner {
         ) {
             Entry::Occupied(entry) => Ok(*entry.get()),
             Entry::Vacant(entry) => {
-                let end = u32::try_from(bytes.len() + value.len()).map_err(|_| InternerFull)?;
-                let id = StringId(NonZeroU32::new(ends.len() as u32 + 1).ok_or(InternerFull)?);
+                let end = end_offset(bytes.len(), value.len())?;
+                let id = next_id(ends.len())?;
                 bytes.push_str(value);
                 ends.push(end);
                 entry.insert(id);

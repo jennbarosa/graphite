@@ -1,4 +1,4 @@
-use super::{Interner, StringId};
+use super::{Interner, InternerFull, StringId};
 use std::hash::BuildHasher;
 
 #[test]
@@ -26,4 +26,18 @@ fn out_of_range_symbols_do_not_index_the_offset_array() {
     pool.intern("closed").unwrap();
     assert_eq!(pool.resolve(StringId::from_index(1)), None);
     assert_eq!(pool.resolve(StringId::from_index(u32::MAX - 1)), None);
+}
+
+#[test]
+fn offsets_and_ids_past_u32_are_an_error_not_a_wrap() {
+    assert_eq!(super::end_offset(u32::MAX as usize, 0), Ok(u32::MAX));
+    assert_eq!(super::end_offset(u32::MAX as usize, 1), Err(InternerFull));
+    assert_eq!(super::end_offset(usize::MAX, 1), Err(InternerFull));
+    assert_eq!(super::next_id(0), Ok(StringId::from_index(0)));
+    assert_eq!(
+        super::next_id(u32::MAX as usize - 1),
+        Ok(StringId::from_index(u32::MAX - 1))
+    );
+    assert_eq!(super::next_id(u32::MAX as usize), Err(InternerFull));
+    assert_eq!(super::next_id(u32::MAX as usize + 1), Err(InternerFull));
 }

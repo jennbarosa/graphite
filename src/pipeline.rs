@@ -102,36 +102,37 @@ pub fn check_outputs(frontend: &dyn Frontend, graphs: &[CompiledGraph]) -> Resul
     render_outputs(frontend, graphs, true)
         .map(|_| ())
         .map_err(|error| {
-            error
-                .get_ref()
-                .and_then(|inner| inner.downcast_ref::<Collision>())
+            let inner = error.get_ref().and_then(|inner| inner.downcast_ref());
+            inner
                 .cloned()
-                .unwrap_or_else(|| Collision::new(error.to_string(), 0))
+                .expect("a check wraps every render error as a Collision")
         })
 }
 
 /// Checks the names, then renders every output in memory, so a clash found while rendering is
 /// reported before anything is written. Returns each output's file name and text, in write order.
+/// With `check` set, the text is discarded as it is rendered, so nothing is held in memory.
 /// A clash comes back as an `AlreadyExists` error wrapping a [`Collision`]. Any other render error
-/// passes through unchanged, unless `every_error_locates` is set, which locates it at its graph.
+/// passes through unchanged, unless `check` is set, which locates it at its graph.
 fn render_outputs(
     frontend: &dyn Frontend,
     graphs: &[CompiledGraph],
-    every_error_locates: bool,
+    check: bool,
 ) -> io::Result<Vec<(String, Vec<u8>)>> {
     check_plan(frontend, graphs, None).map_err(collision_error)?;
     let locate = |graph: &CompiledGraph, error: io::Error| {
-        if every_error_locates || is_name_clash(&error) {
+        if check || is_name_clash(&error) {
             collision_error(collision_at(graph, &error))
         } else {
             error
         }
     };
+    let mut sink = io::sink();
     let mut outputs = Vec::new();
     if let Some(name) = frontend.runtime_file_name() {
         let mut text = Vec::new();
         frontend
-            .emit_runtime(&mut text)
+            .emit_runtime(out(check, &mut sink, &mut text))
             .map_err(|error| locate(&graphs[0], error))?;
         outputs.push((name.to_owned(), text));
     }
@@ -139,12 +140,17 @@ fn render_outputs(
         for module in frontend.modules(graph) {
             let mut text = Vec::new();
             frontend
-                .emit_module(graph, module, &mut text)
+                .emit_module(graph, module, out(check, &mut sink, &mut text))
                 .map_err(|error| locate(graph, error))?;
             outputs.push((frontend.file_name(graph, module), text));
         }
     }
     Ok(outputs)
+}
+
+/// Where one output is rendered: nowhere when only checking, else into `text`.
+fn out<'a>(check: bool, sink: &'a mut io::Sink, text: &'a mut Vec<u8>) -> &'a mut dyn Write {
+    if check { sink } else { text }
 }
 
 /// The I/O error that carries a collision, so callers can recover it with `downcast_ref`.
