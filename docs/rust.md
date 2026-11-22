@@ -47,13 +47,6 @@ writing anything. Front ends are listed in `graphite::frontend::registry::TARGET
 `write_modules` never overwrites a file. If a file already exists, or two graphs would write the
 same name, it fails before writing anything.
 
-## Advanced: fixed storage
-
-`graphite::parser::parse(source, schema, capacities)` takes one `Capacity` per graph, in source
-order, and fails if a capacity is too small rather than growing. Use it when storage must be
-allocated up front, for example in a loop that must not allocate.
-`graphite::pipeline::block_capacities(source, schema)` computes capacities that always fit.
-
 ## Compiled data
 
 Compiled graphs are flat arrays. Nodes, edges, choices, arms, flags and annotations are indexed
