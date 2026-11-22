@@ -64,6 +64,7 @@ fn writes_one_index_and_chunks_per_graph_plus_the_runtime() {
 }
 
 #[test]
+#[ignore = "needs the test tools: scripts/setup-tools.py"]
 fn walk_cycle_runs_through_the_full_pipeline() {
     let directory = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("walk-host");
     let _ = std::fs::remove_dir_all(&directory);

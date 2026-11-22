@@ -26,7 +26,7 @@ jobs:
         run: echo "$GITHUB_WORKSPACE/tools/bin" >> "$GITHUB_PATH"
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
-      - run: cargo test
+      - run: cargo test -- --include-ignored
 
   # Fails when line coverage of the crate, its front ends included, drops under 90%.
   coverage:
@@ -46,4 +46,4 @@ jobs:
       - name: Put the pinned tools on the PATH
         run: echo "$GITHUB_WORKSPACE/tools/bin" >> "$GITHUB_PATH"
       - name: Check line coverage is at least 90%
-        run: cargo llvm-cov --all-targets --fail-under-lines 90
+        run: cargo llvm-cov --all-targets --fail-under-lines 90 -- --include-ignored

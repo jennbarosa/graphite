@@ -67,6 +67,7 @@ fn assert_same_behavior(commands: &[&str]) -> String {
 }
 
 #[test]
+#[ignore = "needs the test tools: scripts/setup-tools.py"]
 fn the_happy_path_reaches_report_through_every_stage() {
     let mut commands = vec!["set pass on"];
     commands.extend(std::iter::repeat_n(["finish", "step"], 12).flatten());
@@ -76,17 +77,20 @@ fn the_happy_path_reaches_report_through_every_stage() {
 }
 
 #[test]
+#[ignore = "needs the test tools: scripts/setup-tools.py"]
 fn every_failure_falls_back_to_report_from_the_first_stage() {
     let output = assert_same_behavior(&["finish", "step", "show", "history"]);
     assert!(output.contains("node report"), "{output}");
 }
 
 #[test]
+#[ignore = "needs the test tools: scripts/setup-tools.py"]
 fn a_gate_moves_forward_without_finish_the_same_way() {
     assert_same_behavior(&["set pass on", "step", "show"]);
 }
 
 #[test]
+#[ignore = "needs the test tools: scripts/setup-tools.py"]
 fn failing_midway_takes_the_fallback_from_the_current_stage() {
     let mut commands = vec![
         "set pass on",
@@ -103,6 +107,7 @@ fn failing_midway_takes_the_fallback_from_the_current_stage() {
 }
 
 #[test]
+#[ignore = "needs the test tools: scripts/setup-tools.py"]
 fn toggling_the_condition_between_stages_matches() {
     assert_same_behavior(&[
         "set pass on",

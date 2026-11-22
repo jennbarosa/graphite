@@ -25,6 +25,7 @@ mod cli_run {
     use cli::{graphite, manifest, scratch, stderr, stdout, walk_spec};
 
     #[test]
+    #[ignore = "needs the test tools: scripts/setup-tools.py"]
     fn runs_the_graph_to_its_end_and_resumes_from_saved_state() {
         let fixtures = manifest().join("tests/fixtures/runtime");
         let dsl = fixtures.join("workflow.graphite");
@@ -62,6 +63,7 @@ mod cli_run {
     }
 
     #[test]
+    #[ignore = "needs the test tools: scripts/setup-tools.py"]
     fn refuses_a_graph_with_tasks_when_no_runner_is_given() {
         let fixtures = manifest().join("tests/fixtures/runtime");
         let dsl = fixtures.join("workflow.graphite");
@@ -88,6 +90,7 @@ mod cli_run {
     }
 
     #[test]
+    #[ignore = "needs the test tools: scripts/setup-tools.py"]
     fn runs_a_graph_without_tasks_or_outcome_conditions() {
         let source = "graph plain\n  node a\n  node b end\n  edge a -> b\n";
         let dsl = cli::dsl("plain", source);
@@ -123,6 +126,7 @@ mod cli_run {
 
     /// `run` is durable on its own.
     #[test]
+    #[ignore = "needs the test tools: scripts/setup-tools.py"]
     fn runs_durably_without_any_flag() {
         let fixtures = manifest().join("tests/fixtures/runtime");
         let state = scratch("cli-run-without-flag").join("state.json");
@@ -145,6 +149,7 @@ mod cli_run {
 
     /// Without `--state`, the checkpoint goes beside the graph file, named `<stem>.state.json`.
     #[test]
+    #[ignore = "needs the test tools: scripts/setup-tools.py"]
     fn the_state_file_defaults_beside_the_graph() {
         let fixtures = manifest().join("tests/fixtures/runtime");
         let dir = scratch("cli-run-default-state");
@@ -164,6 +169,7 @@ mod cli_run {
     }
 
     #[test]
+    #[ignore = "needs the test tools: scripts/setup-tools.py"]
     fn exits_when_a_runner_leaves_a_timer_open() {
         let fixtures = manifest().join("tests/fixtures/runtime");
         let state = scratch("cli-run-held").join("state.json");
@@ -381,6 +387,7 @@ print(sys.argv[1])
     }
 
     #[test]
+    #[ignore = "needs the test tools: scripts/setup-tools.py"]
     fn every_task_runs_its_command_and_the_input_reaches_it() {
         let pass = r#"{"outcome":"pass"}"#;
         let shipped = r#"{"outcome":"pass","output":{"shipped":true}}"#;
@@ -416,6 +423,7 @@ print(sys.argv[1])
     }
 
     #[test]
+    #[ignore = "needs the test tools: scripts/setup-tools.py"]
     fn a_failing_command_routes_to_fix_and_its_detail_reaches_fix() {
         // The first lint fails with a detail; every later lint passes.
         let lint = r#"import os
@@ -478,6 +486,7 @@ else:
 
     /// The manifest's task names are the allowed tasks, so an allowlist with only flags is enough.
     #[test]
+    #[ignore = "needs the test tools: scripts/setup-tools.py"]
     fn a_flags_only_allowlist_works_when_the_manifest_names_the_tasks() {
         let pass = r#"{"outcome":"pass"}"#;
         let tasks = format!(
@@ -538,6 +547,7 @@ else:
     /// A task command reads the outputs directory from its request, and reads an earlier stage's output
     /// from it by node name.
     #[test]
+    #[ignore = "needs the test tools: scripts/setup-tools.py"]
     fn a_command_reads_an_earlier_stages_output_from_the_outputs_directory() {
         let read_draft = r#"import os
 import re
@@ -567,6 +577,7 @@ print('{"outcome":"pass"}')
 
     /// A graph that declares `errored` routes a task that throws, instead of stopping the run.
     #[test]
+    #[ignore = "needs the test tools: scripts/setup-tools.py"]
     fn a_thrown_error_routes_to_the_errored_edge_when_the_graph_declares_it() {
         let graph = "graph review\n  node draft @task:write\n  node check @task:lint\n  node fix @task:fix\n  node ship end @task:deploy\n\n  edge draft -> check\n  edge check -> ship when passed\n  edge check -> fix when failed\n  edge check -> fix when errored\n  edge fix -> check\n";
         // The first lint throws; every later one passes.
@@ -693,6 +704,7 @@ mod cli_fanout {
     }
 
     #[test]
+    #[ignore = "needs the test tools: scripts/setup-tools.py"]
     fn each_item_runs_once_and_a_second_run_starts_none() {
         let dir = workdir(
             "cli-fanout-dedupe",
@@ -719,6 +731,7 @@ mod cli_fanout {
     }
 
     #[test]
+    #[ignore = "needs the test tools: scripts/setup-tools.py"]
     #[cfg(unix)]
     fn an_item_a_crash_interrupted_is_finished_by_the_next_run() {
         use std::os::unix::process::CommandExt;
@@ -772,6 +785,7 @@ mod cli_fanout {
     }
 
     #[test]
+    #[ignore = "needs the test tools: scripts/setup-tools.py"]
     fn until_passed_stops_starting_items_once_enough_have_passed() {
         let dir = workdir(
             "cli-fanout-until",
@@ -786,6 +800,7 @@ mod cli_fanout {
     }
 
     #[test]
+    #[ignore = "needs the test tools: scripts/setup-tools.py"]
     fn a_seen_line_cut_short_by_a_crash_does_not_start_its_item_twice() {
         let dir = workdir(
             "cli-fanout-torn-seen",
@@ -839,6 +854,7 @@ mod cli_fanout {
     }
 
     #[test]
+    #[ignore = "needs the test tools: scripts/setup-tools.py"]
     fn an_item_key_that_is_not_a_plain_name_is_refused_before_it_runs() {
         let dir = workdir("cli-fanout-key", r#"[{"domain":"../escape"}]"#);
         let output = fan_out(&dir, &[]);
@@ -857,6 +873,7 @@ mod cli_fanout {
     }
 
     #[test]
+    #[ignore = "needs the test tools: scripts/setup-tools.py"]
     fn a_new_state_with_the_same_seen_file_runs_no_item_again() {
         let dir = workdir(
             "cli-fanout-new-state",
@@ -948,6 +965,7 @@ mod cli_retry {
     }
 
     #[test]
+    #[ignore = "needs the test tools: scripts/setup-tools.py"]
     fn a_stored_task_error_is_cleared_by_retry_and_the_run_then_ends() {
         let dir = workdir("cli-retry");
 
@@ -988,6 +1006,7 @@ mod cli_retry {
     }
 
     #[test]
+    #[ignore = "needs the test tools: scripts/setup-tools.py"]
     fn a_refused_retry_key_leaves_the_stored_error_in_place() {
         let dir = workdir("cli-retry-refused");
         let first = run(&dir, &[]);
@@ -1033,6 +1052,7 @@ mod cli_retry {
     }
 
     #[test]
+    #[ignore = "needs the test tools: scripts/setup-tools.py"]
     fn retry_refuses_a_stage_the_run_has_already_passed() {
         // The errored edge routes the failure, so the run moves on past the stage that failed.
         let dir = scratch("cli-retry-past");
@@ -1116,6 +1136,7 @@ mod cli_debug {
     }
 
     #[test]
+    #[ignore = "needs the test tools: scripts/setup-tools.py"]
     fn simulate_walks_the_review_graph_to_its_end_without_running_tasks() {
         let output = simulate_review(&["--simulate", "lint=fail,pass"]);
         assert!(output.status.success(), "{}", stderr(&output));
@@ -1137,6 +1158,7 @@ mod cli_debug {
     }
 
     #[test]
+    #[ignore = "needs the test tools: scripts/setup-tools.py"]
     fn simulate_reports_the_node_a_stall_leaves_behind() {
         let spec = dsl("cli-debug-stall", STALLS_ON_FAILURE);
         let output = graphite([
@@ -1154,6 +1176,7 @@ mod cli_debug {
     }
 
     #[test]
+    #[ignore = "needs the test tools: scripts/setup-tools.py"]
     fn simulate_stops_a_loop_that_never_ends_at_the_transition_limit() {
         let output = simulate_review(&["--simulate", "lint=fail"]);
         assert_eq!(output.status.code(), Some(1), "{}", stderr(&output));
@@ -1166,6 +1189,7 @@ mod cli_debug {
     }
 
     #[test]
+    #[ignore = "needs the test tools: scripts/setup-tools.py"]
     fn simulate_refuses_an_unknown_task_and_an_unknown_outcome() {
         let spec = dsl("cli-debug-stubs", STALLS_ON_FAILURE);
         let unknown = graphite([
@@ -1218,6 +1242,7 @@ mod cli_debug {
     }
 
     #[test]
+    #[ignore = "needs the test tools: scripts/setup-tools.py"]
     fn runs_the_commands_against_the_first_graph() {
         let spec = walk_spec();
         for front_end in debugging_front_ends() {
@@ -1243,6 +1268,7 @@ mod cli_debug {
     }
 
     #[test]
+    #[ignore = "needs the test tools: scripts/setup-tools.py"]
     fn selects_a_graph_by_name_and_names_the_choices_when_it_is_missing() {
         let spec = walk_spec();
         for front_end in debugging_front_ends() {
@@ -1286,6 +1312,7 @@ mod cli_debug {
     }
 
     #[test]
+    #[ignore = "needs the test tools: scripts/setup-tools.py"]
     fn with_out_keeps_the_generated_modules() {
         let spec = walk_spec();
         for front_end in debugging_front_ends() {
@@ -1310,6 +1337,7 @@ mod cli_debug {
     }
 
     #[test]
+    #[ignore = "needs the test tools: scripts/setup-tools.py"]
     fn the_debugger_drives_the_compiled_walk_cycle() {
         let out = scratch("cli-debug-walk");
         let spec = walk_spec();
@@ -1363,6 +1391,7 @@ mod cli_debug {
     /// With no command arguments, the debugger reads one command per line from standard input, and
     /// prints what the same commands print as arguments.
     #[test]
+    #[ignore = "needs the test tools: scripts/setup-tools.py"]
     fn reads_commands_from_standard_input_when_none_are_given() {
         use std::io::Write;
         use std::process::{Command, Stdio};
@@ -1414,6 +1443,7 @@ mod cli_debug {
     /// `--allow` applies to `debug`: the walk fixture uses no domain flags, so an allowlist that
     /// names one is accepted; the workflow's `retry` flag is refused without its allowlist.
     #[test]
+    #[ignore = "needs the test tools: scripts/setup-tools.py"]
     fn debug_applies_the_allowlist() {
         let fixtures = manifest().join("tests/fixtures/runtime");
         let dsl = fixtures.join("workflow.graphite");
@@ -1460,6 +1490,7 @@ mod cli_debug {
     }
 
     #[test]
+    #[ignore = "needs the test tools: scripts/setup-tools.py"]
     fn simulate_names_a_graph_whose_tasks_have_no_pass_and_fail_routes() {
         let spec = dsl(
             "cli-debug-no-routes",
@@ -1482,6 +1513,7 @@ mod cli_debug {
     }
 
     #[test]
+    #[ignore = "needs the test tools: scripts/setup-tools.py"]
     fn a_thrown_task_takes_the_errored_route_when_the_graph_declares_it() {
         let spec = dsl(
             "cli-debug-errored",
@@ -1504,6 +1536,7 @@ mod cli_debug {
     }
 
     #[test]
+    #[ignore = "needs the test tools: scripts/setup-tools.py"]
     fn simulate_writes_the_generated_modules_to_out_when_given() {
         let example = manifest().join("examples/workflow/workflow.graphite");
         let allow = manifest().join("examples/workflow/workflow.toml");

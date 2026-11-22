@@ -68,6 +68,9 @@ That option belongs to another command. The message names both.
 
 ## Tests
 
+**Tests listed as `ignored`**
+They need outside tools. Run `scripts/setup-tools.py`, then `cargo test -- --include-ignored`.
+
 **`cannot run "tsc"`**
 The type-check test needs TypeScript. Run `scripts/setup-tools.py` to install the pinned
 version into `tools/`, or set `GRAPHITE_TSC` to your own `tsc`.

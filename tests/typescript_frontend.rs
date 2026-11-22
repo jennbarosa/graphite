@@ -219,6 +219,7 @@ mod typescript_frontend {
     /// Runs the runtime's Bun tests against the fixtures this file writes, so `cargo test` covers them
     /// without the manual export step.
     #[test]
+    #[ignore = "needs the test tools: scripts/setup-tools.py"]
     fn the_runtime_passes_on_the_exported_modules() {
         let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
         write_fixtures(&manifest.join("target/ts-fixtures"));
@@ -346,6 +347,7 @@ mod typescript_durable_units {
     }
 
     #[test]
+    #[ignore = "needs the test tools: scripts/setup-tools.py"]
     fn simulate_stubs_and_their_lines_pass_their_bun_tests() {
         bun::assert_bun_test_passes_with(
             Path::new(env!("CARGO_MANIFEST_DIR")),
@@ -355,6 +357,7 @@ mod typescript_durable_units {
     }
 
     #[test]
+    #[ignore = "needs the test tools: scripts/setup-tools.py"]
     fn the_durable_results_file_pass_its_bun_tests() {
         bun::assert_bun_test_passes_with(
             Path::new(env!("CARGO_MANIFEST_DIR")),
@@ -364,6 +367,7 @@ mod typescript_durable_units {
     }
 
     #[test]
+    #[ignore = "needs the test tools: scripts/setup-tools.py"]
     fn graph_checks_pass_their_bun_tests() {
         bun::assert_bun_test_passes_with(
             Path::new(env!("CARGO_MANIFEST_DIR")),
@@ -444,6 +448,7 @@ mod typescript_entry_scripts {
     }
 
     #[test]
+    #[ignore = "needs the test tools: scripts/setup-tools.py"]
     fn the_entry_scripts_pass_their_bun_tests() {
         let fixtures = manifest().join("tests/fixtures/runtime");
         let dir = scratch("entry-scripts");
@@ -508,6 +513,7 @@ export { node, wrong };
 "#;
 
     #[test]
+    #[ignore = "needs the test tools: scripts/setup-tools.py"]
     fn generated_types_accept_real_names_and_reject_typos() {
         // `GRAPHITE_TSC` names the compiler binary; otherwise the copy in `tools/` is used.
         let directory = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("typescript-types");

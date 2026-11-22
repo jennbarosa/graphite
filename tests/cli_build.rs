@@ -598,6 +598,7 @@ mod cli_coverage {
     }
 
     #[test]
+    #[ignore = "needs the test tools: scripts/setup-tools.py"]
     fn doctor_reports_each_front_end() {
         let text = run_ok(["doctor"]);
         assert!(text.contains("typescript"), "{text}");
@@ -607,6 +608,7 @@ mod cli_coverage {
     }
 
     #[test]
+    #[ignore = "needs the test tools: scripts/setup-tools.py"]
     fn run_takes_a_runner_and_checkpoints_its_state() {
         let fixtures = cli::manifest().join("tests/fixtures/runtime");
         let dsl = fixtures.join("workflow.graphite");
@@ -647,6 +649,7 @@ mod cli_coverage {
     }
 
     #[test]
+    #[ignore = "needs the test tools: scripts/setup-tools.py"]
     fn debug_commands_report_their_state_and_usage() {
         let spec = walk_spec();
         let session = |commands: &[&str]| {

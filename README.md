@@ -27,16 +27,15 @@ graph door
 
 ## Install
 
-You need [Rust](https://rustup.rs) 1.88 or newer. From a checkout of this repository:
+You need [Rust](https://rustup.rs) 1.88 or newer. Nothing else is required to check and compile graphs:
 
 ```sh
+git clone https://github.com/jennbarosa/graphite && cd graphite
 cargo install --path .
-graphite doctor
 ```
 
-`graphite doctor` reports this build's version, each front end, and whether `debug` and `run` can
-work here. The TypeScript front end needs a JavaScript runtime for `run` and `debug`. [Bun](https://bun.sh) is the default; `npx tsx` also
-works. Compiling needs nothing else.
+`graphite run` and `graphite debug` also need a JavaScript runtime, [Bun](https://bun.sh) or
+`npx tsx`. `graphite doctor` says what works on your machine and what is missing.
 
 ## Quick start
 

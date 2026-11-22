@@ -303,6 +303,7 @@ fn build(project: &Path) -> String {
 }
 
 #[test]
+#[ignore = "needs the test tools: scripts/setup-tools.py"]
 fn the_generated_modules_build_with_purs_in_strict_mode() {
     let project: PathBuf = scratch("pure-project");
     write_project(&project);
@@ -481,6 +482,7 @@ fn driver(paths: &[&str]) -> Driver {
 }
 
 #[test]
+#[ignore = "needs the test tools: scripts/setup-tools.py"]
 fn the_generated_decisions_return_what_their_sources_say() {
     let project: PathBuf = scratch("pure-runtime-project");
     write_project(&project);

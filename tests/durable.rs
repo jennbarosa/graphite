@@ -23,6 +23,7 @@ fn the_workflow_needs_its_allowlist_for_the_retry_flag() {
 }
 
 #[test]
+#[ignore = "needs the test tools: scripts/setup-tools.py"]
 fn the_durable_engine_retries_recovers_and_never_reruns_a_task_it_recorded() {
     let fixtures = cli::manifest().join("tests/fixtures/runtime");
     let out = scratch("durable-review");
@@ -46,6 +47,7 @@ fn the_durable_engine_retries_recovers_and_never_reruns_a_task_it_recorded() {
 }
 
 #[test]
+#[ignore = "needs the test tools: scripts/setup-tools.py"]
 fn a_passed_gate_on_a_middle_stage_does_not_skip_its_task() {
     let fixtures = cli::manifest().join("tests/fixtures/runtime");
     let out = scratch("durable-stage-order");
@@ -69,6 +71,7 @@ fn a_passed_gate_on_a_middle_stage_does_not_skip_its_task() {
 }
 
 #[test]
+#[ignore = "needs the test tools: scripts/setup-tools.py"]
 fn the_timeout_annotation_sets_a_node_limit_and_an_invalid_one_is_refused() {
     let fixtures = cli::manifest().join("tests/fixtures/runtime");
     let out = scratch("durable-timeout");
@@ -102,6 +105,7 @@ fn the_timeout_annotation_sets_a_node_limit_and_an_invalid_one_is_refused() {
 
 /// The command-backed task runner: the request on stdin, the report on stdout, and each failure mode.
 #[test]
+#[ignore = "needs the test tools: scripts/setup-tools.py"]
 fn command_tasks_send_the_request_and_read_the_report() {
     bun::assert_bun_test_passes_with(
         cli::manifest(),

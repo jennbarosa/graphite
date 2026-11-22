@@ -12,17 +12,21 @@ in annotations, front ends, or hosts.
 
 ## Setup
 
-You need:
+You need Rust 1.88 or newer. Then:
 
-- Rust 1.88 or newer (edition 2024)
-- Python 3, and Node.js 22.5 or newer with npm, for the tool installer
+```sh
+cargo build
+cargo test
+```
 
-Then install the pinned test tools once, and build and test from the repository root:
+That runs most of the suite. The tests that run generated code (TypeScript, PureScript, `run` and
+`debug`) need outside tools, and `cargo test` lists them as ignored. To run everything, install the
+pinned tools once (this needs Python 3, and Node.js 22.5 or newer with npm), then include the
+ignored tests:
 
 ```sh
 scripts/setup-tools.py   # Bun 1.4.4, PureScript 0.15.16 (purs), spago 1.0.5, TypeScript 6.0.3 (tsc)
-cargo build
-cargo test
+cargo test -- --include-ignored
 ```
 
 `scripts/setup-tools.py` puts the tools in `tools/` (ignored by git), checks every download
@@ -30,12 +34,7 @@ against its SHA-256 digest, and installs the npm packages from `tools/package-lo
 The tests find them there, so nothing else needs to be on your `PATH`. To use your own copy of a
 tool instead, set its variable: `GRAPHITE_BUN`, `GRAPHITE_TSC`, `GRAPHITE_PURS` or
 `GRAPHITE_SPAGO`. The setup script supports Linux (x86_64, arm64) and macOS (x86_64, arm64).
-
-`graphite doctor` reports which front ends can run here, and whether `tsc` is found:
-
-```sh
-cargo run -- doctor
-```
+`graphite doctor` reports which front ends can run here, and whether `tsc` is found.
 
 ## Checks before you open a pull request
 
@@ -44,7 +43,7 @@ CI runs these on every push and pull request. Run them locally first:
 ```sh
 cargo fmt --check
 cargo clippy --all-targets -- -D warnings
-cargo test
+cargo test -- --include-ignored
 ```
 
 Clippy warnings fail the build, so fix them rather than adding `#[allow]` unless there

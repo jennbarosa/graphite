@@ -35,6 +35,7 @@ fn compile_workflow(name: &str, path: &Path) -> PathBuf {
 }
 
 #[test]
+#[ignore = "needs the test tools: scripts/setup-tools.py"]
 fn a_snapshot_survives_a_process_restart_and_a_changed_workflow_refuses_it() {
     let fixtures = cli::manifest().join("tests/fixtures/runtime");
     let review = compile_workflow("persistence-review", &fixtures.join("workflow.graphite"));

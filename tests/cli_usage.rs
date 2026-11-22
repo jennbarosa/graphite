@@ -97,6 +97,7 @@ mod cli_commands {
     }
 
     #[test]
+    #[ignore = "needs the test tools: scripts/setup-tools.py"]
     fn debug_runs_the_named_graph() {
         let output = graphite([
             "debug".as_ref(),
@@ -230,6 +231,7 @@ mod cli_flag_errors {
 
     /// Each refused combination exits 2 and names the problem, on stdout or stderr.
     #[test]
+    #[ignore = "needs the test tools: scripts/setup-tools.py"]
     fn refused_argument_combinations_name_the_flag() {
         let door = door();
         let door = door.to_str().unwrap();
@@ -467,6 +469,7 @@ mod cli_environment {
     }
 
     #[test]
+    #[ignore = "needs the test tools: scripts/setup-tools.py"]
     fn doctor_json_lists_every_front_end_with_its_status() {
         let output = graphite(["doctor", "--json"]);
         assert!(output.status.success(), "{}", stderr(&output));

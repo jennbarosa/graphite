@@ -111,6 +111,7 @@ fn words(commands: &[&str]) -> Vec<String> {
 }
 
 #[test]
+#[ignore = "needs the test tools: scripts/setup-tools.py"]
 fn the_fixed_scenarios_match_on_every_front_end() {
     let door = &cases()[0];
     assert_every_front_end_matches_the_spec(
@@ -198,6 +199,7 @@ fn on_or_off(random: &mut Lcg) -> &'static str {
 }
 
 #[test]
+#[ignore = "needs the test tools: scripts/setup-tools.py"]
 fn random_command_sequences_match_on_every_front_end() {
     for (index, case) in cases().iter().enumerate() {
         for seed in 0..3 {
