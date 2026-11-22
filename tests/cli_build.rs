@@ -445,15 +445,7 @@ mod cli_coverage {
     #[test]
     fn every_command_has_help_text() {
         for command in [
-            "init",
-            "check",
-            "compile",
-            "run",
-            "debug",
-            "inspect",
-            "doctor",
-            "completions",
-            "man",
+            "init", "check", "compile", "run", "debug", "inspect", "doctor",
         ] {
             let text = run_ok(["help", command]);
             assert!(text.contains("usage:"), "{command}: {text}");
@@ -473,20 +465,6 @@ mod cli_coverage {
             run_ok(["--version"]).trim(),
             format!("graphite {}", env!("CARGO_PKG_VERSION"))
         );
-    }
-
-    #[test]
-    fn completions_cover_each_shell_and_reject_others() {
-        for shell in ["bash", "zsh", "fish"] {
-            assert!(!run_ok(["completions", shell]).is_empty(), "{shell}");
-        }
-        run_err(["completions", "nope"], 2, "unknown shell \"nope\"");
-        run_err(["completions"], 2, "completions needs a shell");
-    }
-
-    #[test]
-    fn man_prints_the_manual_page() {
-        assert!(run_ok(["man"]).starts_with(".TH GRAPHITE 1"));
     }
 
     #[test]
@@ -744,13 +722,11 @@ mod cli_coverage {
             2,
             "help takes at most one command name",
         );
-        run_err(["man", "extra"], 2, "man takes no arguments, got \"extra\"");
         run_err(
             ["doctor", "--json", "extra"],
             2,
             "doctor takes no arguments except --json",
         );
-        assert!(stdout(&graphite(["man", "--help"])).contains("usage: graphite man"));
     }
 
     #[test]

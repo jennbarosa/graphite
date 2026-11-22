@@ -1,7 +1,7 @@
 # DSL reference
 
 A file holds one or more `graph` blocks. Indentation sets the structure, and there are no
-parentheses. Terms such as *gate* and *sequence edge* are defined in the [glossary](glossary.md).
+parentheses. Terms such as *gate* and *sequence edge* are defined in the [FAQ](faq.md#what-do-the-terms-mean).
 
 Graph files end in `.graphite`, for example `door.graphite`. Editor support is in
 [Editor support](#editor-support) below.

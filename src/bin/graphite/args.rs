@@ -67,12 +67,6 @@ pub enum Command {
     Doctor {
         json: bool,
     },
-    /// `graphite completions <shell>`: the shell is `bash`, `zsh` or `fish`.
-    Completions {
-        shell: String,
-    },
-    /// `graphite man`: the manual page, in roff.
-    Man,
     /// `graphite help [command]`, or `--help` after any command.
     Help {
         topic: Option<String>,
@@ -134,8 +128,6 @@ fn parse_standalone(verb: &str, args: &[String]) -> Option<Result<Command, Strin
         }
         "--version" | "-V" => Ok(Command::Version),
         "help" | "--help" | "-h" => help_command(args),
-        "completions" => completions_command(args),
-        "man" => man_command(args),
         "doctor" => doctor_command(args),
         _ => return None,
     };
@@ -153,31 +145,6 @@ fn help_command(args: &[String]) -> Result<Command, String> {
         return Err(format!("no help for \"{name}\"\n\n{}", help::OVERVIEW));
     }
     Ok(Command::Help { topic })
-}
-
-fn completions_command(args: &[String]) -> Result<Command, String> {
-    match args.get(1).map(String::as_str) {
-        Some("--help" | "-h") => Ok(Command::Help {
-            topic: Some("completions".into()),
-        }),
-        Some(shell @ ("bash" | "zsh" | "fish")) if args.len() == 2 => Ok(Command::Completions {
-            shell: shell.to_string(),
-        }),
-        Some(other) if args.len() == 2 => Err(format!(
-            "unknown shell \"{other}\"; expected bash, zsh or fish"
-        )),
-        _ => Err("completions needs a shell: bash, zsh or fish".into()),
-    }
-}
-
-fn man_command(args: &[String]) -> Result<Command, String> {
-    match args.get(1).map(String::as_str) {
-        None => Ok(Command::Man),
-        Some("--help" | "-h") => Ok(Command::Help {
-            topic: Some("man".into()),
-        }),
-        Some(_) => Err(format!("man takes no arguments, got \"{}\"", args[1])),
-    }
 }
 
 fn doctor_command(args: &[String]) -> Result<Command, String> {

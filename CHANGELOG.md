@@ -22,6 +22,11 @@ change the interface.
   own state, and `--until-passed` counts the items that passed in earlier runs.
 - The results file drops the records of finished stages, so it no longer grows with a long run.
 
+### Removed
+
+- **Breaking:** `graphite completions` and `graphite man` are removed, with their generated shell
+  scripts and manual page.
+
 ### Changed
 
 - The Criterion benchmarks, the allocation-count benches and the experimental parallel lexer are removed.

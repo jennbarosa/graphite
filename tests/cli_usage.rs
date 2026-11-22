@@ -236,16 +236,6 @@ mod cli_flag_errors {
         let cases: Vec<(Vec<&str>, i32, &str)> = vec![
             (vec!["help", "nonsense"], 2, "no help for \"nonsense\""),
             (
-                vec!["completions"],
-                2,
-                "completions needs a shell: bash, zsh or fish",
-            ),
-            (
-                vec!["completions", "tcsh"],
-                2,
-                "unknown shell \"tcsh\"; expected bash, zsh or fish",
-            ),
-            (
                 vec!["doctor", "extra"],
                 2,
                 "doctor takes no arguments except --json, got \"extra\"",
@@ -419,79 +409,13 @@ mod cli_flag_matrix {
     }
 
     #[test]
-    fn doctor_and_man_take_no_flags_but_their_own() {
+    fn doctor_takes_no_flags_but_its_own() {
         let flag = "--out";
         let doctor = graphite(["doctor", flag, "x"]);
         assert_eq!(doctor.status.code(), Some(2));
         assert!(
             stderr(&doctor).contains("doctor takes no arguments except --json, got \"--out x\"")
         );
-        let man = graphite(["man", flag]);
-        assert_eq!(man.status.code(), Some(2));
-        assert!(stderr(&man).contains("man takes no arguments, got \"--out\""));
-    }
-}
-
-// Merged from `tests/cli_shell.rs`.
-mod cli_shell {
-    //! `graphite completions` and `graphite man`: the scripts and the manual page the binary prints.
-    #[allow(unused_imports)]
-    use super::cli;
-
-    use cli::{graphite, stderr, stdout};
-
-    const COMMANDS: &[&str] = &[
-        "init",
-        "check",
-        "compile",
-        "inspect",
-        "debug",
-        "run",
-        "doctor",
-        "help",
-        "completions",
-        "man",
-    ];
-
-    #[test]
-    fn completion_scripts_name_every_command_for_each_shell() {
-        for shell in ["bash", "zsh", "fish"] {
-            let output = graphite(["completions", shell]);
-            assert!(output.status.success(), "{shell}: {}", stderr(&output));
-            let script = stdout(&output);
-            for command in COMMANDS {
-                assert!(
-                    script.contains(command),
-                    "{shell} script does not mention {command}"
-                );
-            }
-            assert!(
-                script.contains("json"),
-                "{shell} script does not complete --json"
-            );
-        }
-    }
-
-    #[test]
-    fn completions_refuse_an_unknown_or_missing_shell() {
-        let unknown = graphite(["completions", "tcsh"]);
-        assert_eq!(unknown.status.code(), Some(2));
-        assert!(stderr(&unknown).contains("unknown shell \"tcsh\""));
-
-        let missing = graphite(["completions"]);
-        assert_eq!(missing.status.code(), Some(2));
-        assert!(stderr(&missing).contains("completions needs a shell"));
-    }
-
-    #[test]
-    fn the_manual_page_covers_each_command_and_the_exit_status() {
-        let output = graphite(["man"]);
-        assert!(output.status.success(), "{}", stderr(&output));
-        let page = stdout(&output);
-        assert!(page.starts_with(".TH GRAPHITE 1"), "{page}");
-        assert!(page.contains(".SH EXIT STATUS"), "{page}");
-        assert!(page.contains(".SS graphite doctor"), "{page}");
-        assert!(page.contains(r"\-\-json"), "{page}");
     }
 }
 

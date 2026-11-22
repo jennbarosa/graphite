@@ -34,9 +34,6 @@ cargo install --path .
 graphite doctor
 ```
 
-Shell completions and a manual page come from the binary too: `graphite completions bash`
-and `graphite man`. See the [CLI reference](docs/cli.md#shell-completions-and-the-manual-page).
-
 `graphite doctor` reports this build's version, each front end, and whether `debug` and `run` can
 work here. The TypeScript front end needs a JavaScript runtime for `run` and `debug`. [Bun](https://bun.sh) is the default; `npx tsx` also
 works. Compiling needs nothing else.
@@ -77,7 +74,6 @@ The [tutorial](docs/tutorial.md) builds a real graph from scratch and explains e
 | Read this | To learn |
 | --- | --- |
 | [Tutorial](docs/tutorial.md) | Build a graph, check it, compile it, and drive it. |
-| [Glossary](docs/glossary.md) | What *gate*, *stage*, *host*, *finish* and the other terms mean. |
 | [DSL reference](docs/dsl.md) | Every line type, the rules, and chains. |
 | [Front ends](docs/front-ends.md) | How graphs become code in each language, and how to add one. |
 | [TypeScript front end](docs/typescript.md) | The generated TypeScript API and writing a host. |
@@ -85,7 +81,7 @@ The [tutorial](docs/tutorial.md) builds a real graph from scratch and explains e
 | [Durable workflows](docs/durable-workflows.md) | Running tasks with checkpoints and retries. |
 | [CLI reference](docs/cli.md) | Every command and option. Also `graphite help <command>`. |
 | [Rust API](docs/rust.md) | Compiling graphs from Rust code. |
-| [FAQ](docs/faq.md) | When to use Graphite, and why TypeScript comes first. |
+| [FAQ](docs/faq.md) | When to use Graphite, why TypeScript comes first, and what *gate*, *host* and the other terms mean. |
 | [Troubleshooting](docs/troubleshooting.md) | Fixes for the errors you are most likely to see. |
 
 ### Annotations
@@ -132,33 +128,12 @@ graph combat
 
 ## What Graphite catches before a run
 
-Graphite checks a graph when you compile it, so routing mistakes fail the build instead of
-a run. These are the checks you get without writing any test:
-
-- **Stalls and endless loops at build time, in durable graphs.** A durable graph is one whose
-  tasks route only on `passed` and `failed`, and whose other nodes are all `end` nodes. In it,
-  every node reachable from the entry must be able to reach an `end`. A loop with no way out is
-  rejected with the node that can never finish:
-
-  ```text
-  error: node can never reach an end, so a run that gets here never finishes
-    --> line 3, column 8
-    |
-  3 |   node b @task:b
-  ```
-
-- **Missing outcomes at build time.** In a durable graph, each task needs an edge for every
-  outcome the graph uses (`passed`, `failed`, `errored`), so no task can finish without a route.
-- **Unreachable nodes at build time.** A node that no edge leads to is an error at its declaration.
-- **Stalls in simulation.** `graphite debug --simulate` runs a graph with stubbed task outcomes,
-  and names the node a run gets stuck at. A loop that never ends stops at 10,000 transitions:
-
-  ```text
-  stalled at stuck: no edge from it is taken
-  ```
-
-See [Durable workflows](docs/durable-workflows.md#checking-routes-without-running-tasks) for
-`--simulate`, and the [DSL reference](docs/dsl.md) for the rules.
+Graphite checks a graph when you compile it, so a routing mistake fails the build instead of a run:
+an unreachable node, a node with no exit, and, in a durable graph, a task with no route for an
+outcome or a loop that can never reach an `end`. `graphite debug --simulate` runs a graph with
+stubbed task outcomes and names the node a run gets stuck at. See
+[durable workflows](docs/durable-workflows.md#checking-routes-without-running-tasks) and the
+[DSL reference](docs/dsl.md).
 
 ## Development
 
